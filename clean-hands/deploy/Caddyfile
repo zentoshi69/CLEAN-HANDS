@@ -1,0 +1,29 @@
+# CLEAN — Caddy reverse proxy with automatic HTTPS.
+# Replace app.cleanhands.fun with your real subdomain, then:
+#   sudo apt install caddy
+#   sudo cp Caddyfile /etc/caddy/Caddyfile   (edit the domain first)
+#   sudo systemctl restart caddy
+#
+# This one host serves BOTH the Telegram Mini App (at /) and the JSON API
+# (at /api/*), because the staking API process serves the bundled webapp.
+# Your website is hosted separately and calls https://app.cleanhands.fun/api
+# (allow its origin via STAKE_CORS_ORIGINS in the API's .env).
+
+app.cleanhands.fun {
+	encode zstd gzip
+	# Forward everything to the staking API (serves app + API on :8090).
+	reverse_proxy 127.0.0.1:8090
+
+	# Defense-in-depth headers (the API also sets its own).
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}
+
+# Optional: a dedicated api subdomain pointing at the same backend.
+# api.cleanhands.fun {
+# 	reverse_proxy 127.0.0.1:8090
+# }

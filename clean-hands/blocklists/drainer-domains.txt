@@ -1,0 +1,49 @@
+# Wallet-drainer / phishing domain blocklist for guardian_bot.py
+#
+# One entry per line. An entry matches if it appears anywhere in a message's
+# lower-cased text (substring match), so "claim-" matches "claim-airdrop.xyz".
+# Lines starting with # and blank lines are ignored.
+#
+# This is a STARTER list of patterns commonly abused by crypto phishing kits.
+# It is NOT exhaustive — drainer domains rotate hourly. Keep it updated, and
+# treat it as one layer, not the whole defense. Prefer behavioural blocking
+# (new-member link gating, "admins never DM") over chasing domains.
+#
+# WARNING: substring matches are blunt. Don't add short generic strings like
+# "app" or "io" — you'll nuke legitimate messages. Add full-ish tokens.
+
+# --- generic phishing lures (host fragments, not whole sentences) ---
+claim-airdrop
+airdrop-claim
+free-claim
+claim-reward
+claim-rewards
+wallet-connect.
+walletconnect-
+connect-wallet.
+validate-wallet
+verify-wallet
+sync-wallet
+restore-wallet
+migrate-wallet
+unlock-wallet
+wallet-verify
+token-claim
+claim-token
+
+# --- URL shorteners (hide the real destination; block from non-admins) ---
+bit.ly/
+tinyurl.com/
+cutt.ly/
+is.gd/
+t.ly/
+rb.gy/
+shorturl.at/
+
+# --- impostor support / admin lures ---
+official-support
+support-team.
+admin-support
+helpdesk-
+
+# Add your project's specific impersonator domains below as you spot them:

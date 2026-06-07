@@ -1,0 +1,35 @@
+[Unit]
+Description=CLEAN Mini App (staking / leaderboard / referrals backend)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/youruser/bots/miniapp
+EnvironmentFile=/home/youruser/bots/.env
+ExecStart=/home/youruser/bots/miniapp/venv/bin/python server.py
+Restart=always
+RestartSec=5
+User=youruser
+
+# --- Hardening (the app writes its SQLite DB inside miniapp/) ---
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/youruser/bots/miniapp
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

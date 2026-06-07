@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>$CLEAN</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+      :root {
+        --bg: #0d1320;
+        --card: #161f33;
+        --card2: #1d2944;
+        --accent: #5b9cff;
+        --accent2: #8fc0ff;
+        --good: #34d399;
+        --text: #eaf1ff;
+        --muted: #9fb0d0;
+        --radius: 16px;
+      }
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        padding-bottom: 80px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 18px 18px 8px;
+      }
+      header img {
+        width: 40px;
+        height: 40px;
+        object-fit: contain;
+      }
+      header h1 {
+        font-size: 20px;
+        margin: 0;
+      }
+      header .sub {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .wrap {
+        padding: 8px 16px;
+      }
+      .card {
+        background: var(--card);
+        border-radius: var(--radius);
+        padding: 18px;
+        margin-bottom: 14px;
+      }
+      .balance {
+        text-align: center;
+        padding: 26px 18px;
+        background: linear-gradient(160deg, #1d2944, #142038);
+      }
+      .balance .pts {
+        font-size: 44px;
+        font-weight: 800;
+        letter-spacing: -1px;
+      }
+      .balance .lbl {
+        color: var(--muted);
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .stat {
+        flex: 1;
+        text-align: center;
+        background: var(--card2);
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .stat .v {
+        font-size: 20px;
+        font-weight: 700;
+      }
+      .stat .k {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 12px;
+        padding: 15px;
+        font-size: 16px;
+        font-weight: 700;
+        color: #06122b;
+        background: linear-gradient(135deg, var(--accent2), var(--accent));
+        cursor: pointer;
+        transition:
+          transform 0.05s,
+          opacity 0.2s;
+      }
+      button:active {
+        transform: scale(0.98);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      button.ghost {
+        background: var(--card2);
+        color: var(--text);
+      }
+      .tiers {
+        display: flex;
+        gap: 8px;
+        margin: 12px 0;
+      }
+      .tier {
+        flex: 1;
+        background: var(--card2);
+        border: 2px solid transparent;
+        border-radius: 12px;
+        padding: 12px 6px;
+        text-align: center;
+        cursor: pointer;
+      }
+      .tier.sel {
+        border-color: var(--accent);
+      }
+      .tier .d {
+        font-weight: 700;
+      }
+      .tier .r {
+        color: var(--good);
+        font-size: 13px;
+        margin-top: 3px;
+      }
+      input {
+        width: 100%;
+        padding: 14px;
+        border-radius: 12px;
+        border: 1px solid #2b3a5e;
+        background: #0f1729;
+        color: var(--text);
+        font-size: 16px;
+        margin: 6px 0 12px;
+      }
+      h3 {
+        margin: 4px 0 10px;
+        font-size: 15px;
+      }
+      .lb-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+      }
+      .lb-row.me {
+        background: var(--card2);
+      }
+      .lb-row .rank {
+        width: 28px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .lb-row .name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .lb-row .pts {
+        font-weight: 700;
+        color: var(--accent2);
+      }
+      .stake-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: var(--card2);
+        border-radius: 12px;
+        padding: 12px;
+        margin-bottom: 8px;
+      }
+      .stake-item .sm {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .stake-item button {
+        width: auto;
+        padding: 8px 14px;
+        font-size: 13px;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .tabbar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        background: #0a0f1a;
+        border-top: 1px solid #1d2944;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      .tab {
+        flex: 1;
+        text-align: center;
+        padding: 12px 4px;
+        color: var(--muted);
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .tab.sel {
+        color: var(--accent2);
+      }
+      .tab .ic {
+        font-size: 20px;
+        display: block;
+      }
+      .hide {
+        display: none;
+      }
+      .toast {
+        position: fixed;
+        left: 50%;
+        top: 18px;
+        transform: translateX(-50%);
+        background: #20305a;
+        color: #fff;
+        padding: 10px 16px;
+        border-radius: 10px;
+        font-size: 14px;
+        opacity: 0;
+        transition: opacity 0.2s;
+        z-index: 99;
+        pointer-events: none;
+      }
+      .toast.show {
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toast" id="toast"></div>
+    <header>
+      <img src="/glove.png" alt="CLEAN" />
+      <div>
+        <h1>$CLEAN</h1>
+        <div class="sub">clean hands · dirty money</div>
+      </div>
+    </header>
+
+    <!-- HOME -->
+    <section id="view-home" class="wrap">
+      <div class="card balance">
+        <div class="pts" id="pts">—</div>
+        <div class="lbl">CLEAN points</div>
+      </div>
+      <div class="card">
+        <div class="row">
+          <div class="stat">
+            <div class="v" id="rank">—</div>
+            <div class="k">Rank</div>
+          </div>
+          <div class="stat">
+            <div class="v" id="staked">—</div>
+            <div class="k">Staked</div>
+          </div>
+          <div class="stat">
+            <div class="v" id="refs">—</div>
+            <div class="k">Referrals</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Daily claim</h3>
+        <p class="muted" id="claim-note">Claim your free points every 24h.</p>
+        <button id="claim-btn" onclick="claim()">Claim</button>
+      </div>
+    </section>
+
+    <!-- STAKE -->
+    <section id="view-stake" class="wrap hide">
+      <div class="card">
+        <h3>Stake points for yield</h3>
+        <p class="muted">
+          Lock points for a period to earn a fixed return. App points, not tokens.
+        </p>
+        <div class="tiers" id="tiers"></div>
+        <input id="stake-amt" type="number" inputmode="numeric" placeholder="Amount to stake" />
+        <button id="stake-btn" onclick="stake()">Stake</button>
+      </div>
+      <div class="card">
+        <h3>Your active stakes</h3>
+        <div id="stakes-list"><p class="muted">Loading…</p></div>
+      </div>
+    </section>
+
+    <!-- LEADERBOARD -->
+    <section id="view-board" class="wrap hide">
+      <div class="card">
+        <h3>🏆 Leaderboard</h3>
+        <div id="board-list"><p class="muted">Loading…</p></div>
+      </div>
+    </section>
+
+    <!-- INVITE -->
+    <section id="view-invite" class="wrap hide">
+      <div class="card">
+        <h3>Invite & earn</h3>
+        <p class="muted">
+          Earn <b id="ref-reward">—</b> points for every friend who opens the app from your link.
+          They get a bonus too.
+        </p>
+        <div class="row" style="margin-top: 12px">
+          <div class="stat">
+            <div class="v" id="ref-count">—</div>
+            <div class="k">Friends joined</div>
+          </div>
+        </div>
+        <button style="margin-top: 14px" onclick="invite()">Share my link</button>
+        <button class="ghost" style="margin-top: 8px" onclick="copyLink()">Copy link</button>
+      </div>
+    </section>
+
+    <nav class="tabbar">
+      <div class="tab sel" data-v="home" onclick="show('home')"><span class="ic">💎</span>Home</div>
+      <div class="tab" data-v="stake" onclick="show('stake')"><span class="ic">📈</span>Stake</div>
+      <div class="tab" data-v="board" onclick="show('board')"><span class="ic">🏆</span>Board</div>
+      <div class="tab" data-v="invite" onclick="show('invite')">
+        <span class="ic">🤝</span>Invite
+      </div>
+    </nav>
+
+    <script>
+      const tg = window.Telegram?.WebApp;
+      tg?.ready();
+      tg?.expand();
+      const initData = tg?.initData || '';
+      let CFG = { tiers: [], dailyClaim: 0, refReward: 0 };
+      let selTier = null;
+      let BOT_USERNAME = ''; // filled from initData? fallback below
+      let MY_ID = tg?.initDataUnsafe?.user?.id || '';
+
+      function toast(msg) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 1800);
+      }
+
+      async function api(path, body = {}) {
+        const res = await fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initData, ...body }),
+        });
+        if (!res.ok) {
+          const e = await res.json().catch(() => ({}));
+          throw new Error(e.detail || res.status);
+        }
+        return res.json();
+      }
+
+      function fmt(n) {
+        return (n ?? 0).toLocaleString();
+      }
+
+      function paintProfile(p) {
+        document.getElementById('pts').textContent = fmt(p.points);
+        document.getElementById('rank').textContent = '#' + fmt(p.rank);
+        document.getElementById('staked').textContent = fmt(p.staked);
+        document.getElementById('refs').textContent = fmt(p.ref_count);
+        const btn = document.getElementById('claim-btn');
+        const note = document.getElementById('claim-note');
+        if (p.can_claim) {
+          btn.disabled = false;
+          btn.textContent = 'Claim ' + fmt(p.daily_claim) + ' points';
+          note.textContent = 'Your daily claim is ready.';
+        } else {
+          btn.disabled = true;
+          const h = Math.floor(p.next_claim_in / 3600);
+          const m = Math.floor((p.next_claim_in % 3600) / 60);
+          btn.textContent = 'Claimed';
+          note.textContent = `Next claim in ${h}h ${m}m.`;
+        }
+      }
+
+      async function claim() {
+        try {
+          const p = await api('/api/claim');
+          paintProfile(p);
+          toast('+' + fmt(p.claimed) + ' points 🎉');
+          tg?.HapticFeedback?.notificationOccurred('success');
+        } catch (e) {
+          toast(String(e.message));
+        }
+      }
+
+      function renderTiers() {
+        const el = document.getElementById('tiers');
+        el.innerHTML = '';
+        CFG.tiers.forEach((t, i) => {
+          const d = document.createElement('div');
+          d.className = 'tier' + (selTier === t.days ? ' sel' : '');
+          d.innerHTML = `<div class="d">${t.days}d</div><div class="r">+${Math.round(t.rate * 100)}%</div>`;
+          d.onclick = () => {
+            selTier = t.days;
+            renderTiers();
+          };
+          el.appendChild(d);
+          if (selTier === null && i === 0) selTier = t.days;
+        });
+      }
+
+      async function loadStakes() {
+        const { stakes } = await api('/api/stakes');
+        const el = document.getElementById('stakes-list');
+        if (!stakes.length) {
+          el.innerHTML = '<p class="muted">No active stakes yet.</p>';
+          return;
+        }
+        el.innerHTML = '';
+        stakes.forEach((s) => {
+          const div = document.createElement('div');
+          div.className = 'stake-item';
+          const when = s.matured ? 'Matured ✅' : Math.ceil(s.ends_in / 86400) + 'd left';
+          div.innerHTML = `<div><div><b>${fmt(s.amount)}</b> → ${fmt(s.payout)}</div>
+            <div class="sm">${s.days}d · +${Math.round(s.rate * 100)}% · ${when}</div></div>`;
+          const b = document.createElement('button');
+          b.textContent = 'Claim';
+          b.disabled = !s.matured;
+          b.onclick = async () => {
+            try {
+              const p = await api('/api/unstake', { id: s.id });
+              toast('+' + fmt(p.payout) + ' points');
+              paintProfile(p);
+              loadStakes();
+            } catch (e) {
+              toast(String(e.message));
+            }
+          };
+          div.appendChild(b);
+          el.appendChild(div);
+        });
+      }
+
+      async function stake() {
+        const amt = parseInt(document.getElementById('stake-amt').value, 10);
+        if (!amt || amt <= 0) return toast('Enter an amount');
+        if (!selTier) return toast('Pick a lock period');
+        try {
+          const p = await api('/api/stake', { amount: amt, days: selTier });
+          paintProfile(p);
+          document.getElementById('stake-amt').value = '';
+          toast('Staked ' + fmt(amt) + ' points 🔒');
+          loadStakes();
+        } catch (e) {
+          toast(String(e.message));
+        }
+      }
+
+      async function loadBoard() {
+        const data = await api('/api/leaderboard');
+        paintProfile(data);
+        const el = document.getElementById('board-list');
+        el.innerHTML = '';
+        data.leaderboard.forEach((r) => {
+          const div = document.createElement('div');
+          div.className = 'lb-row' + (r.me ? ' me' : '');
+          const medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : r.rank;
+          div.innerHTML = `<div class="rank">${medal}</div><div class="name">${r.me ? 'You' : escapeHtml(r.name)}</div><div class="pts">${fmt(r.points)}</div>`;
+          el.appendChild(div);
+        });
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(
+          /[&<>"']/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+        );
+      }
+
+      function refLink() {
+        const uname = CFG.botUsername || BOT_USERNAME || 'YOUR_BOT';
+        const short = CFG.appShortName || 'app';
+        return `https://t.me/${uname}/${short}?startapp=${MY_ID}`;
+      }
+
+      async function loadInvite() {
+        const r = await api('/api/referrals');
+        document.getElementById('ref-count').textContent = fmt(r.ref_count);
+        document.getElementById('ref-reward').textContent = fmt(r.reward_each);
+      }
+
+      function invite() {
+        const url = refLink();
+        const text = 'Join me on $CLEAN — clean hands, dirty money 🧤';
+        tg?.openTelegramLink(
+          `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
+        );
+      }
+
+      function copyLink() {
+        navigator.clipboard?.writeText(refLink());
+        toast('Link copied');
+      }
+
+      function show(v) {
+        ['home', 'stake', 'board', 'invite'].forEach((name) => {
+          document.getElementById('view-' + name).classList.toggle('hide', name !== v);
+        });
+        document
+          .querySelectorAll('.tab')
+          .forEach((t) => t.classList.toggle('sel', t.dataset.v === v));
+        if (v === 'stake') loadStakes();
+        if (v === 'board') loadBoard();
+        if (v === 'invite') loadInvite();
+      }
+
+      async function boot() {
+        try {
+          CFG = await (await fetch('/config.js')).json();
+        } catch (e) {}
+        // BOT_USERNAME from the WebApp context if Telegram provides it
+        BOT_USERNAME = tg?.initDataUnsafe?.bot_username || window.__BOT_USERNAME__ || '';
+        document.getElementById('ref-reward').textContent = fmt(CFG.refReward);
+        renderTiers();
+        try {
+          const p = await api('/api/auth');
+          paintProfile(p);
+        } catch (e) {
+          toast('Auth failed: ' + e.message);
+        }
+      }
+      boot();
+    </script>
+  </body>
+</html>

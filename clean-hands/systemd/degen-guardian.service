@@ -1,0 +1,37 @@
+[Unit]
+Description=Degen Guardian Bot (join CAPTCHA, anti-spam, impersonation flags)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/youruser/bots
+EnvironmentFile=/home/youruser/bots/.env
+ExecStart=/home/youruser/bots/venv/bin/python guardian_bot.py
+Restart=always
+RestartSec=5
+User=youruser
+
+# --- Hardening: shrink the blast radius if a dependency is ever compromised. ---
+# Drop these one at a time if a bot fails to start on your distro.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/youruser/bots
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

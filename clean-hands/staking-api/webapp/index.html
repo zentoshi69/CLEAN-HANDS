@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>$CLEAN — Stake</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/tweetnacl@1.0.3/nacl.min.js"></script>
+    <style>
+      :root {
+        --bg: #0d1320;
+        --card: #161f33;
+        --card2: #1d2944;
+        --accent: #5b9cff;
+        --accent2: #8fc0ff;
+        --good: #34d399;
+        --warn: #fbbf24;
+        --text: #eaf1ff;
+        --muted: #9fb0d0;
+        --r: 16px;
+      }
+      * {
+        box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        padding-bottom: 84px;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 18px 6px;
+      }
+      header img {
+        width: 38px;
+        height: 38px;
+        object-fit: contain;
+      }
+      header h1 {
+        font-size: 19px;
+        margin: 0;
+      }
+      header .sub {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .wallet-chip {
+        margin-left: auto;
+        font-size: 12px;
+        color: var(--muted);
+        background: var(--card2);
+        padding: 6px 10px;
+        border-radius: 20px;
+      }
+      .wrap {
+        padding: 8px 16px;
+      }
+      .card {
+        background: var(--card);
+        border-radius: var(--r);
+        padding: 18px;
+        margin-bottom: 14px;
+      }
+      .apr {
+        text-align: center;
+        padding: 24px 18px;
+        background: linear-gradient(160deg, #1d2944, #142038);
+      }
+      .apr .v {
+        font-size: 40px;
+        font-weight: 800;
+        letter-spacing: -1px;
+        color: var(--good);
+      }
+      .apr .l {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .stat {
+        flex: 1;
+        text-align: center;
+        background: var(--card2);
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .stat .v {
+        font-size: 18px;
+        font-weight: 700;
+      }
+      .stat .k {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 2px;
+      }
+      button {
+        width: 100%;
+        border: 0;
+        border-radius: 12px;
+        padding: 14px;
+        font-size: 15px;
+        font-weight: 700;
+        color: #06122b;
+        background: linear-gradient(135deg, var(--accent2), var(--accent));
+        cursor: pointer;
+        transition:
+          transform 0.05s,
+          opacity 0.2s;
+      }
+      button:active {
+        transform: scale(0.985);
+      }
+      button:disabled {
+        opacity: 0.45;
+      }
+      button.ghost {
+        background: var(--card2);
+        color: var(--text);
+      }
+      button.warn {
+        background: linear-gradient(135deg, #fcd34d, #f59e0b);
+      }
+      .btns {
+        display: flex;
+        gap: 8px;
+      }
+      h3 {
+        margin: 2px 0 10px;
+        font-size: 15px;
+      }
+      .brk {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 0;
+        font-size: 14px;
+        border-bottom: 1px solid #223;
+      }
+      .brk:last-child {
+        border-bottom: 0;
+      }
+      .brk .g {
+        color: var(--good);
+      }
+      input {
+        width: 100%;
+        padding: 13px;
+        border-radius: 12px;
+        border: 1px solid #2b3a5e;
+        background: #0f1729;
+        color: var(--text);
+        font-size: 15px;
+        margin: 8px 0;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .lb-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+      }
+      .lb-row.me {
+        background: var(--card2);
+      }
+      .lb-row .rank {
+        width: 28px;
+        font-weight: 700;
+        color: var(--muted);
+      }
+      .lb-row .name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .lb-row .pts {
+        font-weight: 700;
+        color: var(--accent2);
+      }
+      .tabbar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        background: #0a0f1a;
+        border-top: 1px solid #1d2944;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      .tab {
+        flex: 1;
+        text-align: center;
+        padding: 11px 4px;
+        color: var(--muted);
+        font-size: 11px;
+        cursor: pointer;
+      }
+      .tab.sel {
+        color: var(--accent2);
+      }
+      .tab .ic {
+        font-size: 20px;
+        display: block;
+      }
+      .hide {
+        display: none !important;
+      }
+      .overlay {
+        position: fixed;
+        inset: 0;
+        background: var(--bg);
+        z-index: 50;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 28px;
+        text-align: center;
+      }
+      .overlay img {
+        width: 88px;
+        height: 88px;
+        margin-bottom: 16px;
+      }
+      .overlay h2 {
+        margin: 0 0 6px;
+      }
+      .wallet-btn {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        max-width: 320px;
+        justify-content: center;
+        margin-top: 10px;
+      }
+      .toast {
+        position: fixed;
+        left: 50%;
+        top: 16px;
+        transform: translateX(-50%);
+        background: #20305a;
+        color: #fff;
+        padding: 10px 16px;
+        border-radius: 10px;
+        font-size: 14px;
+        opacity: 0;
+        transition: opacity 0.2s;
+        z-index: 99;
+        pointer-events: none;
+        max-width: 90%;
+      }
+      .toast.show {
+        opacity: 1;
+      }
+      .spin {
+        width: 22px;
+        height: 22px;
+        border: 3px solid #2b3a5e;
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: s 0.8s linear infinite;
+      }
+      @keyframes s {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toast" id="toast"></div>
+
+    <!-- CONNECT OVERLAY -->
+    <div class="overlay" id="connect">
+      <img src="/glove.png" alt="CLEAN" />
+      <h2>$CLEAN Staking</h2>
+      <p class="muted" id="connect-note">Connect your Solana wallet to stake, boost, and earn.</p>
+      <div id="wallet-list" style="width: 100%; max-width: 320px; margin-top: 12px"></div>
+      <div id="connect-spin" class="hide" style="margin-top: 18px"><div class="spin"></div></div>
+    </div>
+
+    <!-- APP -->
+    <div id="app" class="hide">
+      <header>
+        <img src="/glove.png" alt="CLEAN" />
+        <div>
+          <h1>$CLEAN</h1>
+          <div class="sub">soft staking</div>
+        </div>
+        <div class="wallet-chip" id="wallet-chip" onclick="App.logout()">—</div>
+      </header>
+
+      <!-- STAKE -->
+      <section id="view-stake" class="wrap">
+        <div class="card apr">
+          <div class="v" id="apr">—%</div>
+          <div class="l">your effective APR</div>
+        </div>
+        <div class="card">
+          <div class="row">
+            <div class="stat">
+              <div class="v" id="staked">—</div>
+              <div class="k">Staked</div>
+            </div>
+            <div class="stat">
+              <div class="v" id="pending">—</div>
+              <div class="k">Pending</div>
+            </div>
+            <div class="stat">
+              <div class="v" id="rank">—</div>
+              <div class="k">Rank</div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>APR breakdown</h3>
+          <div class="brk"><span>Base</span><span id="b-base">—</span></div>
+          <div class="brk"><span>Amount tier</span><span class="g" id="b-amount">—</span></div>
+          <div class="brk"><span>Loyalty</span><span class="g" id="b-loyalty">—</span></div>
+          <div class="brk"><span>Referrals</span><span class="g" id="b-ref">—</span></div>
+          <div class="brk"><span>🔥 Burn bonus</span><span class="g" id="b-burn">—</span></div>
+        </div>
+        <div class="card">
+          <h3>Soft stake</h3>
+          <p class="muted">
+            Staking snapshots your wallet's $CLEAN — tokens never leave your wallet. Wallet balance:
+            <b id="balance">—</b>.
+          </p>
+          <div class="btns">
+            <button onclick="App.stake()">Stake my $CLEAN</button>
+            <button class="ghost" onclick="App.unstake()">Unstake</button>
+          </div>
+          <button style="margin-top: 8px" onclick="App.claim()">
+            Claim rewards (<span id="claimable">0</span>)
+          </button>
+        </div>
+      </section>
+
+      <!-- TRADE -->
+      <section id="view-trade" class="wrap hide">
+        <div class="card">
+          <h3>💱 $CLEAN market</h3>
+          <div class="row">
+            <div class="stat">
+              <div class="v" id="m-price">—</div>
+              <div class="k">Price</div>
+            </div>
+            <div class="stat">
+              <div class="v" id="m-change">—</div>
+              <div class="k">24h</div>
+            </div>
+            <div class="stat">
+              <div class="v" id="m-mc">—</div>
+              <div class="k">Market cap</div>
+            </div>
+          </div>
+          <div class="row" style="margin-top: 8px">
+            <div class="stat">
+              <div class="v" id="m-liq">—</div>
+              <div class="k">Liquidity</div>
+            </div>
+            <div class="stat">
+              <div class="v" id="m-vol">—</div>
+              <div class="k">24h vol</div>
+            </div>
+          </div>
+          <p class="muted" id="m-portfolio" style="margin-top: 10px"></p>
+          <button style="margin-top: 6px" onclick="App.buy()">🟢 Buy $CLEAN on Jupiter</button>
+          <div class="btns" style="margin-top: 8px">
+            <button class="ghost" onclick="App.chart()">📈 Chart</button>
+            <button class="ghost" onclick="App.birdeye()">🦅 Birdeye</button>
+          </div>
+          <button class="ghost" style="margin-top: 8px" onclick="App.loadSwap()">
+            Load in-app swap widget
+          </button>
+          <div id="jup-terminal" style="margin-top: 12px"></div>
+        </div>
+      </section>
+
+      <!-- BOOST (burn) -->
+      <section id="view-boost" class="wrap hide">
+        <div class="card">
+          <h3>🔥 Burn to boost</h3>
+          <p class="muted">
+            Burning $CLEAN permanently raises your APR (+5% per 100k burned, up to +200%). Burn from
+            your wallet, then paste the transaction signature here — we verify it on-chain and
+            credit you. You've burned: <b id="burned">—</b>.
+          </p>
+          <input id="burn-sig" placeholder="Burn transaction signature" />
+          <button class="warn" onclick="App.submitBurn()">Verify & credit burn</button>
+          <div id="burn-inapp" class="hide" style="margin-top: 14px">
+            <p class="muted">Or burn in-app (beta) — sign the burn in your wallet:</p>
+            <input
+              id="burn-amount"
+              type="number"
+              inputmode="decimal"
+              placeholder="Amount of $CLEAN to burn"
+            />
+            <button class="warn" onclick="App.burnInApp()">🔥 Burn in-app</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- LEADERBOARD -->
+      <section id="view-board" class="wrap hide">
+        <div class="card">
+          <h3>🏆 Top stakers</h3>
+          <div id="board-list"><p class="muted">Loading…</p></div>
+        </div>
+      </section>
+
+      <!-- INVITE -->
+      <section id="view-invite" class="wrap hide">
+        <div class="card">
+          <h3>🤝 Invite & boost</h3>
+          <p class="muted">
+            Each friend who connects & stakes from your link adds <b>+2% APR</b> (up to +30%).
+            Active referrals: <b id="ref-count">—</b>.
+          </p>
+          <button style="margin-top: 12px" onclick="App.invite()">Share my link</button>
+          <button class="ghost" style="margin-top: 8px" onclick="App.copyLink()">Copy link</button>
+        </div>
+      </section>
+
+      <nav class="tabbar">
+        <div class="tab sel" data-v="stake" onclick="App.show('stake')">
+          <span class="ic">💎</span>Stake
+        </div>
+        <div class="tab" data-v="trade" onclick="App.show('trade')">
+          <span class="ic">💱</span>Trade
+        </div>
+        <div class="tab" data-v="boost" onclick="App.show('boost')">
+          <span class="ic">🔥</span>Boost
+        </div>
+        <div class="tab" data-v="board" onclick="App.show('board')">
+          <span class="ic">🏆</span>Board
+        </div>
+        <div class="tab" data-v="invite" onclick="App.show('invite')">
+          <span class="ic">🤝</span>Invite
+        </div>
+      </nav>
+    </div>
+
+    <script src="/wallet.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

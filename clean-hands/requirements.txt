@@ -1,0 +1,6 @@
+# Telegram bot fleet dependencies.
+# Install:  pip install -r requirements.txt
+# The [job-queue] extra is required by guardian_bot.py (CAPTCHA kick timer).
+python-telegram-bot[job-queue]>=21,<22
+Pillow>=10
+httpx>=0.27

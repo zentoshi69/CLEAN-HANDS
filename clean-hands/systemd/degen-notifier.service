@@ -1,0 +1,35 @@
+[Unit]
+Description=CLEAN staking notifier (DMs users when rewards are claimable)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/youruser/bots/staking-api
+EnvironmentFile=/home/youruser/bots/.env
+ExecStart=/home/youruser/bots/staking-api/venv/bin/python notifier.py
+Restart=always
+RestartSec=10
+User=youruser
+
+# Hardening (writes only the notifs/dedupe rows via the shared DB)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/youruser/bots/staking-api
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>$CLEAN staking — website example</title>
+    <script src="./clean-staking.js"></script>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        background: #0d1320;
+        color: #eaf1ff;
+        max-width: 520px;
+        margin: 40px auto;
+        padding: 0 16px;
+      }
+      button {
+        padding: 12px 16px;
+        border: 0;
+        border-radius: 10px;
+        font-weight: 700;
+        cursor: pointer;
+        background: #5b9cff;
+        color: #06122b;
+        margin: 4px 0;
+      }
+      pre {
+        background: #161f33;
+        padding: 14px;
+        border-radius: 10px;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🧤 $CLEAN staking (website)</h1>
+    <p>
+      This page uses the same backend as the Telegram Mini App, so balances, APR, leaderboard and
+      rewards are identical.
+    </p>
+    <button onclick="connect()">Connect Phantom & log in</button>
+    <button onclick="act('stake')">Stake</button>
+    <button onclick="act('claim')">Claim</button>
+    <pre id="out">Not connected.</pre>
+
+    <script>
+      // Point this at your deployed staking API host (also serves the Mini App).
+      const clean = new CleanStaking('https://app.cleanhands.fun', { persist: true });
+      const out = (o) => (document.getElementById('out').textContent = JSON.stringify(o, null, 2));
+
+      async function connect() {
+        try {
+          const provider = window.solana; // Phantom (or any wallet-standard provider)
+          if (!provider) return out('No Solana wallet found. Install Phantom.');
+          await provider.connect();
+          out(await clean.login(provider));
+        } catch (e) {
+          out('Error: ' + e.message);
+        }
+      }
+      async function act(name) {
+        try {
+          out(await clean[name]());
+        } catch (e) {
+          out('Error: ' + e.message);
+        }
+      }
+    </script>
+  </body>
+</html>

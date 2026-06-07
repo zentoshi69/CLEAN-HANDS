@@ -1,0 +1,4 @@
+# CLEAN Mini App backend deps.
+#   pip install -r requirements.txt
+fastapi>=0.110
+uvicorn>=0.29

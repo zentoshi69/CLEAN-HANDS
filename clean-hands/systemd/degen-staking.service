@@ -1,0 +1,35 @@
+[Unit]
+Description=CLEAN soft-staking API (shared source of truth for site + Mini App)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/youruser/bots/staking-api
+EnvironmentFile=/home/youruser/bots/.env
+ExecStart=/home/youruser/bots/staking-api/venv/bin/python app.py
+Restart=always
+RestartSec=5
+User=youruser
+
+# --- Hardening (writes its SQLite db inside staking-api/) ---
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/youruser/bots/staking-api
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

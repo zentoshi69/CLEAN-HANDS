@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""
+Solana read layer for the staking API — the trustless facts the engine builds on:
+  * a wallet's current $CLEAN balance (for soft-stake snapshots & anti-gaming),
+  * verification that a given transaction really BURNED $CLEAN from that wallet.
+
+Public RPC works for low volume; use a paid RPC (Helius/Triton) in production.
+"""
+
+from __future__ import annotations
+
+import os
+import httpx
+
+RPC_URL = os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+MINT = os.environ.get("DEFAULT_TOKEN_MINT", "").strip()
+TIMEOUT = 20
+
+
+async def _rpc(method: str, params: list):
+    async with httpx.AsyncClient(timeout=TIMEOUT) as c:
+        r = await c.post(
+            RPC_URL,
+            json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
+            headers={"content-type": "application/json"},
+        )
+    r.raise_for_status()
+    data = r.json()
+    if "error" in data:
+        raise RuntimeError(data["error"])
+    return data.get("result")
+
+
+async def token_balance(wallet: str, mint: str | None = None) -> float:
+    """Sum the wallet's UI balance of `mint` across its token accounts."""
+    mint = mint or MINT
+    if not mint:
+        return 0.0
+    res = await _rpc(
+        "getTokenAccountsByOwner",
+        [wallet, {"mint": mint}, {"encoding": "jsonParsed"}],
+    )
+    total = 0.0
+    for acc in (res or {}).get("value", []):
+        info = acc["account"]["data"]["parsed"]["info"]
+        total += float(info["tokenAmount"].get("uiAmount") or 0)
+    return total
+
+
+async def verify_burn(signature: str, wallet: str, mint: str | None = None) -> float:
+    """Return the amount of `mint` BURNED by `wallet` in transaction `signature`,
+    or 0.0 if the tx isn't a successful burn by that wallet. Parses both
+    `burn` and `burnChecked` SPL-token instructions (top-level + inner)."""
+    mint = mint or MINT
+    if not (mint and signature and wallet):
+        return 0.0
+    # commitment=finalized: only credit burns that can no longer be rolled back.
+    tx = await _rpc(
+        "getTransaction",
+        [
+            signature,
+            {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0, "commitment": "finalized"},
+        ],
+    )
+    if not tx or (tx.get("meta") or {}).get("err") is not None:
+        return 0.0
+
+    msg = (tx.get("transaction") or {}).get("message") or {}
+    instrs = list(msg.get("instructions") or [])
+    for inner in (tx.get("meta") or {}).get("innerInstructions") or []:
+        instrs.extend(inner.get("instructions") or [])
+
+    burned = 0.0
+    for ix in instrs:
+        if ix.get("program") != "spl-token":
+            continue
+        parsed = ix.get("parsed") or {}
+        if parsed.get("type") not in ("burn", "burnChecked"):
+            continue
+        info = parsed.get("info") or {}
+        # must be a burn of OUR mint — reject missing or mismatched mint outright
+        if info.get("mint") != mint:
+            continue
+        # the authority/owner doing the burn must be our wallet
+        who = info.get("authority") or info.get("owner")
+        if who != wallet:
+            continue
+        ta = info.get("tokenAmount")
+        if isinstance(ta, dict) and ta.get("uiAmount") is not None:
+            burned += float(ta["uiAmount"])
+        elif info.get("amount") is not None:
+            # raw `burn` without decimals — caller should set DEFAULT_TOKEN_DECIMALS
+            decimals = int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
+            burned += float(info["amount"]) / (10**decimals)
+    return burned
