@@ -1,495 +1,281 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>$CLEAN — Stake</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://unpkg.com/tweetnacl@1.0.3/nacl.min.js"></script>
-    <style>
-      :root {
-        --bg: #0d1320;
-        --card: #161f33;
-        --card2: #1d2944;
-        --accent: #5b9cff;
-        --accent2: #8fc0ff;
-        --good: #34d399;
-        --warn: #fbbf24;
-        --text: #eaf1ff;
-        --muted: #9fb0d0;
-        --r: 16px;
-      }
-      * {
-        box-sizing: border-box;
-        -webkit-tap-highlight-color: transparent;
-      }
-      body {
-        margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        padding-bottom: 84px;
-      }
-      header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 16px 18px 6px;
-      }
-      header img {
-        width: 38px;
-        height: 38px;
-        object-fit: contain;
-      }
-      header h1 {
-        font-size: 19px;
-        margin: 0;
-      }
-      header .sub {
-        color: var(--muted);
-        font-size: 12px;
-      }
-      .wallet-chip {
-        margin-left: auto;
-        font-size: 12px;
-        color: var(--muted);
-        background: var(--card2);
-        padding: 6px 10px;
-        border-radius: 20px;
-      }
-      .wrap {
-        padding: 8px 16px;
-      }
-      .card {
-        background: var(--card);
-        border-radius: var(--r);
-        padding: 18px;
-        margin-bottom: 14px;
-      }
-      .apr {
-        text-align: center;
-        padding: 24px 18px;
-        background: linear-gradient(160deg, #1d2944, #142038);
-      }
-      .apr .v {
-        font-size: 40px;
-        font-weight: 800;
-        letter-spacing: -1px;
-        color: var(--good);
-      }
-      .apr .l {
-        color: var(--muted);
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-      }
-      .row {
-        display: flex;
-        justify-content: space-between;
-        gap: 10px;
-      }
-      .stat {
-        flex: 1;
-        text-align: center;
-        background: var(--card2);
-        border-radius: 12px;
-        padding: 12px;
-      }
-      .stat .v {
-        font-size: 18px;
-        font-weight: 700;
-      }
-      .stat .k {
-        font-size: 11px;
-        color: var(--muted);
-        margin-top: 2px;
-      }
-      button {
-        width: 100%;
-        border: 0;
-        border-radius: 12px;
-        padding: 14px;
-        font-size: 15px;
-        font-weight: 700;
-        color: #06122b;
-        background: linear-gradient(135deg, var(--accent2), var(--accent));
-        cursor: pointer;
-        transition:
-          transform 0.05s,
-          opacity 0.2s;
-      }
-      button:active {
-        transform: scale(0.985);
-      }
-      button:disabled {
-        opacity: 0.45;
-      }
-      button.ghost {
-        background: var(--card2);
-        color: var(--text);
-      }
-      button.warn {
-        background: linear-gradient(135deg, #fcd34d, #f59e0b);
-      }
-      .btns {
-        display: flex;
-        gap: 8px;
-      }
-      h3 {
-        margin: 2px 0 10px;
-        font-size: 15px;
-      }
-      .brk {
-        display: flex;
-        justify-content: space-between;
-        padding: 6px 0;
-        font-size: 14px;
-        border-bottom: 1px solid #223;
-      }
-      .brk:last-child {
-        border-bottom: 0;
-      }
-      .brk .g {
-        color: var(--good);
-      }
-      input {
-        width: 100%;
-        padding: 13px;
-        border-radius: 12px;
-        border: 1px solid #2b3a5e;
-        background: #0f1729;
-        color: var(--text);
-        font-size: 15px;
-        margin: 8px 0;
-      }
-      .muted {
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.5;
-      }
-      .lb-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 12px;
-        border-radius: 10px;
-      }
-      .lb-row.me {
-        background: var(--card2);
-      }
-      .lb-row .rank {
-        width: 28px;
-        font-weight: 700;
-        color: var(--muted);
-      }
-      .lb-row .name {
-        flex: 1;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .lb-row .pts {
-        font-weight: 700;
-        color: var(--accent2);
-      }
-      .tabbar {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        display: flex;
-        background: #0a0f1a;
-        border-top: 1px solid #1d2944;
-        padding-bottom: env(safe-area-inset-bottom);
-      }
-      .tab {
-        flex: 1;
-        text-align: center;
-        padding: 11px 4px;
-        color: var(--muted);
-        font-size: 11px;
-        cursor: pointer;
-      }
-      .tab.sel {
-        color: var(--accent2);
-      }
-      .tab .ic {
-        font-size: 20px;
-        display: block;
-      }
-      .hide {
-        display: none !important;
-      }
-      .overlay {
-        position: fixed;
-        inset: 0;
-        background: var(--bg);
-        z-index: 50;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 28px;
-        text-align: center;
-      }
-      .overlay img {
-        width: 88px;
-        height: 88px;
-        margin-bottom: 16px;
-      }
-      .overlay h2 {
-        margin: 0 0 6px;
-      }
-      .wallet-btn {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        width: 100%;
-        max-width: 320px;
-        justify-content: center;
-        margin-top: 10px;
-      }
-      .toast {
-        position: fixed;
-        left: 50%;
-        top: 16px;
-        transform: translateX(-50%);
-        background: #20305a;
-        color: #fff;
-        padding: 10px 16px;
-        border-radius: 10px;
-        font-size: 14px;
-        opacity: 0;
-        transition: opacity 0.2s;
-        z-index: 99;
-        pointer-events: none;
-        max-width: 90%;
-      }
-      .toast.show {
-        opacity: 1;
-      }
-      .spin {
-        width: 22px;
-        height: 22px;
-        border: 3px solid #2b3a5e;
-        border-top-color: var(--accent);
-        border-radius: 50%;
-        animation: s 0.8s linear infinite;
-      }
-      @keyframes s {
-        to {
-          transform: rotate(360deg);
-        }
-      }
-      .live-dot {
-        display: inline-block;
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: var(--good);
-        vertical-align: middle;
-        margin-left: 6px;
-        box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7);
-        animation: pulse 1.8s infinite;
-      }
-      @keyframes pulse {
-        0% {
-          box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
-        }
-        70% {
-          box-shadow: 0 0 0 7px rgba(52, 211, 153, 0);
-        }
-        100% {
-          box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
-        }
-      }
-      #pending {
-        font-variant-numeric: tabular-nums;
-      }
-      .rate-note {
-        color: var(--good);
-        font-size: 12.5px;
-        margin: 10px 0 0;
-        text-align: center;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="toast" id="toast"></div>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+<title>$CLEAN — Soft Staking</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://unpkg.com/tweetnacl@1.0.3/nacl.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sky:#86BFF8;--sky-2:#A9D3FB;--sky-soft:#D6EAFD;--glove:#EAF4FE;
+  --paper:#F4FAFF;--white:#fff;--ink:#1B5DA6;--ink-2:#2E74C0;--ink-deep:#0F3E73;
+  --text:#16385c;--muted:#5d7ea3;--line:rgba(27,93,166,.16);--line-2:rgba(27,93,166,.28);
+  --pos:#2f9e63;--fire:#ff7a3c;
+  --shadow:0 20px 50px -28px rgba(27,93,166,.4);--shadow-sm:0 10px 26px -16px rgba(27,93,166,.45);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--paper);color:var(--text);-webkit-font-smoothing:antialiased;overflow:hidden}
+.app{position:relative;max-width:480px;margin:0 auto;height:100dvh;display:flex;flex-direction:column;background:
+  radial-gradient(60% 30% at 50% 0,rgba(169,211,251,.35),transparent 60%),
+  radial-gradient(50% 30% at 100% 70%,rgba(214,234,253,.5),transparent 60%),var(--paper)}
 
-    <!-- CONNECT OVERLAY -->
-    <div class="overlay" id="connect">
-      <img src="/glove.png" alt="CLEAN" />
-      <h2>$CLEAN Staking</h2>
-      <p class="muted" id="connect-note">Connect your Solana wallet to stake, boost, and earn.</p>
-      <div id="wallet-list" style="width: 100%; max-width: 320px; margin-top: 12px"></div>
-      <div id="connect-spin" class="hide" style="margin-top: 18px"><div class="spin"></div></div>
+/* header */
+.top{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 16px 12px;
+  background:rgba(255,255,255,.62);backdrop-filter:blur(16px);border-bottom:1.5px solid var(--line);position:sticky;top:0;z-index:5}
+.brand{display:flex;align-items:center;gap:10px}
+.brand img{width:38px;height:38px;border-radius:50%;border:1.5px solid var(--line);background:#fff;object-fit:contain}
+.brand b{font-family:'Fraunces',serif;font-size:1.15rem;color:var(--ink-deep);letter-spacing:.02em;display:block;line-height:1}
+.brand small{font-size:.72rem;color:var(--muted);font-weight:600;letter-spacing:.02em}
+.wallet{font-family:inherit;font-size:.78rem;font-weight:700;color:var(--ink-2);background:rgba(255,255,255,.7);border:1.5px solid var(--line-2);border-radius:100px;padding:8px 14px;cursor:pointer;transition:.2s}
+.wallet:active{transform:scale(.96)}
+
+/* scroll area */
+.scroll{flex:1 1 auto;overflow-y:auto;padding:16px 16px 96px;-webkit-overflow-scrolling:touch}
+.tab[hidden]{display:none}
+
+/* cards */
+.card{background:rgba(255,255,255,.66);backdrop-filter:blur(8px);border:1.5px solid var(--line);border-radius:22px;box-shadow:var(--shadow-sm)}
+.apr{position:relative;overflow:hidden;text-align:center;padding:30px 20px;margin-bottom:14px;
+  background:linear-gradient(165deg,rgba(214,234,253,.6),rgba(255,255,255,.5))}
+.apr::before{content:"";position:absolute;inset:-30% 20% auto;height:160px;background:radial-gradient(closest-side,rgba(134,191,248,.5),transparent 70%);filter:blur(20px)}
+.apr .num{position:relative;font-family:'Fraunces',serif;font-weight:700;font-size:clamp(3rem,17vw,4.4rem);color:var(--ink-deep);line-height:1}
+.apr .lbl{position:relative;font-size:.72rem;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-2);margin-top:6px}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.stat{padding:16px 8px;text-align:center}
+.stat .k{font-family:'Fraunces',serif;font-weight:700;font-size:1.25rem;color:var(--ink-deep);font-variant-numeric:tabular-nums}
+.stat .l{font-size:.68rem;color:var(--muted);font-weight:600;margin-top:2px;letter-spacing:.04em}
+
+.panel{padding:18px;margin-bottom:14px}
+.panel h3{font-family:'Fraunces',serif;font-weight:600;font-size:1.1rem;color:var(--ink-deep);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.panel .desc{font-size:.86rem;color:var(--muted);margin-bottom:14px;line-height:1.5}
+.panel .desc b{color:var(--ink-deep)}
+
+.row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px dashed var(--line);font-size:.95rem}
+.row:last-child{border-bottom:none}
+.row .v{font-weight:700;color:var(--pos);font-variant-numeric:tabular-nums}
+.row .v.zero{color:var(--muted)}
+.row .v.ink{color:var(--ink-deep)}
+.row .name{color:var(--text);display:flex;align-items:center;gap:8px}
+
+/* buttons (match site) */
+.btn{width:100%;border:none;border-radius:14px;padding:15px;font-family:inherit;font-weight:700;font-size:1rem;cursor:pointer;transition:.2s;letter-spacing:.01em}
+.btn:active{transform:scale(.985)}
+.btn-solid{background:var(--ink-2);color:#fff;box-shadow:0 12px 24px -12px rgba(46,116,192,.8)}
+.btn-solid:active{background:var(--ink)}
+.btn-ghost{background:rgba(255,255,255,.6);border:1.5px solid var(--line-2);color:var(--ink-2)}
+.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.btn:disabled{opacity:.55}
+
+.field{margin-bottom:12px}
+.field .top-l{display:flex;justify-content:space-between;font-size:.8rem;color:var(--muted);font-weight:600;margin-bottom:7px}
+.input{display:flex;align-items:center;background:#fff;border:1.5px solid var(--line);border-radius:13px;padding:13px 14px}
+.input input{flex:1;border:none;outline:none;font-family:inherit;font-size:.95rem;font-weight:600;color:var(--ink-deep);background:none;min-width:0}
+
+/* burn chips */
+.chips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:4px}
+.chip{border:1.5px solid var(--line-2);background:#fff;border-radius:12px;padding:11px 4px;font-weight:700;font-size:.82rem;color:var(--ink-deep);cursor:pointer;transition:.2s;font-family:inherit}
+.chip:active{transform:scale(.95)}
+.chip:hover{border-color:var(--fire);color:var(--fire)}
+.gauge{height:9px;border-radius:100px;background:var(--glove);overflow:hidden;border:1.5px solid var(--line);margin:12px 0}
+.gauge i{display:block;height:100%;background:linear-gradient(90deg,var(--sky),var(--ink-2));border-radius:100px;transition:width .5s}
+
+/* leaderboard */
+.lb{display:flex;align-items:center;gap:12px;padding:12px 6px;border-bottom:1px dashed var(--line);border-radius:10px}
+.lb:last-child{border:none}
+.lb.me{background:var(--glove)}
+.lb .rk{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:.8rem;background:var(--glove);color:var(--ink-2);border:1.5px solid var(--line);flex:0 0 auto}
+.lb .rk.top{background:var(--ink-2);color:#fff;border-color:var(--ink-2)}
+.lb .ad{font-family:ui-monospace,Menlo,monospace;font-size:.88rem;color:var(--ink-deep);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb .amt{margin-left:auto;font-weight:700;color:var(--ink-deep);font-size:.9rem}
+
+.ca{display:flex;align-items:center;gap:10px;border:1.5px solid var(--line-2);background:#fff;border-radius:13px;padding:10px 10px 10px 14px;margin:6px 0 14px;cursor:pointer}
+.ca .lab{font-size:.62rem;font-weight:800;letter-spacing:.18em;color:var(--ink-2)}
+.ca code{font-family:ui-monospace,Menlo,monospace;font-size:.8rem;color:var(--ink-deep);font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ca .cp{font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#fff;background:var(--ink-2);border-radius:100px;padding:6px 11px}
+
+.scr{font-family:'Caveat',cursive;color:var(--ink-2)}
+.muted{color:var(--muted);font-size:.86rem;line-height:1.5}
+.hide{display:none!important}
+
+/* live accrual */
+.live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--pos);vertical-align:middle;margin-left:6px;
+  box-shadow:0 0 0 0 rgba(47,158,99,.6);animation:pulse 1.8s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(47,158,99,.55)}70%{box-shadow:0 0 0 7px rgba(47,158,99,0)}100%{box-shadow:0 0 0 0 rgba(47,158,99,0)}}
+.rate-note{color:var(--pos);font-size:.8rem;font-weight:600;margin-top:10px;text-align:center}
+
+/* wallet picker sheet */
+.sheet-bg{position:fixed;inset:0;background:rgba(15,62,115,.35);backdrop-filter:blur(3px);z-index:30;opacity:0;pointer-events:none;transition:.25s}
+.sheet-bg.show{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-width:480px;margin:0 auto;background:var(--paper);border-radius:24px 24px 0 0;
+  border:1.5px solid var(--line);border-bottom:none;box-shadow:var(--shadow);padding:20px 18px calc(20px + env(safe-area-inset-bottom));
+  z-index:31;transform:translateY(105%);transition:.3s cubic-bezier(.3,1,.4,1)}
+.sheet.show{transform:none}
+.sheet h3{font-family:'Fraunces',serif;font-weight:600;font-size:1.1rem;color:var(--ink-deep);margin-bottom:4px}
+.sheet p{font-size:.84rem;color:var(--muted);margin-bottom:14px}
+.sheet .btn{margin-bottom:9px}
+.spin{width:22px;height:22px;border:3px solid var(--sky-soft);border-top-color:var(--ink-2);border-radius:50%;animation:s .8s linear infinite;margin:8px auto 0}
+@keyframes s{to{transform:rotate(360deg)}}
+
+/* bottom tab bar */
+.tabbar{flex:0 0 auto;position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-around;
+  padding:10px 6px calc(10px + env(safe-area-inset-bottom));background:rgba(255,255,255,.82);backdrop-filter:blur(18px);border-top:1.5px solid var(--line);z-index:6}
+.tabbtn{flex:1;background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--muted);font-family:inherit;font-weight:700;font-size:.66rem;letter-spacing:.02em;cursor:pointer;padding:4px 0;transition:.2s}
+.tabbtn svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tabbtn.on{color:var(--ink-2)}
+.tabbtn.on svg{stroke:var(--ink-2)}
+
+#toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%) translateY(20px);background:var(--ink-deep);color:#fff;
+  padding:11px 18px;border-radius:100px;font-size:.86rem;font-weight:600;box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:.35s;z-index:40;max-width:90%;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.fade{animation:fade .4s ease}
+@keyframes fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <img src="/glove.png" alt="$CLEAN"/>
+      <div><b>$CLEAN</b><small>soft staking · clean hands, dirty money</small></div>
     </div>
+    <button class="wallet" id="wallet">Connect</button>
+  </header>
 
-    <!-- APP -->
-    <div id="app" class="hide">
-      <header>
-        <img src="/glove.png" alt="CLEAN" />
-        <div>
-          <h1>$CLEAN</h1>
-          <div class="sub">soft staking</div>
+  <main class="scroll" id="scroll">
+    <!-- STAKE -->
+    <section class="tab" id="tab-stake">
+      <div class="card apr"><div class="num"><span id="aprNum">0</span>%</div><div class="lbl">Your effective APR <span class="live-dot hide" id="liveDot"></span></div></div>
+      <div class="stats">
+        <div class="card stat"><div class="k" id="stStaked">0</div><div class="l">Staked</div></div>
+        <div class="card stat"><div class="k" id="stPending">0.00</div><div class="l">Pending</div></div>
+        <div class="card stat"><div class="k">#<span id="stRank">—</span></div><div class="l">Rank</div></div>
+      </div>
+      <div class="card panel">
+        <h3>APR breakdown</h3>
+        <div class="row"><span class="name">Base</span><span class="v" id="brBase">+0%</span></div>
+        <div class="row"><span class="name">Amount tier</span><span class="v zero" id="brTier">+0%</span></div>
+        <div class="row"><span class="name">Loyalty</span><span class="v zero" id="brLoyal">+0%</span></div>
+        <div class="row"><span class="name">Referrals</span><span class="v zero" id="brRef">+0%</span></div>
+        <div class="row"><span class="name">🔥 Burn bonus</span><span class="v zero" id="brBurn">+0%</span></div>
+      </div>
+      <div class="card panel">
+        <h3>Soft stake</h3>
+        <p class="desc">Staking snapshots your wallet's $CLEAN — <b>tokens never leave your wallet</b>. Wallet balance: <b id="balTxt">0 $CLEAN</b>.</p>
+        <div class="btn-row">
+          <button class="btn btn-solid" id="stakeBtn">Stake my $CLEAN</button>
+          <button class="btn btn-ghost" id="unstakeBtn">Unstake</button>
         </div>
-        <div class="wallet-chip" id="wallet-chip" onclick="App.logout()">—</div>
-      </header>
+        <button class="btn btn-solid" id="claimBtn" style="background:linear-gradient(120deg,var(--sky),var(--ink-2))">Claim rewards (<span id="claimAmt">0.00</span>)</button>
+        <p class="rate-note hide" id="rateNote"></p>
+      </div>
+    </section>
 
-      <!-- STAKE -->
-      <section id="view-stake" class="wrap">
-        <div class="card apr">
-          <div class="v" id="apr">—%</div>
-          <div class="l">your effective APR <span class="live-dot hide" id="live-dot"></span></div>
+    <!-- TRADE -->
+    <section class="tab" id="tab-trade" hidden>
+      <div class="card panel">
+        <h3>Get $CLEAN</h3>
+        <p class="desc">Grab $CLEAN, then stake it here to start earning. <span class="scr">gloves on ✦</span></p>
+        <div class="ca" id="caChip"><span class="lab">CA</span><code id="caText">—</code><span class="cp">copy</span></div>
+        <button class="btn btn-solid" id="buyBtn" style="margin-bottom:10px">Buy on pump.fun →</button>
+        <div class="row"><span class="name">Price</span><span class="v ink" id="mPrice">—</span></div>
+        <div class="row"><span class="name">24h</span><span class="v" id="mChange">—</span></div>
+        <div class="row"><span class="name">Market cap</span><span class="v ink" id="mMc">—</span></div>
+        <div class="row"><span class="name">Liquidity</span><span class="v ink" id="mLiq">—</span></div>
+        <div class="row"><span class="name">24h volume</span><span class="v ink" id="mVol">—</span></div>
+        <p class="muted" id="mPortfolio" style="margin-top:10px"></p>
+        <div class="btn-row" style="margin-top:12px">
+          <button class="btn btn-ghost" id="chartBtn">📈 Chart</button>
+          <button class="btn btn-ghost" id="jupBtn">Jupiter swap</button>
         </div>
-        <div class="card">
-          <div class="row">
-            <div class="stat">
-              <div class="v" id="staked">—</div>
-              <div class="k">Staked</div>
-            </div>
-            <div class="stat">
-              <div class="v" id="pending">—</div>
-              <div class="k">Pending</div>
-            </div>
-            <div class="stat">
-              <div class="v" id="rank">—</div>
-              <div class="k">Rank</div>
-            </div>
+        <button class="btn btn-ghost" id="swapWidgetBtn">Load in-app swap</button>
+        <div id="jupTerminal" style="margin-top:12px"></div>
+      </div>
+    </section>
+
+    <!-- BOOST -->
+    <section class="tab" id="tab-boost" hidden>
+      <div class="card panel">
+        <h3>🔥 Burn to boost</h3>
+        <p class="desc" id="burnDesc">Burn $CLEAN to <b>permanently</b> raise your APR. Burning shrinks supply for everyone.</p>
+        <div class="row"><span class="name">Current burn bonus</span><span class="v" id="boostNow">+0%</span></div>
+        <div class="gauge"><i id="boostBar" style="width:0%"></i></div>
+        <div class="row"><span class="name">You've burned</span><span class="v ink" id="burnedTxt">0 $CLEAN</span></div>
+        <div class="field" style="margin-top:14px">
+          <div class="top-l"><span>Burned from your wallet? Paste the tx signature — we verify it on-chain.</span></div>
+          <div class="input"><input id="burnSig" placeholder="Burn transaction signature" autocomplete="off"/></div>
+        </div>
+        <button class="btn btn-solid" id="burnVerifyBtn" style="background:linear-gradient(120deg,var(--fire),#e05a1f)">Verify &amp; credit burn</button>
+        <div id="burnInApp" class="hide">
+          <p class="desc" style="margin:16px 0 8px">Or burn in-app (beta) — sign the burn in your wallet:</p>
+          <div class="chips">
+            <button class="chip" data-burn="1000">🔥 1K</button>
+            <button class="chip" data-burn="5000">🔥 5K</button>
+            <button class="chip" data-burn="25000">🔥 25K</button>
+            <button class="chip" data-burn="100000">🔥 100K</button>
           </div>
-        </div>
-        <div class="card">
-          <h3>APR breakdown</h3>
-          <div class="brk"><span>Base</span><span id="b-base">—</span></div>
-          <div class="brk"><span>Amount tier</span><span class="g" id="b-amount">—</span></div>
-          <div class="brk"><span>Loyalty</span><span class="g" id="b-loyalty">—</span></div>
-          <div class="brk"><span>Referrals</span><span class="g" id="b-ref">—</span></div>
-          <div class="brk"><span>🔥 Burn bonus</span><span class="g" id="b-burn">—</span></div>
-        </div>
-        <div class="card">
-          <h3>Soft stake</h3>
-          <p class="muted">
-            Staking snapshots your wallet's $CLEAN — tokens never leave your wallet. Wallet balance:
-            <b id="balance">—</b>.
-          </p>
-          <div class="btns">
-            <button onclick="App.stake(this)">Stake my $CLEAN</button>
-            <button class="ghost" onclick="App.unstake(this)">Unstake</button>
+          <div class="field" style="margin-top:10px">
+            <div class="input"><input id="burnAmount" type="number" inputmode="decimal" placeholder="Amount of $CLEAN to burn"/></div>
           </div>
-          <button style="margin-top: 8px" onclick="App.claim(this)">
-            Claim rewards (<span id="claimable">0</span>)
-          </button>
-          <p class="rate-note hide" id="rate-note"></p>
+          <button class="btn btn-solid" id="burnInAppBtn" style="background:linear-gradient(120deg,var(--fire),#e05a1f)">🔥 Burn in-app</button>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- TRADE -->
-      <section id="view-trade" class="wrap hide">
-        <div class="card">
-          <h3>💱 $CLEAN market</h3>
-          <div class="row">
-            <div class="stat">
-              <div class="v" id="m-price">—</div>
-              <div class="k">Price</div>
-            </div>
-            <div class="stat">
-              <div class="v" id="m-change">—</div>
-              <div class="k">24h</div>
-            </div>
-            <div class="stat">
-              <div class="v" id="m-mc">—</div>
-              <div class="k">Market cap</div>
-            </div>
-          </div>
-          <div class="row" style="margin-top: 8px">
-            <div class="stat">
-              <div class="v" id="m-liq">—</div>
-              <div class="k">Liquidity</div>
-            </div>
-            <div class="stat">
-              <div class="v" id="m-vol">—</div>
-              <div class="k">24h vol</div>
-            </div>
-          </div>
-          <p class="muted" id="m-portfolio" style="margin-top: 10px"></p>
-          <button style="margin-top: 6px" onclick="App.buy()">🟢 Buy $CLEAN on Jupiter</button>
-          <div class="btns" style="margin-top: 8px">
-            <button class="ghost" onclick="App.chart()">📈 Chart</button>
-            <button class="ghost" onclick="App.birdeye()">🦅 Birdeye</button>
-          </div>
-          <button class="ghost" style="margin-top: 8px" onclick="App.loadSwap()">
-            Load in-app swap widget
-          </button>
-          <div id="jup-terminal" style="margin-top: 12px"></div>
-        </div>
-      </section>
+    <!-- BOARD -->
+    <section class="tab" id="tab-board" hidden>
+      <div class="card panel">
+        <h3>🏆 Leaderboard</h3>
+        <p class="desc">Top washers by $CLEAN staked this season.</p>
+        <div id="lbList"><p class="muted">Connect your wallet to see the board.</p></div>
+      </div>
+    </section>
 
-      <!-- BOOST (burn) -->
-      <section id="view-boost" class="wrap hide">
-        <div class="card">
-          <h3>🔥 Burn to boost</h3>
-          <p class="muted">
-            Burning $CLEAN permanently raises your APR (+5% per 100k burned, up to +200%). Burn from
-            your wallet, then paste the transaction signature here — we verify it on-chain and
-            credit you. You've burned: <b id="burned">—</b>.
-          </p>
-          <input id="burn-sig" placeholder="Burn transaction signature" />
-          <button class="warn" onclick="App.submitBurn(this)">Verify & credit burn</button>
-          <div id="burn-inapp" class="hide" style="margin-top: 14px">
-            <p class="muted">Or burn in-app (beta) — sign the burn in your wallet:</p>
-            <input
-              id="burn-amount"
-              type="number"
-              inputmode="decimal"
-              placeholder="Amount of $CLEAN to burn"
-            />
-            <button class="warn" onclick="App.burnInApp()">🔥 Burn in-app</button>
-          </div>
+    <!-- INVITE -->
+    <section class="tab" id="tab-invite" hidden>
+      <div class="card panel">
+        <h3>Invite &amp; earn</h3>
+        <p class="desc" id="invDesc">Each friend who stakes adds to your APR. <span class="scr">gloves multiply ✦</span></p>
+        <div class="ca" id="refChip"><span class="lab">REF</span><code id="refText">connect wallet first</code><span class="cp">copy</span></div>
+        <div class="stats" style="margin-top:4px">
+          <div class="card stat"><div class="k" id="invCount">0</div><div class="l">Active referrals</div></div>
+          <div class="card stat"><div class="k" id="invBonus">+0%</div><div class="l">Bonus APR</div></div>
+          <div class="card stat"><div class="k" id="invMax">+0%</div><div class="l">Max bonus</div></div>
         </div>
-      </section>
+        <button class="btn btn-solid" id="shareBtn" style="margin-top:12px">Share invite link</button>
+      </div>
+    </section>
+  </main>
 
-      <!-- LEADERBOARD -->
-      <section id="view-board" class="wrap hide">
-        <div class="card">
-          <h3>🏆 Top stakers</h3>
-          <div id="board-list"><p class="muted">Loading…</p></div>
-        </div>
-      </section>
+  <nav class="tabbar" id="tabbar">
+    <button class="tabbtn on" data-tab="stake"><svg viewBox="0 0 24 24"><rect x="3" y="13" width="6" height="8" rx="1.5"/><rect x="9" y="8" width="6" height="13" rx="1.5"/><rect x="15" y="4" width="6" height="17" rx="1.5"/></svg>Stake</button>
+    <button class="tabbtn" data-tab="trade"><svg viewBox="0 0 24 24"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5"/></svg>Trade</button>
+    <button class="tabbtn" data-tab="boost"><svg viewBox="0 0 24 24"><path d="M12 3c1 3-2 4-2 7a4 4 0 0 0 8 0c0-1-.3-2-1-3 .2 2-1 3-2 3 1-3-1-5-3-7z"/><path d="M9.5 13a2.5 2.5 0 0 0 5 0"/></svg>Boost</button>
+    <button class="tabbtn" data-tab="board"><svg viewBox="0 0 24 24"><path d="M7 5h10v4a5 5 0 0 1-10 0V5z"/><path d="M7 7H4v1a3 3 0 0 0 3 3M17 7h3v1a3 3 0 0 1-3 3M9 18h6M10 18v-3M14 18v-3M8 21h8"/></svg>Board</button>
+    <button class="tabbtn" data-tab="invite"><svg viewBox="0 0 24 24"><path d="M16 14a4 4 0 1 0-4-4M3 21c0-3 3-5 6-5M18 16v6M15 19h6"/></svg>Invite</button>
+  </nav>
+</div>
 
-      <!-- INVITE -->
-      <section id="view-invite" class="wrap hide">
-        <div class="card">
-          <h3>🤝 Invite & boost</h3>
-          <p class="muted">
-            Each friend who connects & stakes from your link adds <b>+2% APR</b> (up to +30%).
-            Active referrals: <b id="ref-count">—</b>.
-          </p>
-          <button style="margin-top: 12px" onclick="App.invite()">Share my link</button>
-          <button class="ghost" style="margin-top: 8px" onclick="App.copyLink()">Copy link</button>
-        </div>
-      </section>
+<!-- wallet picker -->
+<div class="sheet-bg" id="sheetBg"></div>
+<div class="sheet" id="sheet">
+  <h3>Connect your wallet</h3>
+  <p>Sign in with your Solana wallet to stake, boost and earn. <span class="scr">gloves on ✦</span></p>
+  <div id="walletList"></div>
+  <button class="btn btn-ghost" id="sheetCancel">Cancel</button>
+  <div class="spin hide" id="sheetSpin"></div>
+</div>
 
-      <nav class="tabbar">
-        <div class="tab sel" data-v="stake" onclick="App.show('stake')">
-          <span class="ic">💎</span>Stake
-        </div>
-        <div class="tab" data-v="trade" onclick="App.show('trade')">
-          <span class="ic">💱</span>Trade
-        </div>
-        <div class="tab" data-v="boost" onclick="App.show('boost')">
-          <span class="ic">🔥</span>Boost
-        </div>
-        <div class="tab" data-v="board" onclick="App.show('board')">
-          <span class="ic">🏆</span>Board
-        </div>
-        <div class="tab" data-v="invite" onclick="App.show('invite')">
-          <span class="ic">🤝</span>Invite
-        </div>
-      </nav>
-    </div>
+<div id="toast"></div>
 
-    <script src="/wallet.js"></script>
-    <script src="/app.js"></script>
-  </body>
+<script src="/wallet.js"></script>
+<script src="/app.js"></script>
+</body>
 </html>

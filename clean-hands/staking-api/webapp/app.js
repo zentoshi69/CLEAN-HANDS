@@ -1,15 +1,15 @@
 /*
- * app.js — CLEAN soft-staking Mini App logic.
+ * app.js — CLEAN soft-staking Mini App logic ("sky" design, matches the site).
  * Ties the wallet deeplink flow (wallet.js) to the staking API (same origin).
  *
  * Login is a two-hop wallet round-trip:
  *   connect  -> (reload) onConnect -> GET /api/nonce -> signMessage
  *   sign     -> (reload) onSign    -> POST /api/login -> token -> app
  *
- * Native polish layered on top (all feature-detected, degrade gracefully):
- *   - Telegram theme-matched chrome + haptics + BackButton + closing confirm
- *   - a real-time rewards ticker that accrues between server syncs
- *   - periodic background re-sync + double-submit guards on money actions
+ * Everything renders from server truth: /api/economics for the rules,
+ * /api/profile for the wallet's numbers, /api/price for the market. The
+ * pending-rewards ticker interpolates between syncs using the effective APR
+ * and reseeds on every refresh, so it never drifts.
  */
 (function (global) {
   'use strict';
@@ -17,23 +17,26 @@
   const initData = (tg && tg.initData) || '';
   const startParam = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
   const SS = global.sessionStorage;
-  const BRAND_BG = '#0d1320';
+  const BRAND_BG = '#F4FAFF';
   const SECONDS_PER_YEAR = 365 * 24 * 3600;
 
   let TOKEN = SS.getItem('clw_token') || '';
   let PROFILE = null;
   let PRICE = null;
   let MINT = '';
+  let CONFIG = {};
   let _jupLoaded = false;
   let _pollTimer = null;
 
   // ---- helpers ---------------------------------------------------------- //
   const $ = (id) => document.getElementById(id);
+  let _toastT;
   function toast(m) {
     const t = $('toast');
     t.textContent = m;
     t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2200);
+    clearTimeout(_toastT);
+    _toastT = setTimeout(() => t.classList.remove('show'), 2400);
   }
   function haptic(kind) {
     try {
@@ -47,7 +50,7 @@
     n = Number(n || 0);
     if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
     if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
-    if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
+    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
     return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
   }
   // Like fmt() but keeps fractional motion visible for the live ticker.
@@ -56,10 +59,7 @@
     if (n >= 1e6) return fmt(n);
     if (n >= 1e3) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
     if (n >= 1) return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 });
-    return n.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 });
-  }
-  function pct(x) {
-    return '+' + Math.round(Number(x || 0) * 100) + '%';
+    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 });
   }
   function esc(s) {
     return String(s).replace(
@@ -90,9 +90,7 @@
     if (el && el.dataset.busy) return;
     if (el) {
       el.dataset.busy = '1';
-      el.dataset.label = el.textContent;
       el.disabled = true;
-      el.style.opacity = '0.6';
     }
     try {
       return await fn();
@@ -100,9 +98,19 @@
       if (el) {
         delete el.dataset.busy;
         el.disabled = false;
-        el.style.opacity = '';
       }
     }
+  }
+  function openExt(u) {
+    if (tg && tg.openLink) tg.openLink(u);
+    else window.open(u, '_blank');
+  }
+  function copy(text, okMsg) {
+    const done = () => toast(okMsg);
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(text).then(done, done);
+    else done();
+    haptic('light');
   }
 
   // ---- live rewards ticker ---------------------------------------------- //
@@ -123,30 +131,23 @@
     accrual.base = Number((p && p.pending_rewards) || 0);
     accrual.rate = apr > 0 && eff > 0 ? (eff * apr) / SECONDS_PER_YEAR : 0;
     accrual.t0 = performance.now();
-    renderRateNote();
-    if (accrual.rate > 0) startTicker();
-    else stopTicker(true);
-  }
-  function livePending() {
-    return accrual.base + accrual.rate * ((performance.now() - accrual.t0) / 1000);
-  }
-  function renderRateNote() {
-    const el = $('rate-note');
-    const dot = $('live-dot');
-    if (!el) return;
+    const note = $('rateNote');
+    const dot = $('liveDot');
     if (accrual.rate > 0) {
-      el.textContent = '⚡ Earning ~' + fmtLive(accrual.rate * 86400) + ' $CLEAN/day, live';
-      el.classList.remove('hide');
-      if (dot) dot.classList.remove('hide');
+      note.textContent = '⚡ Earning ~' + fmtLive(accrual.rate * 86400) + ' $CLEAN/day, live';
+      note.classList.remove('hide');
+      dot.classList.remove('hide');
+      startTicker();
     } else {
-      el.classList.add('hide');
-      if (dot) dot.classList.add('hide');
+      note.classList.add('hide');
+      dot.classList.add('hide');
+      stopTicker(true);
     }
   }
   function paintPending(v) {
     const s = fmtLive(v);
-    if ($('pending')) $('pending').textContent = s;
-    if ($('claimable')) $('claimable').textContent = s;
+    $('stPending').textContent = s;
+    $('claimAmt').textContent = s;
   }
   function startTicker() {
     if (_raf) return;
@@ -158,7 +159,7 @@
       }
       if (ts - last > 200) {
         // ~5fps is plenty for a smooth count-up and saves battery
-        paintPending(livePending());
+        paintPending(accrual.base + accrual.rate * ((performance.now() - accrual.t0) / 1000));
         last = ts;
       }
       _raf = requestAnimationFrame(step);
@@ -174,25 +175,15 @@
   }
 
   // ---- Telegram-native chrome ------------------------------------------ //
-  function applyChrome() {
-    if (!tg) return;
-    try {
+  try {
+    if (tg) {
       tg.ready();
       tg.expand();
       tg.setHeaderColor && tg.setHeaderColor(BRAND_BG);
       tg.setBackgroundColor && tg.setBackgroundColor(BRAND_BG);
-      if (tg.BackButton) {
-        tg.BackButton.onClick(() => show('stake'));
-      }
-    } catch (e) {}
-  }
-  function syncBackButton(v) {
-    try {
-      if (!tg || !tg.BackButton) return;
-      if (v && v !== 'stake') tg.BackButton.show();
-      else tg.BackButton.hide();
-    } catch (e) {}
-  }
+      tg.BackButton && tg.BackButton.onClick(() => showTab('stake'));
+    }
+  } catch (e) {}
   function setClosingConfirm(on) {
     try {
       if (!tg) return;
@@ -200,81 +191,99 @@
       else tg.disableClosingConfirmation && tg.disableClosingConfirmation();
     } catch (e) {}
   }
-
-  // ---- screens ---------------------------------------------------------- //
-  function showApp() {
-    $('connect').classList.add('hide');
-    $('app').classList.remove('hide');
-    setClosingConfirm(true);
-    startPolling();
-    loadPrice();
-  }
-  function showConnect(note) {
-    $('app').classList.add('hide');
-    $('connect').classList.remove('hide');
-    $('connect-spin').classList.add('hide');
-    stopTicker();
-    stopPolling();
-    setClosingConfirm(false);
-    syncBackButton('stake');
-    if (note) $('connect-note').textContent = note;
-    renderWallets();
-  }
-  function show(v) {
-    ['stake', 'trade', 'boost', 'board', 'invite'].forEach((n) =>
-      $('view-' + n).classList.toggle('hide', n !== v),
-    );
-    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('sel', t.dataset.v === v));
-    syncBackButton(v);
-    haptic('light');
-    if (v === 'board') loadBoard();
-    if (v === 'trade') loadPrice();
+  function confirmNative(message) {
+    return new Promise((resolve) => {
+      if (tg && tg.showConfirm) tg.showConfirm(message, resolve);
+      else resolve(global.confirm(message));
+    });
   }
 
-  function renderWallets() {
-    const el = $('wallet-list');
+  // ---- wallet picker sheet ---------------------------------------------- //
+  function openSheet() {
+    const el = $('walletList');
     el.innerHTML = '';
     CleanWallet.listWallets().forEach((w) => {
       const b = document.createElement('button');
-      b.className = 'wallet-btn';
+      b.className = 'btn btn-solid';
       b.textContent = 'Connect ' + w.name;
       b.onclick = () => {
         haptic('light');
-        $('connect-spin').classList.remove('hide');
+        $('sheetSpin').classList.remove('hide');
         try {
           CleanWallet.connect(w.id);
         } catch (e) {
           toast(String(e.message || e));
-          $('connect-spin').classList.add('hide');
+          $('sheetSpin').classList.add('hide');
         }
       };
       el.appendChild(b);
     });
+    $('sheetBg').classList.add('show');
+    $('sheet').classList.add('show');
+  }
+  function closeSheet() {
+    $('sheetBg').classList.remove('show');
+    $('sheet').classList.remove('show');
+    $('sheetSpin').classList.add('hide');
+  }
+  $('sheetBg').onclick = closeSheet;
+  $('sheetCancel').onclick = closeSheet;
+
+  function requireLogin() {
+    if (TOKEN && PROFILE) return true;
+    openSheet();
+    return false;
   }
 
-  // ---- render profile --------------------------------------------------- //
+  // ---- render ------------------------------------------------------------ //
+  function setBoost(id, frac) {
+    const el = $(id);
+    const pctV = Math.round(Number(frac || 0) * 100);
+    el.textContent = '+' + pctV + '%';
+    el.classList.toggle('zero', pctV === 0);
+  }
   function paint(p) {
     PROFILE = p;
     const a = p.apr || {};
-    $('apr').textContent =
-      (a.effective_apr_pct != null
-        ? a.effective_apr_pct
-        : Math.round((a.effective_apr || 0) * 100)) + '%';
-    $('staked').textContent = fmt(p.staked);
-    $('rank').textContent = '#' + fmt(p.rank);
-    $('balance').textContent = fmt(p.balance) + ' $CLEAN';
-    $('burned').textContent = fmt(p.total_burned) + ' $CLEAN';
-    $('ref-count').textContent = fmt(p.active_referrals);
-    $('b-base').textContent = pct(a.base);
-    $('b-amount').textContent = pct(a.amount_boost);
-    $('b-loyalty').textContent = pct(a.loyalty_boost);
-    $('b-ref').textContent = pct(a.referral_boost);
-    $('b-burn').textContent = pct(a.burn_bonus_apr);
+    $('aprNum').textContent =
+      a.effective_apr_pct != null ? a.effective_apr_pct : Math.round((a.effective_apr || 0) * 100);
+    $('stStaked').textContent = fmt(p.staked);
+    $('stRank').textContent = p.rank != null ? fmt(p.rank) : '—';
+    $('balTxt').textContent = fmt(p.balance) + ' $CLEAN';
+    setBoost('brBase', a.base);
+    $('brBase').classList.remove('zero');
+    setBoost('brTier', a.amount_boost);
+    setBoost('brLoyal', a.loyalty_boost);
+    setBoost('brRef', a.referral_boost);
+    setBoost('brBurn', a.burn_bonus_apr);
+    // boost tab
+    setBoost('boostNow', a.burn_bonus_apr);
+    const cap = Number(CONFIG.burn_cap_apr || 0);
+    $('boostBar').style.width =
+      cap > 0 ? Math.min(100, (Number(a.burn_bonus_apr || 0) / cap) * 100) + '%' : '0%';
+    $('burnedTxt').textContent = fmt(p.total_burned) + ' $CLEAN';
+    // invite tab
+    $('invCount').textContent = fmt(p.active_referrals);
+    setBoost('invBonus', a.referral_boost);
+    $('invBonus').classList.remove('zero');
     const pk = CleanWallet.currentPubkey() || p.wallet || '';
-    $('wallet-chip').textContent = pk ? pk.slice(0, 4) + '…' + pk.slice(-4) : '—';
-    seedAccrual(p); // reseed the live ticker from server truth + paint pending now
+    $('wallet').textContent = pk ? pk.slice(0, 4) + '…' + pk.slice(-4) : 'Connect';
+    if (pk && CONFIG.botUsername)
+      $('refText').textContent =
+        't.me/' + CONFIG.botUsername + '/' + (CONFIG.appShortName || 'app') + '?startapp=' + pk;
+    seedAccrual(p);
     paintPending(accrual.base);
     updatePortfolio();
+  }
+  function resetToLoggedOut(note) {
+    TOKEN = '';
+    PROFILE = null;
+    SS.removeItem('clw_token');
+    stopTicker();
+    stopPolling();
+    setClosingConfirm(false);
+    $('wallet').textContent = 'Connect';
+    if (note) toast(note);
   }
 
   async function refresh() {
@@ -282,9 +291,7 @@
       paint(await api('/api/profile', authedBody()));
     } catch (e) {
       if (String(e.message).indexOf('session') >= 0 || e.message === 401) {
-        TOKEN = '';
-        SS.removeItem('clw_token');
-        showConnect('Session expired — reconnect your wallet.');
+        resetToLoggedOut('Session expired — reconnect your wallet.');
       } else toast(String(e.message));
     }
   }
@@ -307,107 +314,23 @@
   });
 
   async function loadBoard() {
+    if (!TOKEN) return;
     try {
       const { leaderboard } = await api('/api/leaderboard', authedBody());
-      const el = $('board-list');
-      el.innerHTML = '';
-      leaderboard.forEach((r) => {
-        const d = document.createElement('div');
-        d.className = 'lb-row' + (r.me ? ' me' : '');
-        const medal = r.rank === 1 ? '🥇' : r.rank === 2 ? '🥈' : r.rank === 3 ? '🥉' : r.rank;
-        d.innerHTML = `<div class="rank">${medal}</div><div class="name">${r.me ? 'You' : esc(r.name)}</div><div class="pts">${fmt(r.staked)}</div>`;
-        el.appendChild(d);
-      });
+      $('lbList').innerHTML = leaderboard
+        .map(
+          (r) =>
+            `<div class="lb${r.me ? ' me' : ''}"><div class="rk${r.rank === 1 ? ' top' : ''}">${r.rank}</div>` +
+            `<div class="ad">${r.me ? 'You' : esc(r.name)}</div><div class="amt">${fmt(r.staked)}</div></div>`,
+        )
+        .join('');
+      if (!leaderboard.length) $('lbList').innerHTML = '<p class="muted">No stakers yet — be first.</p>';
     } catch (e) {
       toast(String(e.message));
     }
   }
 
-  // ---- actions ---------------------------------------------------------- //
-  async function stake(el) {
-    return withBusy(el, async () => {
-      try {
-        paint(await api('/api/stake', authedBody()));
-        haptic('success');
-        toast('Staked ✅');
-      } catch (e) {
-        haptic('error');
-        toast(String(e.message));
-      }
-    });
-  }
-  async function unstake(el) {
-    return withBusy(el, async () => {
-      try {
-        paint(await api('/api/unstake', authedBody()));
-        haptic('warning');
-        toast('Unstaked');
-      } catch (e) {
-        haptic('error');
-        toast(String(e.message));
-      }
-    });
-  }
-  async function claim(el) {
-    return withBusy(el, async () => {
-      try {
-        const r = await api('/api/claim', authedBody());
-        paint(r.profile);
-        haptic('success');
-        toast('Claimed ' + fmt(r.claimed) + ' $CLEAN');
-      } catch (e) {
-        haptic('error');
-        toast(String(e.message));
-      }
-    });
-  }
-  async function submitBurn(el) {
-    const sig = $('burn-sig').value.trim();
-    if (!sig) return toast('Paste your burn tx signature');
-    return withBusy(el, async () => {
-      try {
-        const r = await api('/api/burn', authedBody({ signature: sig }));
-        paint(r.profile);
-        $('burn-sig').value = '';
-        haptic('success');
-        toast('🔥 Burn credited: ' + fmt(r.burned));
-      } catch (e) {
-        haptic('error');
-        toast(String(e.message));
-      }
-    });
-  }
-  function invite() {
-    const pk = CleanWallet.currentPubkey();
-    const bot = (CONFIG && CONFIG.botUsername) || 'YOUR_BOT';
-    const short = (CONFIG && CONFIG.appShortName) || 'app';
-    const url = `https://t.me/${bot}/${short}?startapp=${pk}`;
-    const text = 'Stake $CLEAN with me — clean hands, dirty money 🧤';
-    haptic('light');
-    if (tg && tg.openTelegramLink)
-      tg.openTelegramLink(
-        `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
-      );
-    else App.copyLink();
-  }
-  function copyLink() {
-    const pk = CleanWallet.currentPubkey();
-    const bot = (CONFIG && CONFIG.botUsername) || 'YOUR_BOT';
-    const short = (CONFIG && CONFIG.appShortName) || 'app';
-    navigator.clipboard &&
-      navigator.clipboard.writeText(`https://t.me/${bot}/${short}?startapp=${pk}`);
-    haptic('success');
-    toast('Link copied');
-  }
-  function logout() {
-    CleanWallet.disconnect();
-    TOKEN = '';
-    PROFILE = null;
-    SS.removeItem('clw_token');
-    showConnect('Wallet disconnected.');
-  }
-
-  // ---- market / trade --------------------------------------------------- //
+  // ---- market / trade ----------------------------------------------------- //
   function usd(n) {
     const v = (Number(n) || 0) * (PRICE ? PRICE.price_usd : 0);
     return '$' + (v >= 1 ? fmt(v) : v.toPrecision(2));
@@ -416,126 +339,132 @@
     try {
       PRICE = await (await fetch('/api/price')).json();
       MINT = PRICE.mint || MINT;
+      if (MINT) $('caText').textContent = MINT;
       if (!PRICE.available) {
-        $('m-price').textContent = 'no data';
+        $('mPrice').textContent = 'no data';
         return;
       }
       const p = PRICE.price_usd;
-      $('m-price').textContent = '$' + (p < 1 ? p.toPrecision(3) : fmt(p));
-      $('m-change').textContent =
-        PRICE.change_24h != null
-          ? (PRICE.change_24h >= 0 ? '+' : '') + Number(PRICE.change_24h).toFixed(1) + '%'
-          : '—';
-      $('m-mc').textContent = PRICE.market_cap ? '$' + fmt(PRICE.market_cap) : '—';
-      $('m-liq').textContent = PRICE.liquidity_usd ? '$' + fmt(PRICE.liquidity_usd) : '—';
-      $('m-vol').textContent = PRICE.volume_24h ? '$' + fmt(PRICE.volume_24h) : '—';
+      $('mPrice').textContent = '$' + (p < 1 ? p.toPrecision(3) : fmt(p));
+      const ch = PRICE.change_24h;
+      $('mChange').textContent = ch != null ? (ch >= 0 ? '+' : '') + Number(ch).toFixed(1) + '%' : '—';
+      $('mChange').style.color = ch != null && ch < 0 ? 'var(--fire)' : 'var(--pos)';
+      $('mMc').textContent = PRICE.market_cap ? '$' + fmt(PRICE.market_cap) : '—';
+      $('mLiq').textContent = PRICE.liquidity_usd ? '$' + fmt(PRICE.liquidity_usd) : '—';
+      $('mVol').textContent = PRICE.volume_24h ? '$' + fmt(PRICE.volume_24h) : '—';
       updatePortfolio();
     } catch (e) {}
   }
   function updatePortfolio() {
     if (!PRICE || !PRICE.available || !PROFILE) return;
-    $('m-portfolio').textContent =
+    $('mPortfolio').textContent =
       `Your stake ${usd(PROFILE.staked)} · pending ${usd(PROFILE.pending_rewards)} · wallet ${usd(PROFILE.balance)}`;
   }
-  function openExt(u) {
-    if (tg && tg.openLink) tg.openLink(u);
-    else window.open(u, '_blank');
-  }
-  function buy() {
-    if (MINT) openExt(`https://jup.ag/swap/SOL-${MINT}`);
-  }
-  function chart() {
-    openExt(PRICE && PRICE.url ? PRICE.url : `https://dexscreener.com/solana/${MINT}`);
-  }
-  function birdeye() {
-    if (MINT) openExt(`https://birdeye.so/token/${MINT}?chain=solana`);
-  }
-  function loadSwap() {
-    if (!MINT) return toast('Price still loading…');
-    if (_jupLoaded) return toast('Swap widget already loaded below.');
-    const s = document.createElement('script');
-    s.src = 'https://plugin.jup.ag/plugin-v1.js';
-    s.async = true;
-    s.onload = () => {
-      try {
-        window.Jupiter.init({
-          displayMode: 'integrated',
-          integratedTargetId: 'jup-terminal',
-          endpoint: (CONFIG && CONFIG.swapRpc) || 'https://api.mainnet-beta.solana.com',
-          formProps: {
-            initialInputMint: 'So11111111111111111111111111111111111111112',
-            initialOutputMint: MINT,
-          },
-        });
-        _jupLoaded = true;
-      } catch (e) {
-        toast('Swap widget unavailable — use “Buy on Jupiter”.');
+
+  // ---- tabs --------------------------------------------------------------- //
+  function showTab(t) {
+    document.querySelectorAll('.tabbtn').forEach((x) => x.classList.toggle('on', x.dataset.tab === t));
+    document.querySelectorAll('.tab').forEach((s) => (s.hidden = true));
+    const sec = $('tab-' + t);
+    sec.hidden = false;
+    sec.classList.remove('fade');
+    void sec.offsetWidth;
+    sec.classList.add('fade');
+    $('scroll').scrollTo({ top: 0, behavior: 'smooth' });
+    try {
+      if (tg && tg.BackButton) {
+        if (t !== 'stake') tg.BackButton.show();
+        else tg.BackButton.hide();
       }
-    };
-    s.onerror = () => toast('Swap widget failed to load — use “Buy on Jupiter”.');
-    document.body.appendChild(s);
+    } catch (e) {}
+    haptic('light');
+    if (t === 'board') loadBoard();
+    if (t === 'trade') loadPrice();
   }
+  document.querySelectorAll('.tabbtn').forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 
-  // ---- login round-trip ------------------------------------------------- //
-  async function afterConnect(pubkey) {
-    try {
-      $('connect-spin').classList.remove('hide');
-      const { nonce, message } = await fetch(
-        '/api/nonce?wallet=' + encodeURIComponent(pubkey),
-      ).then((r) => r.json());
-      // store nonce to use after the sign round-trip
-      CleanWallet.signMessage(message, { nonce: nonce, wallet: pubkey });
-    } catch (e) {
-      toast('Login failed: ' + e.message);
-      showConnect();
+  // ---- actions ------------------------------------------------------------ //
+  $('wallet').onclick = async () => {
+    if (!TOKEN || !PROFILE) return openSheet();
+    if (await confirmNative('Disconnect this wallet?')) {
+      CleanWallet.disconnect();
+      resetToLoggedOut('Wallet disconnected.');
     }
-  }
-  async function afterSign(signatureB58, ctx) {
-    try {
-      const r = await api('/api/login', {
-        wallet: ctx.wallet,
-        signature: signatureB58,
-        nonce: ctx.nonce,
-        initData: initData || null,
-        ref: startParam || null,
-      });
-      TOKEN = r.token;
-      SS.setItem('clw_token', TOKEN);
-      paint(r.profile);
-      showApp();
-      show('stake');
-      haptic('success');
-    } catch (e) {
-      toast('Login failed: ' + e.message);
-      showConnect('Login failed — try again.');
-    }
-  }
-
-  // ---- in-app burn (beta, flag-gated; burn is irreversible) ------------- //
-  async function afterBurnTx(sig, ctx) {
-    try {
-      const r = await api('/api/burn', authedBody({ signature: sig }));
-      paint(r.profile);
-      haptic('success');
-      toast('🔥 Burn credited: ' + fmt(r.burned));
-    } catch (e) {
-      haptic('error');
-      toast('Burn submit failed: ' + String(e.message));
-    }
-  }
-  async function burnInApp() {
-    const amt = parseFloat(($('burn-amount') || {}).value);
+  };
+  $('stakeBtn').onclick = function () {
+    if (!requireLogin()) return;
+    withBusy(this, async () => {
+      try {
+        paint(await api('/api/stake', authedBody()));
+        haptic('success');
+        toast('Soft-staked ' + fmt(PROFILE.staked) + ' $CLEAN ✦');
+      } catch (e) {
+        haptic('error');
+        toast(String(e.message));
+      }
+    });
+  };
+  $('unstakeBtn').onclick = function () {
+    if (!requireLogin()) return;
+    withBusy(this, async () => {
+      try {
+        paint(await api('/api/unstake', authedBody()));
+        haptic('warning');
+        toast('Unstaked — tokens were never locked anyway');
+      } catch (e) {
+        haptic('error');
+        toast(String(e.message));
+      }
+    });
+  };
+  $('claimBtn').onclick = function () {
+    if (!requireLogin()) return;
+    withBusy(this, async () => {
+      try {
+        const r = await api('/api/claim', authedBody());
+        paint(r.profile);
+        haptic('success');
+        toast('Claimed ' + fmt(r.claimed) + ' $CLEAN ✦');
+      } catch (e) {
+        haptic('error');
+        toast(String(e.message));
+      }
+    });
+  };
+  $('burnVerifyBtn').onclick = function () {
+    if (!requireLogin()) return;
+    const sig = $('burnSig').value.trim();
+    if (!sig) return toast('Paste your burn tx signature');
+    withBusy(this, async () => {
+      try {
+        const r = await api('/api/burn', authedBody({ signature: sig }));
+        paint(r.profile);
+        $('burnSig').value = '';
+        haptic('success');
+        toast('Burned ' + fmt(r.burned) + ' 🔥 — bonus updated');
+      } catch (e) {
+        haptic('error');
+        toast(String(e.message));
+      }
+    });
+  };
+  document.querySelectorAll('.chip').forEach(
+    (b) =>
+      (b.onclick = () => {
+        $('burnAmount').value = b.dataset.burn;
+        haptic('light');
+      }),
+  );
+  $('burnInAppBtn').onclick = async () => {
+    if (!requireLogin()) return;
+    const amt = parseFloat($('burnAmount').value);
     if (!amt || amt <= 0) return toast('Enter an amount to burn');
     if (!MINT) return toast('Token not loaded yet');
     const pk = CleanWallet.currentPubkey();
     if (!pk) return toast('Connect your wallet first');
     // Burning is irreversible — confirm through the native dialog when available.
-    const proceed = await new Promise((resolve) => {
-      if (tg && tg.showConfirm)
-        tg.showConfirm('Burn ' + amt + ' $CLEAN? This is permanent and cannot be undone.', resolve);
-      else resolve(global.confirm('Burn ' + amt + ' $CLEAN? This is permanent.'));
-    });
-    if (!proceed) return;
+    if (!(await confirmNative('Burn ' + amt + ' $CLEAN? This is permanent and cannot be undone.')))
+      return;
     toast('Building burn…');
     try {
       const web3 = await import('https://esm.sh/@solana/web3.js@1');
@@ -560,23 +489,148 @@
     } catch (e) {
       toast('Burn build failed: ' + (e.message || e));
     }
+  };
+  $('caChip').onclick = () => {
+    if (MINT) copy(MINT, 'Contract copied ✦');
+  };
+  $('buyBtn').onclick = () => {
+    if (MINT) openExt('https://pump.fun/coin/' + MINT);
+  };
+  $('chartBtn').onclick = () => {
+    if (MINT) openExt(PRICE && PRICE.url ? PRICE.url : 'https://dexscreener.com/solana/' + MINT);
+  };
+  $('jupBtn').onclick = () => {
+    if (MINT) openExt('https://jup.ag/swap/SOL-' + MINT);
+  };
+  $('swapWidgetBtn').onclick = () => {
+    if (!MINT) return toast('Price still loading…');
+    if (_jupLoaded) return toast('Swap widget already loaded below.');
+    const s = document.createElement('script');
+    s.src = 'https://plugin.jup.ag/plugin-v1.js';
+    s.async = true;
+    s.onload = () => {
+      try {
+        window.Jupiter.init({
+          displayMode: 'integrated',
+          integratedTargetId: 'jupTerminal',
+          endpoint: (CONFIG && CONFIG.swapRpc) || 'https://api.mainnet-beta.solana.com',
+          formProps: {
+            initialInputMint: 'So11111111111111111111111111111111111111112',
+            initialOutputMint: MINT,
+          },
+        });
+        _jupLoaded = true;
+      } catch (e) {
+        toast('Swap widget unavailable — use Jupiter swap.');
+      }
+    };
+    s.onerror = () => toast('Swap widget failed to load — use Jupiter swap.');
+    document.body.appendChild(s);
+  };
+  function refLink() {
+    const pk = CleanWallet.currentPubkey() || (PROFILE && PROFILE.wallet) || '';
+    return (
+      'https://t.me/' +
+      ((CONFIG && CONFIG.botUsername) || 'YOUR_BOT') +
+      '/' +
+      ((CONFIG && CONFIG.appShortName) || 'app') +
+      '?startapp=' +
+      pk
+    );
   }
+  $('refChip').onclick = () => {
+    if (!requireLogin()) return;
+    copy(refLink(), 'Invite link copied ✦');
+  };
+  $('shareBtn').onclick = () => {
+    if (!requireLogin()) return;
+    const url = refLink();
+    const text = 'Wash your bags with $CLEAN 🧤✨ — stake with me';
+    haptic('light');
+    if (tg && tg.openTelegramLink)
+      tg.openTelegramLink(
+        'https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(text),
+      );
+    else copy(url, 'Invite link copied ✦');
+  };
 
-  // ---- boot ------------------------------------------------------------- //
-  let CONFIG = {};
+  // ---- login round-trip --------------------------------------------------- //
+  async function afterConnect(pubkey) {
+    try {
+      toast('Wallet connected — confirm the signature 🧤');
+      const { nonce, message } = await fetch(
+        '/api/nonce?wallet=' + encodeURIComponent(pubkey),
+      ).then((r) => r.json());
+      CleanWallet.signMessage(message, { nonce: nonce, wallet: pubkey });
+    } catch (e) {
+      toast('Login failed: ' + e.message);
+    }
+  }
+  async function afterSign(signatureB58, ctx) {
+    try {
+      const r = await api('/api/login', {
+        wallet: ctx.wallet,
+        signature: signatureB58,
+        nonce: ctx.nonce,
+        initData: initData || null,
+        ref: startParam || null,
+      });
+      TOKEN = r.token;
+      SS.setItem('clw_token', TOKEN);
+      closeSheet();
+      paint(r.profile);
+      setClosingConfirm(true);
+      startPolling();
+      haptic('success');
+      toast('Gloves on — you are in 🧤✦');
+    } catch (e) {
+      toast('Login failed: ' + e.message);
+    }
+  }
+  async function afterBurnTx(sig, ctx) {
+    try {
+      const r = await api('/api/burn', authedBody({ signature: sig }));
+      paint(r.profile);
+      haptic('success');
+      toast('Burned ' + fmt(r.burned) + ' 🔥 — bonus updated');
+    } catch (e) {
+      haptic('error');
+      toast('Burn submit failed: ' + String(e.message));
+    }
+  };
+
+  // ---- boot ----------------------------------------------------------------- //
+  function applyEconomicsText() {
+    setBoost('invMax', CONFIG.referral_cap);
+    $('invMax').classList.remove('zero');
+    if (CONFIG.referral_per != null)
+      $('invDesc').innerHTML =
+        'Each friend who connects &amp; stakes from your link adds <b>+' +
+        Math.round(CONFIG.referral_per * 100) +
+        '%</b> to your APR (up to <b>+' +
+        Math.round(CONFIG.referral_cap * 100) +
+        '%</b>). <span class="scr">gloves multiply ✦</span>';
+    if (CONFIG.burn_unit != null)
+      $('burnDesc').innerHTML =
+        'Burn $CLEAN to <b>permanently</b> raise your APR — <b>+' +
+        Math.round(CONFIG.burn_apr_per_unit * 100) +
+        '%</b> per <b>' +
+        fmt(CONFIG.burn_unit) +
+        '</b> burned, up to <b>+' +
+        Math.round(CONFIG.burn_cap_apr * 100) +
+        '%</b>. Burning shrinks supply for everyone.';
+  }
   async function boot() {
-    applyChrome();
     try {
       CONFIG = await fetch('/api/economics').then((r) => r.json());
-    } catch (e) {}
-    try {
-      CONFIG.botUsername = CONFIG.botUsername || '';
-    } catch (e) {}
-
-    if (CONFIG.inAppBurn) {
-      const el = $('burn-inapp');
-      if (el) el.classList.remove('hide');
+    } catch (e) {
+      CONFIG = {};
     }
+    MINT = CONFIG.mint || '';
+    if (MINT) $('caText').textContent = MINT;
+    applyEconomicsText();
+    if (CONFIG.inAppBurn) $('burnInApp').classList.remove('hide');
+    loadPrice();
 
     // Resolve any wallet callback first (we just came back from a wallet app).
     const step = CleanWallet.init({
@@ -585,42 +639,23 @@
       onTx: afterBurnTx,
       onError: (e) => {
         toast('Wallet: ' + (e.message || e));
-        showConnect();
+        closeSheet();
       },
     });
-
     if (step) return; // a callback handler is driving the flow
 
     // Returning user with a live token?
     if (TOKEN) {
       try {
         paint(await api('/api/profile', authedBody()));
-        showApp();
-        show('stake');
+        setClosingConfirm(true);
+        startPolling();
         return;
       } catch (e) {
         TOKEN = '';
         SS.removeItem('clw_token');
       }
     }
-    showConnect();
   }
-
-  global.App = {
-    show,
-    stake,
-    unstake,
-    claim,
-    submitBurn,
-    invite,
-    copyLink,
-    logout,
-    refresh,
-    buy,
-    chart,
-    birdeye,
-    loadSwap,
-    burnInApp,
-  };
   boot();
 })(window);
