@@ -117,6 +117,42 @@
     HANDLERS.onError && HANDLERS.onError(e instanceof Error ? e : new Error(String(e)));
   }
 
+  // ---- Wallet Standard: auto-detect EVERY modern Solana wallet ------------ //
+  // Wallets announce themselves via the wallet-standard event protocol; we
+  // collect any wallet that supports Solana connect+signMessage and surface
+  // it in the picker with its own name and icon. Zero config, zero SDKs.
+  const STD = {}; // id -> wallet (live page only; sessions persist via token)
+  const STD_ACCT = {}; // id -> authorized account
+  function _stdRegister(w) {
+    try {
+      const f = (w && w.features) || {};
+      if (!f['standard:connect'] || !f['solana:signMessage']) return;
+      const chains = w.chains || [];
+      if (!chains.some((c) => String(c).indexOf('solana:') === 0)) return;
+      STD['ws:' + w.name] = w;
+    } catch (e) {}
+  }
+  try {
+    if (global.addEventListener && global.dispatchEvent) {
+      global.addEventListener('wallet-standard:register-wallet', (ev) => {
+        try {
+          ev.detail && ev.detail({ register: _stdRegister });
+        } catch (e) {}
+      });
+      global.dispatchEvent(
+        new CustomEvent('wallet-standard:app-ready', { detail: { register: _stdRegister } }),
+      );
+    }
+  } catch (e) {}
+
+  function stdWallet(walletId) {
+    return STD[walletId] || null;
+  }
+  function stdAccount(walletId) {
+    const w = STD[walletId];
+    return STD_ACCT[walletId] || (w && w.accounts && w.accounts[0]) || null;
+  }
+
   // ---- injected extension providers (desktop) ----------------------------- //
   function extProvider(walletId) {
     try {
@@ -360,6 +396,23 @@
 
   // ---- public API ------------------------------------------------------------ //
   function connect(walletId) {
+    // Wallet Standard wallet picked from the live registry
+    const std = stdWallet(walletId);
+    if (std) {
+      save('wallet', walletId);
+      save('mode', 'std');
+      Promise.resolve(std.features['standard:connect'].connect())
+        .then((res) => {
+          const acct =
+            (res && res.accounts && res.accounts[0]) || (std.accounts && std.accounts[0]);
+          if (!acct || !acct.address) throw new Error('no account authorized');
+          STD_ACCT[walletId] = acct;
+          save('pubkey', acct.address);
+          HANDLERS.onConnect && HANDLERS.onConnect(acct.address);
+        })
+        .catch(fail);
+      return 'std';
+    }
     const w = WALLETS[walletId];
     if (!w) throw new Error('unknown wallet');
     const ext = extProvider(walletId);
@@ -396,6 +449,21 @@
 
   function signMessage(message, ctx) {
     const walletId = load('wallet');
+    if (load('mode') === 'std') {
+      const w = stdWallet(walletId);
+      const acct = stdAccount(walletId);
+      if (!w || !acct) return fail(new Error('wallet not available — tap Connect again'));
+      Promise.resolve(
+        w.features['solana:signMessage'].signMessage({ account: acct, message: enc.encode(message) }),
+      )
+        .then((out) => {
+          const r = Array.isArray(out) ? out[0] : out;
+          if (!r || !r.signature) throw new Error('wallet returned no signature');
+          HANDLERS.onSign && HANDLERS.onSign(b58encode(new Uint8Array(r.signature)), ctx || {});
+        })
+        .catch(fail);
+      return;
+    }
     if (load('mode') === 'ext') {
       const ext = extProvider(walletId);
       if (!ext) return fail(new Error('wallet extension not available'));
@@ -430,6 +498,27 @@
   // the deeplink path uses the base58 serialization.
   function signAndSendTransaction(txBase58, ctx, txObj) {
     const walletId = load('wallet');
+    if (load('mode') === 'std') {
+      const w = stdWallet(walletId);
+      const acct = stdAccount(walletId);
+      const feat = w && w.features && w.features['solana:signAndSendTransaction'];
+      if (!w || !acct) return fail(new Error('wallet not available — tap Connect again'));
+      if (!feat) return fail(new Error('this wallet cannot send transactions here'));
+      Promise.resolve(
+        feat.signAndSendTransaction({
+          account: acct,
+          transaction: b58decode(txBase58),
+          chain: 'solana:mainnet',
+        }),
+      )
+        .then((out) => {
+          const r = Array.isArray(out) ? out[0] : out;
+          if (!r || !r.signature) throw new Error('wallet returned no signature');
+          HANDLERS.onTx && HANDLERS.onTx(b58encode(new Uint8Array(r.signature)), ctx || {});
+        })
+        .catch(fail);
+      return;
+    }
     if (load('mode') === 'ext') {
       const ext = extProvider(walletId);
       if (!ext) return fail(new Error('wallet extension not available'));
@@ -462,6 +551,12 @@
 
   function disconnect() {
     stopPoll();
+    const w = stdWallet(load('wallet'));
+    try {
+      const d = w && w.features && w.features['standard:disconnect'];
+      if (d) Promise.resolve(d.disconnect()).catch(() => {});
+    } catch (e) {}
+    Object.keys(STD_ACCT).forEach((k) => delete STD_ACCT[k]);
     ['wallet', 'mode', 'session', 'shared', 'pubkey', 'pending', 'sign_ctx', 'dapp_sk', 'hid', 'tg_sid'].forEach(
       (k) => LS.removeItem('clw_' + k),
     );
@@ -474,10 +569,23 @@
     return load('pending');
   }
   function isConnected() {
-    return !!(load('pubkey') && (load('session') || load('mode') === 'ext'));
+    const mode = load('mode');
+    return !!(load('pubkey') && (load('session') || mode === 'ext' || mode === 'std'));
   }
   function listWallets() {
-    return Object.entries(WALLETS).map(([id, w]) => ({ id, name: w.name }));
+    // Detected Wallet-Standard wallets first (the user demonstrably has them),
+    // then the deeplink trio for anything not installed — deduped by name.
+    const out = Object.entries(STD).map(([id, w]) => ({
+      id,
+      name: w.name,
+      icon: typeof w.icon === 'string' && w.icon.indexOf('data:image/') === 0 ? w.icon : null,
+    }));
+    const have = {};
+    out.forEach((w) => (have[w.name.toLowerCase()] = 1));
+    Object.entries(WALLETS).forEach(([id, w]) => {
+      if (!have[w.name.toLowerCase()]) out.push({ id, name: w.name, icon: null });
+    });
+    return out;
   }
 
   // init(): call on boot. Finishes a URL callback if present, or resumes a

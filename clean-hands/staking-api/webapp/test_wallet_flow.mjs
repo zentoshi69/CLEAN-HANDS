@@ -36,10 +36,14 @@ function makeStorage() {
 // outbound deeplink URLs.
 function bootTab({ storage, href, initData = '', fetchImpl = null, pollMs = 0 }) {
   const opened = [];
+  const listeners = {};
   const win = {
     localStorage: storage,
     Telegram: { WebApp: { initData, openLink: (u) => opened.push(u) } },
     CLW_POLL_MS: pollMs || undefined,
+    // minimal event bus so the Wallet Standard register/app-ready protocol runs
+    addEventListener: (t, fn) => (listeners[t] = listeners[t] || []).push(fn),
+    dispatchEvent: (ev) => ((listeners[ev.type] || []).forEach((fn) => fn(ev)), true),
   };
   const ctx = {
     window: win,
@@ -57,16 +61,23 @@ function bootTab({ storage, href, initData = '', fetchImpl = null, pollMs = 0 })
     Uint8Array,
     Promise,
     Error,
+    Array,
     Date,
     setTimeout,
     clearTimeout,
     fetch: fetchImpl || (() => Promise.reject(new Error('no fetch in this tab'))),
     document: { addEventListener: () => {}, hidden: false },
+    CustomEvent: class {
+      constructor(type, opts) {
+        this.type = type;
+        this.detail = opts && opts.detail;
+      }
+    },
   };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
   vm.runInContext(walletSrc, ctx);
-  return { CleanWallet: win.CleanWallet, opened };
+  return { CleanWallet: win.CleanWallet, opened, win, ctx };
 }
 
 const ORIGIN = 'https://app.cleanhands.fun/';
@@ -223,6 +234,59 @@ function walletSideConnectCallback(connectUrl, sharedLocalStorageProbe) {
   assert.ok(session && session.tok === 'TOK. SIG', 'onSession fired with the server token');
   assert.equal(session.prof.wallet, 'Wxyz');
   console.log('Telegram server-side handshake (client) ✓');
+}
+
+// ---- case 6: Wallet Standard — any modern wallet announces itself --------- //
+// A wallet registers through the real event protocol; it must appear in the
+// picker (deduped against the deeplink trio), and connect+signMessage must
+// flow through its standard features.
+{
+  const tab = bootTab({ storage: makeStorage(), href: ORIGIN });
+  const signed = [];
+  const mockWallet = {
+    name: 'OKX Wallet',
+    icon: 'data:image/png;base64,AAAA',
+    chains: ['solana:mainnet'],
+    accounts: [],
+    features: {
+      'standard:connect': {
+        connect: async () => ({ accounts: [{ address: 'OkxAddr1111111111111111111111111111111111111' }] }),
+      },
+      'solana:signMessage': {
+        signMessage: async ({ account, message }) => {
+          signed.push({ account, message });
+          return [{ signature: new Uint8Array([1, 2, 3, 4]) }];
+        },
+      },
+    },
+  };
+  // wallet-side registration, exactly as the standard specifies
+  tab.win.dispatchEvent(
+    new tab.ctx.CustomEvent('wallet-standard:register-wallet', {
+      detail: (api) => api.register(mockWallet),
+    }),
+  );
+
+  const list = tab.CleanWallet.listWallets();
+  assert.ok(list.find((w) => w.id === 'ws:OKX Wallet' && w.icon), 'standard wallet listed with icon');
+  assert.ok(list.find((w) => w.id === 'phantom'), 'deeplink trio still offered');
+  assert.equal(list.filter((w) => w.name.toLowerCase() === 'okx wallet').length, 1, 'deduped');
+
+  let pk = null;
+  let sig = null;
+  tab.CleanWallet.init({
+    onConnect: (p) => (pk = p),
+    onSign: (s) => (sig = s),
+    onError: (e) => assert.fail('std flow error: ' + e.message),
+  });
+  assert.equal(tab.CleanWallet.connect('ws:OKX Wallet'), 'std');
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(pk, 'OkxAddr1111111111111111111111111111111111111');
+  tab.CleanWallet.signMessage('login msg', { nonce: 'n' });
+  await new Promise((r) => setTimeout(r, 30));
+  assert.ok(sig && sig.length > 0, 'b58 signature delivered');
+  assert.equal(signed[0].account.address, pk, 'signed with the authorized account');
+  console.log('Wallet Standard discovery + connect + sign ✓');
 }
 
 console.log('\nALL WALLET FLOW TESTS PASSED');
