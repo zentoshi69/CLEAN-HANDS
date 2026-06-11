@@ -244,13 +244,22 @@ MAX_MEME_TEXT = 200  # per caption block
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 MEME_AI_MODEL = os.environ.get("MEME_AI_MODEL", "gpt-image-1")
 MEME_AI_COOLDOWN = int(os.environ.get("MEME_AI_COOLDOWN", "60"))  # s per user
+MEME_AI_QUALITY = os.environ.get("MEME_AI_QUALITY", "high")  # low|medium|high|auto
+# The signature edit, specified from the approved reference outputs:
+# exact pose kept, photoreal nitrile glove, blue pop on B&W, gloved thumbs-up
+# added when no hands are visible, identity untouched.
 GLOVE_PROMPT = (
-    "Replace every visible human hand in this image with a hand wearing the "
-    "iconic $CLEAN light-blue latex glove — a glossy, light-blue nitrile/"
-    "surgical glove (like a clenched-fist mascot glove). Keep everything else "
-    "identical: faces, bodies, clothing, background, lighting and art style. "
-    "If no hands are visible, add one light-blue gloved hand naturally into "
-    "the scene (a fist or thumbs-up). Blend seamlessly with the original style."
+    "Edit this photo so that every visible human hand is wearing a light-blue "
+    "nitrile glove (the $CLEAN glove): a thin, snug, slightly glossy "
+    "medical-style glove in soft light blue. CRITICAL: preserve each hand's "
+    "exact pose, position, gesture and scale — the glove goes ON the hand "
+    "without changing what the hand is doing. Preserve faces, identity, "
+    "expressions, hair, clothing, jewelry, background, framing and lighting "
+    "EXACTLY as in the original. If the photo is black-and-white, keep it "
+    "black-and-white but render the gloves in light blue as the only colored "
+    "element. If no hands are visible, add one natural light-blue-gloved hand "
+    "into the scene (a thumbs-up or fist belonging to a subject). "
+    "Photorealistic, seamless, professional retouching quality."
 )
 CLEANING_FRAMES = [
     "🫧 Soaking the image…",
@@ -281,12 +290,20 @@ async def ai_glove_hands(img_bytes: bytes) -> bytes | None:
     """Ask the image model to swap all hands for the $CLEAN glove. Returns PNG
     bytes, or None on any failure (caller falls back to the local stamp)."""
     try:
-        async with httpx.AsyncClient(timeout=90) as client:
+        async with httpx.AsyncClient(timeout=120) as client:
             r = await client.post(
                 "https://api.openai.com/v1/images/edits",
                 headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
                 files={"image": ("photo.jpg", img_bytes, "image/jpeg")},
-                data={"model": MEME_AI_MODEL, "prompt": GLOVE_PROMPT, "size": "auto"},
+                data={
+                    "model": MEME_AI_MODEL,
+                    "prompt": GLOVE_PROMPT,
+                    "size": "auto",
+                    "quality": MEME_AI_QUALITY,
+                    # preserves faces/identity through the edit — non-negotiable
+                    # for the reference-quality output
+                    "input_fidelity": "high",
+                },
             )
         if r.status_code != 200:
             log.warning("ai meme failed: HTTP %s %s", r.status_code, r.text[:200])
@@ -398,18 +415,22 @@ async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_ms
 
     user_id = update.effective_user.id if update.effective_user else 0
     out = None
+    ai_ok = False
     try:
         if _ai_ready(user_id):
             out = await ai_glove_hands(buf)  # hands -> gloves, AI
+            ai_ok = out is not None
         if out is None:
             out = buf  # AI off/cooldown/failed: local pipeline below still delivers
         if top or bottom:
             out = make_meme(out, top, bottom)
-        try:
-            # every meme leaves with the gloves on — brand stamp, bottom-right
-            out = add_glove(out, "br", 0.2)
-        except Exception:  # noqa: BLE001 — missing asset must not kill the meme
-            pass
+        if not ai_ok:
+            # fallback only: corner stamp so the output is still branded. The AI
+            # result IS the brand (gloved hands) — no sticker on top of it.
+            try:
+                out = add_glove(out, "br", 0.2)
+            except Exception:  # noqa: BLE001 — missing asset must not kill the meme
+                pass
         fx.cancel()
         try:
             await placeholder.delete()
