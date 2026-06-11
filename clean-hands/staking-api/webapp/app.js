@@ -761,6 +761,21 @@
       toast('Login failed: ' + e.message);
     }
   }
+  // Telegram server-side handshake delivered a ready session + profile.
+  function onSession(token, profile) {
+    TOKEN = token;
+    LS.setItem('clw_token', TOKEN);
+    closeSheet();
+    closeWelcome();
+    paint(profile);
+    setClosingConfirm(true);
+    startPolling();
+    haptic('success');
+    burst($('wallet'));
+    toast('Gloves on — you are in 🧤✦');
+    logAct('🧤', 'Wallet connected');
+  }
+
   async function afterBurnTx(sig, ctx) {
     try {
       const r = await api('/api/burn', authedBody({ signature: sig }));
@@ -813,11 +828,12 @@
     loadPrice();
     loadStats();
 
-    // Resolve any wallet callback / pending relay first.
+    // Resolve any wallet callback / pending handshake first.
     const step = CleanWallet.init({
       onConnect: afterConnect,
       onSign: afterSign,
       onTx: afterBurnTx,
+      onSession: onSession, // Telegram server-side handshake completed
       onError: (e) => {
         toast('Wallet: ' + (e.message || e));
         closeSheet();
@@ -826,14 +842,8 @@
     });
     if (step) {
       hideSplash();
-      return; // a callback handler is driving the flow
-    }
-    // Relaunched mid-handshake (Telegram killed the webview while we were in
-    // the wallet)? The relay poller is already resumed — just signal progress
-    // and let afterSign/afterConnect land the user on the staking page.
-    if (CleanWallet.pendingStep && CleanWallet.pendingStep() && initData) {
-      hideSplash();
-      toast('Finishing sign-in… 🧤');
+      // A poller is finishing a sign-in started before a webview relaunch.
+      if (step === 'resume' && !TOKEN) toast('Finishing sign-in… 🧤');
       return;
     }
 

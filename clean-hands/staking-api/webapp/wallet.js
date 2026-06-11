@@ -202,11 +202,91 @@
   }
   function resumePendingPoll() {
     const pending = load('pending');
-    if (pending && load('hid') && inTelegram()) startPoll(pending);
+    if (pending && load('hid') && inTelegram()) {
+      startPoll(pending);
+      return true;
+    }
+    return false;
   }
+
+  // ---- Telegram server-side handshake ------------------------------------- //
+  // The server holds the ephemeral key and lands Phantom's callbacks; this
+  // webview only polls by its verified Telegram identity, so the login
+  // completes no matter how many times Telegram relaunches the webview.
+  function tgInitData() {
+    const t = tgApp();
+    return (t && t.initData) || '';
+  }
+  function tgConnect(walletId) {
+    const w = WALLETS[walletId];
+    if (!w) throw new Error('unknown wallet');
+    save('wallet', walletId);
+    save('mode', 'tg');
+    fetch('/api/tg/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tgInitData(), wallet: walletId }),
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('could not start sign-in'))))
+      .then((j) => {
+        save('tg_sid', j.sid);
+        const params = new URLSearchParams({
+          dapp_encryption_public_key: j.dapp_pub,
+          cluster: 'mainnet-beta',
+          app_url: location.origin,
+          redirect_link: location.origin + '/api/tg/connect/' + j.sid,
+        });
+        openLink(`${w.base}/connect?${params.toString()}`);
+        startTgPoll(j.sid);
+      })
+      .catch(fail);
+    return 'tg';
+  }
+  function startTgPoll(sid) {
+    stopPoll();
+    sid = sid || load('tg_sid');
+    const interval = global.CLW_POLL_MS || 1500;
+    const deadline = Date.now() + 5 * 60 * 1000;
+    const tick = () => {
+      _pollT = null;
+      if (load('mode') !== 'tg') return;
+      if (Date.now() > deadline) return fail(new Error('Wallet sign-in timed out — try again.'));
+      fetch('/api/tg/poll', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initData: tgInitData(), sid: sid || null }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null)
+        .then((j) => {
+          if (j && j.status === 'done') {
+            LS.removeItem('clw_tg_sid');
+            if (j.profile && j.profile.wallet) save('pubkey', j.profile.wallet);
+            HANDLERS.onSession && HANDLERS.onSession(j.token, j.profile);
+          } else if (j && j.status === 'error') {
+            LS.removeItem('clw_tg_sid');
+            fail(new Error(j.detail || 'sign-in failed'));
+          } else {
+            _pollT = setTimeout(tick, interval);
+          }
+        });
+    };
+    _pollT = setTimeout(tick, 800);
+  }
+  function resumeTgPoll() {
+    if (load('mode') === 'tg' && inTelegram() && (load('tg_sid') || tgInitData())) {
+      startTgPoll(load('tg_sid'));
+      return true;
+    }
+    return false;
+  }
+
   if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) resumePendingPoll();
+      if (!document.hidden) {
+        resumePendingPoll();
+        resumeTgPoll();
+      }
     });
   }
 
@@ -274,6 +354,9 @@
         .catch(fail);
       return 'ext';
     }
+    // Inside Telegram: server-side handshake (robust across webview relaunches).
+    if (inTelegram()) return tgConnect(walletId);
+    // Mobile browser: encrypted deeplink, handshake key in localStorage.
     save('wallet', walletId);
     save('mode', 'link');
     save('pending', 'connect');
@@ -358,7 +441,7 @@
 
   function disconnect() {
     stopPoll();
-    ['wallet', 'mode', 'session', 'shared', 'pubkey', 'pending', 'sign_ctx', 'dapp_sk', 'hid'].forEach(
+    ['wallet', 'mode', 'session', 'shared', 'pubkey', 'pending', 'sign_ctx', 'dapp_sk', 'hid', 'tg_sid'].forEach(
       (k) => LS.removeItem('clw_' + k),
     );
   }
@@ -383,8 +466,8 @@
     const url = new URL(location.href);
     const cb = url.searchParams.get('clw');
     if (!cb) {
-      resumePendingPoll();
-      return null;
+      const resumed = resumePendingPoll() || resumeTgPoll();
+      return resumed ? 'resume' : null;
     }
     // clean the URL so a refresh doesn't reprocess
     history.replaceState(null, '', redirectBase());
