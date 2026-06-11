@@ -48,6 +48,10 @@ import store
 
 CONFIG_STATUS = config.validate_config()  # fail-fast on misconfig (prod)
 BALANCE_TTL = int(os.environ.get("STAKE_BALANCE_TTL", "300"))  # re-check chain every 5 min
+# Claims vest: rewards are claimable only after this many days of CONTINUOUS
+# staking (the stake_start_ts clock, which survives re-stakes but resets on
+# unstake). Unstaking forfeits pending rewards. 0 disables the lock.
+CLAIM_LOCK_DAYS = int(os.environ.get("STAKE_CLAIM_LOCK_DAYS", "90"))
 # Explicit allow-list so your website's browser can call this API cross-origin.
 # Comma-separated origins, e.g. "https://clean.fun,https://app.clean.fun".
 # The Telegram Mini App webview sends requests from the app's own HTTPS origin.
@@ -161,6 +165,20 @@ def _profile(conn, wallet: str) -> dict:
         "days_staked": round(secs / 86400, 2),
         "rank": rank,
         "ref_code": db.ref_code(conn, wallet),
+        "claim_lock_days": CLAIM_LOCK_DAYS,
+        "claim_locked": bool(
+            CLAIM_LOCK_DAYS > 0
+            and (not row["stake_start_ts"] or secs < CLAIM_LOCK_DAYS * 86400)
+        ),
+        "claim_unlock_in_days": (
+            0
+            if CLAIM_LOCK_DAYS <= 0
+            else (
+                -(-(CLAIM_LOCK_DAYS * 86400 - secs) // 86400)
+                if row["stake_start_ts"] and secs < CLAIM_LOCK_DAYS * 86400
+                else (0 if row["stake_start_ts"] else CLAIM_LOCK_DAYS)
+            )
+        ),
         "apr": apr.to_dict(),
     }
 
@@ -298,12 +316,20 @@ async def api_unstake(body: Tok, request: Request):
         if not row:
             raise HTTPException(404, "unknown wallet")
         prev = row["recorded_staked"]
-        _accrue(conn, wallet)  # keep what you earned
+        _accrue(conn, wallet)  # settle the clock, then forfeit (policy below)
+        row = db.get_staker(conn, wallet)
+        forfeited = row["accrued"]
+        # Unstaking resets EVERYTHING: stake, the vesting clock, and pending
+        # rewards (tokenomics: pending vests only while you stay staked). The
+        # forfeit is ledgered so reconciliation can always explain the delta.
         conn.execute(
-            "UPDATE stakers SET recorded_staked=0, stake_start_ts=0 WHERE wallet=?", (wallet,)
+            "UPDATE stakers SET recorded_staked=0, stake_start_ts=0, accrued=0 WHERE wallet=?",
+            (wallet,),
         )
         conn.commit()
         db.record(conn, wallet, "unstake", prev)
+        if forfeited > 0:
+            db.record(conn, wallet, "forfeit", forfeited)
         return _profile(conn, wallet)
 
 
@@ -320,6 +346,21 @@ async def api_claim(body: Tok, request: Request):
         await _refresh_balance(conn, row, force=True)
         _accrue(conn, wallet)
         row = db.get_staker(conn, wallet)
+        # 90-day vesting gate: the stake_start_ts clock must have run the full
+        # lock before anything is claimable. Checked BEFORE the amount so the
+        # user sees the real reason, not "nothing to claim".
+        if CLAIM_LOCK_DAYS > 0:
+            start = row["stake_start_ts"] or 0
+            staked_secs = int(time.time()) - start if start else 0
+            lock_secs = CLAIM_LOCK_DAYS * 86400
+            if not start or staked_secs < lock_secs:
+                left = (
+                    -(-(lock_secs - staked_secs) // 86400) if start else CLAIM_LOCK_DAYS
+                )
+                raise HTTPException(
+                    400,
+                    f"rewards unlock after {CLAIM_LOCK_DAYS} days of staking — {left}d to go",
+                )
         amount = row["accrued"]
         if amount <= 0:
             raise HTTPException(400, "nothing to claim")
@@ -496,6 +537,7 @@ def api_economics():
             "burn_unit": econ.BURN_UNIT,
             "burn_apr_per_unit": econ.BURN_APR_PER_UNIT,
             "burn_cap_apr": econ.BURN_CAP_APR,
+            "claim_lock_days": CLAIM_LOCK_DAYS,
             "botUsername": os.environ.get("MINIAPP_BOT_USERNAME", "").lstrip("@"),
             "appShortName": os.environ.get("MINIAPP_SHORT_NAME", "app"),
             # Browser-safe RPC for the in-app swap widget. NEVER expose the paid
