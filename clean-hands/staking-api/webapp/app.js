@@ -5,21 +5,27 @@
  * Login is a two-hop wallet round-trip:
  *   connect  -> (reload) onConnect -> GET /api/nonce -> signMessage
  *   sign     -> (reload) onSign    -> POST /api/login -> token -> app
+ *
+ * Native polish layered on top (all feature-detected, degrade gracefully):
+ *   - Telegram theme-matched chrome + haptics + BackButton + closing confirm
+ *   - a real-time rewards ticker that accrues between server syncs
+ *   - periodic background re-sync + double-submit guards on money actions
  */
 (function (global) {
   'use strict';
   const tg = global.Telegram && global.Telegram.WebApp;
-  tg && tg.ready();
-  tg && tg.expand();
   const initData = (tg && tg.initData) || '';
   const startParam = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
   const SS = global.sessionStorage;
+  const BRAND_BG = '#0d1320';
+  const SECONDS_PER_YEAR = 365 * 24 * 3600;
 
   let TOKEN = SS.getItem('clw_token') || '';
   let PROFILE = null;
   let PRICE = null;
   let MINT = '';
   let _jupLoaded = false;
+  let _pollTimer = null;
 
   // ---- helpers ---------------------------------------------------------- //
   const $ = (id) => document.getElementById(id);
@@ -29,12 +35,28 @@
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 2200);
   }
+  function haptic(kind) {
+    try {
+      const h = tg && tg.HapticFeedback;
+      if (!h) return;
+      if (kind === 'success' || kind === 'error' || kind === 'warning') h.notificationOccurred(kind);
+      else h.impactOccurred(kind || 'light');
+    } catch (e) {}
+  }
   function fmt(n) {
     n = Number(n || 0);
     if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
     if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
     if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
     return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
+  // Like fmt() but keeps fractional motion visible for the live ticker.
+  function fmtLive(n) {
+    n = Number(n || 0);
+    if (n >= 1e6) return fmt(n);
+    if (n >= 1e3) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    if (n >= 1) return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+    return n.toLocaleString(undefined, { minimumFractionDigits: 4, maximumFractionDigits: 6 });
   }
   function pct(x) {
     return '+' + Math.round(Number(x || 0) * 100) + '%';
@@ -63,17 +85,138 @@
   function authedBody(extra) {
     return Object.assign({ token: TOKEN }, extra || {});
   }
+  // Prevent double-submits on money actions (also avoids racing the backend).
+  async function withBusy(el, fn) {
+    if (el && el.dataset.busy) return;
+    if (el) {
+      el.dataset.busy = '1';
+      el.dataset.label = el.textContent;
+      el.disabled = true;
+      el.style.opacity = '0.6';
+    }
+    try {
+      return await fn();
+    } finally {
+      if (el) {
+        delete el.dataset.busy;
+        el.disabled = false;
+        el.style.opacity = '';
+      }
+    }
+  }
+
+  // ---- live rewards ticker ---------------------------------------------- //
+  // Server returns pending_rewards at sync time; we interpolate forward using
+  // the effective APR so the user watches yield accrue in real time. Each
+  // refresh reseeds from server truth, so this never drifts unboundedly.
+  const accrual = { base: 0, rate: 0, t0: 0 };
+  let _raf = null;
+  function seedAccrual(p) {
+    const a = (p && p.apr) || {};
+    const apr =
+      a.effective_apr != null
+        ? Number(a.effective_apr)
+        : a.effective_apr_pct != null
+          ? Number(a.effective_apr_pct) / 100
+          : 0;
+    const eff = Math.max(0, Math.min(Number((p && p.staked) || 0), Number((p && p.balance) || 0)));
+    accrual.base = Number((p && p.pending_rewards) || 0);
+    accrual.rate = apr > 0 && eff > 0 ? (eff * apr) / SECONDS_PER_YEAR : 0;
+    accrual.t0 = performance.now();
+    renderRateNote();
+    if (accrual.rate > 0) startTicker();
+    else stopTicker(true);
+  }
+  function livePending() {
+    return accrual.base + accrual.rate * ((performance.now() - accrual.t0) / 1000);
+  }
+  function renderRateNote() {
+    const el = $('rate-note');
+    const dot = $('live-dot');
+    if (!el) return;
+    if (accrual.rate > 0) {
+      el.textContent = '⚡ Earning ~' + fmtLive(accrual.rate * 86400) + ' $CLEAN/day, live';
+      el.classList.remove('hide');
+      if (dot) dot.classList.remove('hide');
+    } else {
+      el.classList.add('hide');
+      if (dot) dot.classList.add('hide');
+    }
+  }
+  function paintPending(v) {
+    const s = fmtLive(v);
+    if ($('pending')) $('pending').textContent = s;
+    if ($('claimable')) $('claimable').textContent = s;
+  }
+  function startTicker() {
+    if (_raf) return;
+    let last = 0;
+    const step = (ts) => {
+      if (!PROFILE || !TOKEN || accrual.rate <= 0) {
+        _raf = null;
+        return;
+      }
+      if (ts - last > 200) {
+        // ~5fps is plenty for a smooth count-up and saves battery
+        paintPending(livePending());
+        last = ts;
+      }
+      _raf = requestAnimationFrame(step);
+    };
+    _raf = requestAnimationFrame(step);
+  }
+  function stopTicker(freeze) {
+    if (_raf) {
+      cancelAnimationFrame(_raf);
+      _raf = null;
+    }
+    if (freeze && PROFILE) paintPending(accrual.base);
+  }
+
+  // ---- Telegram-native chrome ------------------------------------------ //
+  function applyChrome() {
+    if (!tg) return;
+    try {
+      tg.ready();
+      tg.expand();
+      tg.setHeaderColor && tg.setHeaderColor(BRAND_BG);
+      tg.setBackgroundColor && tg.setBackgroundColor(BRAND_BG);
+      if (tg.BackButton) {
+        tg.BackButton.onClick(() => show('stake'));
+      }
+    } catch (e) {}
+  }
+  function syncBackButton(v) {
+    try {
+      if (!tg || !tg.BackButton) return;
+      if (v && v !== 'stake') tg.BackButton.show();
+      else tg.BackButton.hide();
+    } catch (e) {}
+  }
+  function setClosingConfirm(on) {
+    try {
+      if (!tg) return;
+      if (on) tg.enableClosingConfirmation && tg.enableClosingConfirmation();
+      else tg.disableClosingConfirmation && tg.disableClosingConfirmation();
+    } catch (e) {}
+  }
 
   // ---- screens ---------------------------------------------------------- //
   function showApp() {
     $('connect').classList.add('hide');
     $('app').classList.remove('hide');
+    setClosingConfirm(true);
+    startPolling();
     loadPrice();
   }
   function showConnect(note) {
     $('app').classList.add('hide');
     $('connect').classList.remove('hide');
     $('connect-spin').classList.add('hide');
+    stopTicker();
+    stopPolling();
+    setClosingConfirm(false);
+    syncBackButton('stake');
     if (note) $('connect-note').textContent = note;
     renderWallets();
   }
@@ -82,6 +225,8 @@
       $('view-' + n).classList.toggle('hide', n !== v),
     );
     document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('sel', t.dataset.v === v));
+    syncBackButton(v);
+    haptic('light');
     if (v === 'board') loadBoard();
     if (v === 'trade') loadPrice();
   }
@@ -94,6 +239,7 @@
       b.className = 'wallet-btn';
       b.textContent = 'Connect ' + w.name;
       b.onclick = () => {
+        haptic('light');
         $('connect-spin').classList.remove('hide');
         try {
           CleanWallet.connect(w.id);
@@ -115,10 +261,8 @@
         ? a.effective_apr_pct
         : Math.round((a.effective_apr || 0) * 100)) + '%';
     $('staked').textContent = fmt(p.staked);
-    $('pending').textContent = fmt(p.pending_rewards);
     $('rank').textContent = '#' + fmt(p.rank);
     $('balance').textContent = fmt(p.balance) + ' $CLEAN';
-    $('claimable').textContent = fmt(p.pending_rewards);
     $('burned').textContent = fmt(p.total_burned) + ' $CLEAN';
     $('ref-count').textContent = fmt(p.active_referrals);
     $('b-base').textContent = pct(a.base);
@@ -128,6 +272,8 @@
     $('b-burn').textContent = pct(a.burn_bonus_apr);
     const pk = CleanWallet.currentPubkey() || p.wallet || '';
     $('wallet-chip').textContent = pk ? pk.slice(0, 4) + '…' + pk.slice(-4) : '—';
+    seedAccrual(p); // reseed the live ticker from server truth + paint pending now
+    paintPending(accrual.base);
     updatePortfolio();
   }
 
@@ -142,6 +288,23 @@
       } else toast(String(e.message));
     }
   }
+
+  // Keep the UI honest with the backend without hammering it.
+  function startPolling() {
+    if (_pollTimer) return;
+    _pollTimer = setInterval(() => {
+      if (TOKEN && PROFILE && !document.hidden) refresh();
+    }, 30000);
+  }
+  function stopPolling() {
+    if (_pollTimer) {
+      clearInterval(_pollTimer);
+      _pollTimer = null;
+    }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && TOKEN && PROFILE) refresh();
+  });
 
   async function loadBoard() {
     try {
@@ -161,42 +324,58 @@
   }
 
   // ---- actions ---------------------------------------------------------- //
-  async function stake() {
-    try {
-      paint(await api('/api/stake', authedBody()));
-      toast('Staked ✅');
-    } catch (e) {
-      toast(String(e.message));
-    }
+  async function stake(el) {
+    return withBusy(el, async () => {
+      try {
+        paint(await api('/api/stake', authedBody()));
+        haptic('success');
+        toast('Staked ✅');
+      } catch (e) {
+        haptic('error');
+        toast(String(e.message));
+      }
+    });
   }
-  async function unstake() {
-    try {
-      paint(await api('/api/unstake', authedBody()));
-      toast('Unstaked');
-    } catch (e) {
-      toast(String(e.message));
-    }
+  async function unstake(el) {
+    return withBusy(el, async () => {
+      try {
+        paint(await api('/api/unstake', authedBody()));
+        haptic('warning');
+        toast('Unstaked');
+      } catch (e) {
+        haptic('error');
+        toast(String(e.message));
+      }
+    });
   }
-  async function claim() {
-    try {
-      const r = await api('/api/claim', authedBody());
-      paint(r.profile);
-      toast('Claimed ' + fmt(r.claimed) + ' $CLEAN');
-    } catch (e) {
-      toast(String(e.message));
-    }
+  async function claim(el) {
+    return withBusy(el, async () => {
+      try {
+        const r = await api('/api/claim', authedBody());
+        paint(r.profile);
+        haptic('success');
+        toast('Claimed ' + fmt(r.claimed) + ' $CLEAN');
+      } catch (e) {
+        haptic('error');
+        toast(String(e.message));
+      }
+    });
   }
-  async function submitBurn() {
+  async function submitBurn(el) {
     const sig = $('burn-sig').value.trim();
     if (!sig) return toast('Paste your burn tx signature');
-    try {
-      const r = await api('/api/burn', authedBody({ signature: sig }));
-      paint(r.profile);
-      $('burn-sig').value = '';
-      toast('🔥 Burn credited: ' + fmt(r.burned));
-    } catch (e) {
-      toast(String(e.message));
-    }
+    return withBusy(el, async () => {
+      try {
+        const r = await api('/api/burn', authedBody({ signature: sig }));
+        paint(r.profile);
+        $('burn-sig').value = '';
+        haptic('success');
+        toast('🔥 Burn credited: ' + fmt(r.burned));
+      } catch (e) {
+        haptic('error');
+        toast(String(e.message));
+      }
+    });
   }
   function invite() {
     const pk = CleanWallet.currentPubkey();
@@ -204,6 +383,7 @@
     const short = (CONFIG && CONFIG.appShortName) || 'app';
     const url = `https://t.me/${bot}/${short}?startapp=${pk}`;
     const text = 'Stake $CLEAN with me — clean hands, dirty money 🧤';
+    haptic('light');
     if (tg && tg.openTelegramLink)
       tg.openTelegramLink(
         `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
@@ -216,11 +396,13 @@
     const short = (CONFIG && CONFIG.appShortName) || 'app';
     navigator.clipboard &&
       navigator.clipboard.writeText(`https://t.me/${bot}/${short}?startapp=${pk}`);
+    haptic('success');
     toast('Link copied');
   }
   function logout() {
     CleanWallet.disconnect();
     TOKEN = '';
+    PROFILE = null;
     SS.removeItem('clw_token');
     showConnect('Wallet disconnected.');
   }
@@ -322,6 +504,7 @@
       paint(r.profile);
       showApp();
       show('stake');
+      haptic('success');
     } catch (e) {
       toast('Login failed: ' + e.message);
       showConnect('Login failed — try again.');
@@ -333,8 +516,10 @@
     try {
       const r = await api('/api/burn', authedBody({ signature: sig }));
       paint(r.profile);
+      haptic('success');
       toast('🔥 Burn credited: ' + fmt(r.burned));
     } catch (e) {
+      haptic('error');
       toast('Burn submit failed: ' + String(e.message));
     }
   }
@@ -344,6 +529,13 @@
     if (!MINT) return toast('Token not loaded yet');
     const pk = CleanWallet.currentPubkey();
     if (!pk) return toast('Connect your wallet first');
+    // Burning is irreversible — confirm through the native dialog when available.
+    const proceed = await new Promise((resolve) => {
+      if (tg && tg.showConfirm)
+        tg.showConfirm('Burn ' + amt + ' $CLEAN? This is permanent and cannot be undone.', resolve);
+      else resolve(global.confirm('Burn ' + amt + ' $CLEAN? This is permanent.'));
+    });
+    if (!proceed) return;
     toast('Building burn…');
     try {
       const web3 = await import('https://esm.sh/@solana/web3.js@1');
@@ -373,6 +565,7 @@
   // ---- boot ------------------------------------------------------------- //
   let CONFIG = {};
   async function boot() {
+    applyChrome();
     try {
       CONFIG = await fetch('/api/economics').then((r) => r.json());
     } catch (e) {}
@@ -380,7 +573,6 @@
       CONFIG.botUsername = CONFIG.botUsername || '';
     } catch (e) {}
 
-    // Resolve any wallet callback first (we just came back from a wallet app).
     if (CONFIG.inAppBurn) {
       const el = $('burn-inapp');
       if (el) el.classList.remove('hide');

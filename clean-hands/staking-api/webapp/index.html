@@ -281,6 +281,37 @@
           transform: rotate(360deg);
         }
       }
+      .live-dot {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--good);
+        vertical-align: middle;
+        margin-left: 6px;
+        box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7);
+        animation: pulse 1.8s infinite;
+      }
+      @keyframes pulse {
+        0% {
+          box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+        }
+        70% {
+          box-shadow: 0 0 0 7px rgba(52, 211, 153, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+        }
+      }
+      #pending {
+        font-variant-numeric: tabular-nums;
+      }
+      .rate-note {
+        color: var(--good);
+        font-size: 12.5px;
+        margin: 10px 0 0;
+        text-align: center;
+      }
     </style>
   </head>
   <body>
@@ -310,7 +341,7 @@
       <section id="view-stake" class="wrap">
         <div class="card apr">
           <div class="v" id="apr">—%</div>
-          <div class="l">your effective APR</div>
+          <div class="l">your effective APR <span class="live-dot hide" id="live-dot"></span></div>
         </div>
         <div class="card">
           <div class="row">
@@ -343,12 +374,13 @@
             <b id="balance">—</b>.
           </p>
           <div class="btns">
-            <button onclick="App.stake()">Stake my $CLEAN</button>
-            <button class="ghost" onclick="App.unstake()">Unstake</button>
+            <button onclick="App.stake(this)">Stake my $CLEAN</button>
+            <button class="ghost" onclick="App.unstake(this)">Unstake</button>
           </div>
-          <button style="margin-top: 8px" onclick="App.claim()">
+          <button style="margin-top: 8px" onclick="App.claim(this)">
             Claim rewards (<span id="claimable">0</span>)
           </button>
+          <p class="rate-note hide" id="rate-note"></p>
         </div>
       </section>
 
@@ -403,7 +435,7 @@
             credit you. You've burned: <b id="burned">—</b>.
           </p>
           <input id="burn-sig" placeholder="Burn transaction signature" />
-          <button class="warn" onclick="App.submitBurn()">Verify & credit burn</button>
+          <button class="warn" onclick="App.submitBurn(this)">Verify & credit burn</button>
           <div id="burn-inapp" class="hide" style="margin-top: 14px">
             <p class="muted">Or burn in-app (beta) — sign the burn in your wallet:</p>
             <input
