@@ -404,6 +404,21 @@
       $('refText').textContent = p.ref_code
         ? location.host + '/g/' + p.ref_code
         : 't.me/' + (CONFIG.botUsername || '') + '/' + (CONFIG.appShortName || 'app') + '?startapp=' + pk;
+    // claim vesting state — disclosed, never silent
+    const lockNote = $('lockNote');
+    if (p.claim_locked && p.claim_lock_days > 0) {
+      $('claimBtn').disabled = true;
+      lockNote.textContent =
+        '🔒 Rewards unlock after ' +
+        p.claim_lock_days +
+        ' days of staking — ' +
+        p.claim_unlock_in_days +
+        'd to go. Unstaking resets pending rewards.';
+      lockNote.classList.remove('hide');
+    } else {
+      $('claimBtn').disabled = false;
+      lockNote.classList.add('hide');
+    }
     seedAccrual(p);
     paintPending(accrual.base);
     updatePortfolio();
@@ -583,14 +598,23 @@
       }
     });
   };
-  $('unstakeBtn').onclick = function () {
+  $('unstakeBtn').onclick = async function () {
     if (!requireLogin()) return;
+    // Unstaking forfeits pending rewards — never let that happen silently.
+    const pend = PROFILE ? Number(PROFILE.pending_rewards || 0) : 0;
+    const warn =
+      pend > 0
+        ? 'Unstaking resets your pending rewards to 0 (' +
+          fmtLive(pend) +
+          ' $CLEAN forfeited) and restarts the unlock clock. Tokens stay in your wallet. Continue?'
+        : 'Unstake? Your tokens stay in your wallet; the unlock clock resets.';
+    if (!(await confirmNative(warn))) return;
     withBusy(this, async () => {
       try {
         const was = PROFILE ? PROFILE.staked : 0;
         paint(await api('/api/unstake', authedBody()));
         haptic('warning');
-        toast('Unstaked — tokens were never locked anyway');
+        toast(pend > 0 ? 'Unstaked — pending rewards forfeited' : 'Unstaked');
         logAct('↩️', 'Unstaked ' + fmt(was) + ' $CLEAN');
       } catch (e) {
         haptic('error');

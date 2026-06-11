@@ -213,9 +213,15 @@ def test_claims_manual():
     sig = base58.b58encode(sk.sign(msg.encode()).signature).decode()
     token = c.post("/api/login", json={"wallet": wallet, "signature": sig, "nonce": nonce}).json()["token"]
 
-    # grant rewards directly (5.0 tokens = 5_000_000 base @ 6 decimals)
+    # grant rewards directly (5.0 tokens = 5_000_000 base @ 6 decimals) and
+    # backdate the stake clock past the 90-day claim lock
+    import time as _t
+
     with _db.db() as conn:
-        conn.execute("UPDATE stakers SET accrued=? WHERE wallet=?", (5_000_000, wallet))
+        conn.execute(
+            "UPDATE stakers SET accrued=?, stake_start_ts=? WHERE wallet=?",
+            (5_000_000, int(_t.time()) - 91 * 86400, wallet),
+        )
         conn.commit()
 
     r = c.post("/api/claim", json={"token": token}).json()
@@ -505,6 +511,58 @@ def test_ref_codes():
     print("ref codes + glove links + season ✓")
 
 
+def test_claim_lock_and_forfeit():
+    """90-day claim vesting + unstake forfeits pending rewards (ledgered)."""
+    import app, db as _db, auth as _auth
+    import time as _t
+    from fastapi.testclient import TestClient
+
+    c = TestClient(app.app)
+    sk = SigningKey.generate()
+    wallet = base58.b58encode(bytes(sk.verify_key)).decode()
+    nonce = c.get("/api/nonce", params={"wallet": wallet}).json()["nonce"]
+    sig = base58.b58encode(sk.sign(_auth.login_message(wallet, nonce).encode()).signature).decode()
+    token = c.post("/api/login", json={"wallet": wallet, "signature": sig, "nonce": nonce}).json()["token"]
+
+    now = int(_t.time())
+    with _db.db() as conn:
+        conn.execute(
+            "UPDATE stakers SET accrued=?, recorded_staked=?, cached_balance=?, "
+            "balance_ts=?, stake_start_ts=? WHERE wallet=?",
+            (3_000_000, 10_000_000, 10_000_000, now, now - 10 * 86400, wallet),
+        )
+        conn.commit()
+
+    # locked at day 10 -> 400 with the unlock message; profile says so too
+    r = c.post("/api/claim", json={"token": token})
+    assert r.status_code == 400 and "unlock" in r.json()["detail"], r.text
+    p = c.post("/api/profile", json={"token": token}).json()
+    assert p["claim_locked"] is True and 79 <= p["claim_unlock_in_days"] <= 80, p
+
+    # unstake -> pending forfeited to 0, forfeit ledgered, clock reset
+    p2 = c.post("/api/unstake", json={"token": token}).json()
+    assert p2["pending_rewards"] == 0.0 and p2["staked"] == 0.0, p2
+    with _db.db() as conn:
+        f = conn.execute(
+            "SELECT COALESCE(SUM(amount),0) AS s FROM ledger WHERE wallet=? AND action='forfeit'",
+            (wallet,),
+        ).fetchone()["s"]
+        assert f >= 3_000_000, f
+
+    # past the lock -> claim succeeds
+    with _db.db() as conn:
+        conn.execute(
+            "UPDATE stakers SET accrued=?, stake_start_ts=? WHERE wallet=?",
+            (2_000_000, now - 91 * 86400, wallet),
+        )
+        conn.commit()
+    r = c.post("/api/claim", json={"token": token})
+    assert r.status_code == 200 and r.json()["claimed"] == 2.0, r.text
+    # economics exposes the rule for the UI
+    assert c.get("/api/economics").json()["claim_lock_days"] == 90
+    print("claim lock + unstake forfeit ✓")
+
+
 if __name__ == "__main__":
     test_economics()
     test_auth_signature()
@@ -517,6 +575,7 @@ if __name__ == "__main__":
     test_robustness()
     test_reconcile()
     test_ref_codes()
+    test_claim_lock_and_forfeit()
     test_rate_limit()  # exhausts the nonce bucket — keep it after nonce users
     test_relay()
     test_tg_handshake()
