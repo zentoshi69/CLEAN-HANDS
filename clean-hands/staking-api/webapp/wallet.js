@@ -187,13 +187,18 @@
         .then((j) => {
           if (j && j.params) {
             const p = j.params;
-            handleParams(step, (k) => (p[k] !== undefined ? p[k] : null));
+            const ok = handleParams(step, (k) => (p[k] !== undefined ? p[k] : null));
+            // ack so the backend can drop the payload (TTL is the backstop);
+            // peek-then-ack lets a relaunched webview still find it mid-flow
+            if (ok) fetch('/api/relay/' + hid, { method: 'DELETE' }).catch(() => {});
           } else {
             _pollT = setTimeout(tick, interval);
           }
         });
     };
-    _pollT = setTimeout(tick, interval);
+    // first check immediately — the user usually returns AFTER the wallet
+    // already delivered the callback, so completion should feel instant
+    _pollT = setTimeout(tick, 50);
   }
   function resumePendingPoll() {
     const pending = load('pending');
@@ -247,6 +252,7 @@
       }
     } catch (e) {
       fail(e);
+      return null; // signal failure to the relay poller (no ack -> TTL cleans up)
     }
     return cb;
   }
@@ -360,6 +366,9 @@
   function currentPubkey() {
     return load('pubkey');
   }
+  function pendingStep() {
+    return load('pending');
+  }
   function isConnected() {
     return !!(load('pubkey') && (load('session') || load('mode') === 'ext'));
   }
@@ -390,6 +399,7 @@
     init,
     isConnected,
     currentPubkey,
+    pendingStep,
     listWallets,
     b58encode,
     b58decode,

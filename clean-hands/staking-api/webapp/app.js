@@ -1,26 +1,27 @@
 /*
- * app.js — CLEAN soft-staking Mini App logic ("sky" design, matches the site).
- * Ties the wallet deeplink flow (wallet.js) to the staking API (same origin).
+ * app.js — CLEAN soft-staking Mini App ("final clean" sky design).
+ * Ties the wallet flows (wallet.js: extension / deeplink / Telegram relay)
+ * to the staking API (same origin). Everything renders from server truth:
+ * /api/economics for the rules, /api/profile for the wallet's numbers,
+ * /api/price for the market, /api/stats for protocol-wide aggregates.
  *
- * Login is a two-hop wallet round-trip:
- *   connect  -> (reload) onConnect -> GET /api/nonce -> signMessage
- *   sign     -> (reload) onSign    -> POST /api/login -> token -> app
- *
- * Everything renders from server truth: /api/economics for the rules,
- * /api/profile for the wallet's numbers, /api/price for the market. The
- * pending-rewards ticker interpolates between syncs using the effective APR
- * and reseeds on every refresh, so it never drifts.
+ * Login (deeplink mode) is a two-hop wallet round-trip:
+ *   connect -> onConnect -> GET /api/nonce -> signMessage
+ *   sign    -> onSign    -> POST /api/login -> token -> app
+ * Inside Telegram the hops resolve via the /api/relay poller (no reload).
  */
 (function (global) {
   'use strict';
   const tg = global.Telegram && global.Telegram.WebApp;
   const initData = (tg && tg.initData) || '';
   const startParam = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
-  const SS = global.localStorage; // shared across tabs — survives wallet round-trips
+  const LS = global.localStorage; // shared across tabs — survives wallet round-trips
   const BRAND_BG = '#F4FAFF';
   const SECONDS_PER_YEAR = 365 * 24 * 3600;
+  const reduce =
+    global.matchMedia && matchMedia('(prefers-reduced-motion:reduce)').matches;
 
-  let TOKEN = SS.getItem('clw_token') || '';
+  let TOKEN = LS.getItem('clw_token') || '';
   let PROFILE = null;
   let PRICE = null;
   let MINT = '';
@@ -85,22 +86,6 @@
   function authedBody(extra) {
     return Object.assign({ token: TOKEN }, extra || {});
   }
-  // Prevent double-submits on money actions (also avoids racing the backend).
-  async function withBusy(el, fn) {
-    if (el && el.dataset.busy) return;
-    if (el) {
-      el.dataset.busy = '1';
-      el.disabled = true;
-    }
-    try {
-      return await fn();
-    } finally {
-      if (el) {
-        delete el.dataset.busy;
-        el.disabled = false;
-      }
-    }
-  }
   function openExt(u) {
     if (tg && tg.openLink) tg.openLink(u);
     else window.open(u, '_blank');
@@ -112,11 +97,134 @@
     else done();
     haptic('light');
   }
+  function confirmNative(message) {
+    return new Promise((resolve) => {
+      if (tg && tg.showConfirm) tg.showConfirm(message, resolve);
+      else resolve(global.confirm(message));
+    });
+  }
 
-  // ---- live rewards ticker ---------------------------------------------- //
+  // ---- motion: count-up, sparkle bursts, button spinners ----------------- //
+  function countUp(el, to, opts) {
+    const { dec = 0, suffix = '', prefix = '' } = opts || {};
+    const fin = () => {
+      el.textContent =
+        prefix + Number(to).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }) + suffix;
+    };
+    if (reduce) return fin();
+    const from = parseFloat((el.textContent || '0').replace(/[^0-9.\-]/g, '')) || 0;
+    const t0 = performance.now();
+    (function f(t) {
+      const k = Math.min(1, (t - t0) / 700);
+      const e = 1 - Math.pow(1 - k, 3);
+      const v = from + (to - from) * e;
+      el.textContent =
+        prefix + v.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec }) + suffix;
+      if (k < 1) requestAnimationFrame(f);
+      else fin();
+    })(t0);
+  }
+  function burst(el, color) {
+    if (reduce || !el) return;
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    for (let i = 0; i < 9; i++) {
+      const s = document.createElement('div');
+      s.className = 'spark-burst';
+      s.textContent = '✦';
+      s.style.left = cx + 'px';
+      s.style.top = cy + 'px';
+      s.style.color = color || 'var(--sky)';
+      s.style.fontSize = 8 + Math.random() * 12 + 'px';
+      document.body.appendChild(s);
+      const ang = Math.random() * 6.28;
+      const dist = 40 + Math.random() * 55;
+      const dx = Math.cos(ang) * dist;
+      const dy = Math.sin(ang) * dist - 20;
+      s.animate(
+        [
+          { transform: 'translate(-50%,-50%) translate(0,0) scale(.4)', opacity: 1 },
+          { transform: `translate(-50%,-50%) translate(${dx}px,${dy}px) scale(1.1)`, opacity: 0 },
+        ],
+        { duration: 700 + Math.random() * 250, easing: 'cubic-bezier(.2,.7,.2,1)' },
+      ).onfinish = () => s.remove();
+    }
+  }
+  // Busy-guard + inline spinner; restores the button's original markup.
+  async function withBusy(el, fn) {
+    if (el && el.dataset.busy) return;
+    let saved = null;
+    if (el) {
+      el.dataset.busy = '1';
+      el.disabled = true;
+      saved = el.innerHTML;
+      el.innerHTML = '<span class="spin"></span>';
+    }
+    try {
+      return await fn();
+    } finally {
+      if (el) {
+        delete el.dataset.busy;
+        el.disabled = false;
+        if (saved !== null) el.innerHTML = saved;
+      }
+    }
+  }
+
+  // ---- ambient sparkles --------------------------------------------------- //
+  if (!reduce) {
+    [[8, 20], [90, 16], [14, 82], [88, 86], [50, 9], [72, 46]].forEach((p, i) => {
+      const s = document.createElement('div');
+      s.className = 'spark';
+      s.textContent = '✦';
+      s.style.left = p[0] + '%';
+      s.style.top = p[1] + '%';
+      s.style.fontSize = 0.8 + Math.random() * 1.4 + 'rem';
+      s.style.animationDelay = i * 0.55 + 's';
+      document.querySelector('.aura').appendChild(s);
+    });
+  }
+
+  // ---- recent activity (client-side log, persisted per device) ----------- //
+  function acts() {
+    try {
+      return JSON.parse(LS.getItem('clw_acts') || '[]');
+    } catch (e) {
+      return [];
+    }
+  }
+  function relTime(ts) {
+    const d = Math.max(0, Date.now() - ts) / 1000;
+    if (d < 90) return 'just now';
+    if (d < 3600) return Math.round(d / 60) + 'm ago';
+    if (d < 86400) return Math.round(d / 3600) + 'h ago';
+    return Math.round(d / 86400) + 'd ago';
+  }
+  function logAct(icon, text) {
+    const a = acts();
+    a.unshift({ icon, text, t: Date.now() });
+    LS.setItem('clw_acts', JSON.stringify(a.slice(0, 6)));
+    renderActs();
+  }
+  function renderActs() {
+    const w = $('actList');
+    const a = acts();
+    if (!a.length) {
+      w.innerHTML = '<div class="empty">No activity yet — stake to begin. 🧤</div>';
+      return;
+    }
+    w.innerHTML = a
+      .map(
+        (x) =>
+          `<div class="act"><div class="ic">${esc(x.icon)}</div><span>${esc(x.text)}</span><span class="tm">${relTime(x.t)}</span></div>`,
+      )
+      .join('');
+  }
+
+  // ---- live rewards ticker ------------------------------------------------ //
   // Server returns pending_rewards at sync time; we interpolate forward using
-  // the effective APR so the user watches yield accrue in real time. Each
-  // refresh reseeds from server truth, so this never drifts unboundedly.
+  // the effective APR and reseed on every refresh, so it never drifts.
   const accrual = { base: 0, rate: 0, t0: 0 };
   let _raf = null;
   function seedAccrual(p) {
@@ -132,22 +240,21 @@
     accrual.rate = apr > 0 && eff > 0 ? (eff * apr) / SECONDS_PER_YEAR : 0;
     accrual.t0 = performance.now();
     const note = $('rateNote');
-    const dot = $('liveDot');
     if (accrual.rate > 0) {
-      note.textContent = '⚡ Earning ~' + fmtLive(accrual.rate * 86400) + ' $CLEAN/day, live';
+      note.innerHTML =
+        '<span class="live-dot"></span>Earning ~' + fmtLive(accrual.rate * 86400) + ' $CLEAN/day, live';
       note.classList.remove('hide');
-      dot.classList.remove('hide');
       startTicker();
     } else {
       note.classList.add('hide');
-      dot.classList.add('hide');
       stopTicker(true);
     }
   }
   function paintPending(v) {
     const s = fmtLive(v);
     $('stPending').textContent = s;
-    $('claimAmt').textContent = s;
+    const c = $('claimAmt');
+    if (c) c.textContent = s;
   }
   function startTicker() {
     if (_raf) return;
@@ -158,7 +265,6 @@
         return;
       }
       if (ts - last > 200) {
-        // ~5fps is plenty for a smooth count-up and saves battery
         paintPending(accrual.base + accrual.rate * ((performance.now() - accrual.t0) / 1000));
         last = ts;
       }
@@ -174,14 +280,18 @@
     if (freeze && PROFILE) paintPending(accrual.base);
   }
 
-  // ---- Telegram-native chrome ------------------------------------------ //
+  // ---- Telegram-native chrome --------------------------------------------- //
   try {
     if (tg) {
       tg.ready();
       tg.expand();
       tg.setHeaderColor && tg.setHeaderColor(BRAND_BG);
       tg.setBackgroundColor && tg.setBackgroundColor(BRAND_BG);
-      tg.BackButton && tg.BackButton.onClick(() => showTab('stake'));
+      tg.BackButton &&
+        tg.BackButton.onClick(() => {
+          const b = document.querySelector('.tabbtn[data-tab="stake"]');
+          b && b.click();
+        });
     }
   } catch (e) {}
   function setClosingConfirm(on) {
@@ -191,14 +301,29 @@
       else tg.disableClosingConfirmation && tg.disableClosingConfirmation();
     } catch (e) {}
   }
-  function confirmNative(message) {
-    return new Promise((resolve) => {
-      if (tg && tg.showConfirm) tg.showConfirm(message, resolve);
-      else resolve(global.confirm(message));
-    });
-  }
 
-  // ---- wallet picker sheet ---------------------------------------------- //
+  // ---- splash / welcome gate ---------------------------------------------- //
+  function hideSplash() {
+    const s = $('splash');
+    s && s.classList.add('hide');
+  }
+  setTimeout(hideSplash, 2500); // fallback — boot() hides it sooner
+  function showWelcome() {
+    $('welcome').classList.remove('hide');
+  }
+  function closeWelcome() {
+    $('welcome').classList.add('hide');
+  }
+  $('wcExplore').onclick = () => {
+    closeWelcome();
+    haptic('light');
+  };
+  $('wcConnect').onclick = () => {
+    closeWelcome();
+    openSheet();
+  };
+
+  // ---- wallet picker sheet -------------------------------------------------- //
   function openSheet() {
     const el = $('walletList');
     el.innerHTML = '';
@@ -235,7 +360,7 @@
     return false;
   }
 
-  // ---- render ------------------------------------------------------------ //
+  // ---- render ---------------------------------------------------------------- //
   function setBoost(id, frac) {
     const el = $(id);
     const pctV = Math.round(Number(frac || 0) * 100);
@@ -245,8 +370,9 @@
   function paint(p) {
     PROFILE = p;
     const a = p.apr || {};
-    $('aprNum').textContent =
+    const aprPct =
       a.effective_apr_pct != null ? a.effective_apr_pct : Math.round((a.effective_apr || 0) * 100);
+    countUp($('aprNum'), aprPct);
     $('stStaked').textContent = fmt(p.staked);
     $('stRank').textContent = p.rank != null ? fmt(p.rank) : '—';
     $('balTxt').textContent = fmt(p.balance) + ' $CLEAN';
@@ -266,8 +392,14 @@
     $('invCount').textContent = fmt(p.active_referrals);
     setBoost('invBonus', a.referral_boost);
     $('invBonus').classList.remove('zero');
+    setBoost('refPct2', a.referral_boost);
+    const rcap = Number(CONFIG.referral_cap || 0);
+    $('refBar').style.width =
+      rcap > 0 ? Math.min(100, (Number(a.referral_boost || 0) / rcap) * 100) + '%' : '0%';
+    // header chip
     const pk = CleanWallet.currentPubkey() || p.wallet || '';
-    $('wallet').textContent = pk ? pk.slice(0, 4) + '…' + pk.slice(-4) : 'Connect';
+    $('walletTxt').textContent = pk ? pk.slice(0, 4) + '…' + pk.slice(-4) : 'Connect';
+    $('wallet').classList.toggle('live', !!pk && !!TOKEN);
     if (pk && CONFIG.botUsername)
       $('refText').textContent =
         't.me/' + CONFIG.botUsername + '/' + (CONFIG.appShortName || 'app') + '?startapp=' + pk;
@@ -278,11 +410,12 @@
   function resetToLoggedOut(note) {
     TOKEN = '';
     PROFILE = null;
-    SS.removeItem('clw_token');
+    LS.removeItem('clw_token');
     stopTicker();
     stopPolling();
     setClosingConfirm(false);
-    $('wallet').textContent = 'Connect';
+    $('walletTxt').textContent = 'Connect';
+    $('wallet').classList.remove('live');
     if (note) toast(note);
   }
 
@@ -295,8 +428,6 @@
       } else toast(String(e.message));
     }
   }
-
-  // Keep the UI honest with the backend without hammering it.
   function startPolling() {
     if (_pollTimer) return;
     _pollTimer = setInterval(() => {
@@ -317,20 +448,38 @@
     if (!TOKEN) return;
     try {
       const { leaderboard } = await api('/api/leaderboard', authedBody());
+      const medal = { 1: 'g', 2: 's', 3: 'b' };
       $('lbList').innerHTML = leaderboard
         .map(
           (r) =>
-            `<div class="lb${r.me ? ' me' : ''}"><div class="rk${r.rank === 1 ? ' top' : ''}">${r.rank}</div>` +
+            `<div class="lb${r.me ? ' you' : ''}"><div class="rk ${medal[r.rank] || ''}">${r.rank}</div>` +
             `<div class="ad">${r.me ? 'You' : esc(r.name)}</div><div class="amt">${fmt(r.staked)}</div></div>`,
         )
         .join('');
-      if (!leaderboard.length) $('lbList').innerHTML = '<p class="muted">No stakers yet — be first.</p>';
+      if (!leaderboard.length)
+        $('lbList').innerHTML = '<div class="empty">No stakers yet — be first. 🧤</div>';
     } catch (e) {
       toast(String(e.message));
     }
   }
 
-  // ---- market / trade ----------------------------------------------------- //
+  // ---- protocol stats (Supply washed) -------------------------------------- //
+  async function loadStats() {
+    try {
+      const s = await (await fetch('/api/stats')).json();
+      countUp($('totBurn'), s.total_burned >= 1e6 ? +(s.total_burned / 1e6).toFixed(1) : Math.round(s.total_burned), {
+        suffix: s.total_burned >= 1e6 ? 'M' : '',
+        dec: s.total_burned >= 1e6 ? 1 : 0,
+      });
+      countUp($('totBurners'), s.burners || 0);
+      if (s.burned_pct != null) countUp($('totPct'), s.burned_pct, { dec: 1, suffix: '%' });
+      else $('totPctWrap').classList.add('hide');
+    } catch (e) {
+      $('supplyPanel').classList.add('hide');
+    }
+  }
+
+  // ---- market / trade --------------------------------------------------------- //
   function usd(n) {
     const v = (Number(n) || 0) * (PRICE ? PRICE.price_usd : 0);
     return '$' + (v >= 1 ? fmt(v) : v.toPrecision(2));
@@ -361,15 +510,22 @@
       `Your stake ${usd(PROFILE.staked)} · pending ${usd(PROFILE.pending_rewards)} · wallet ${usd(PROFILE.balance)}`;
   }
 
-  // ---- tabs --------------------------------------------------------------- //
+  // ---- tabs ---------------------------------------------------------------------- //
+  const TAB_ORDER = ['stake', 'trade', 'boost', 'board', 'invite'];
   function showTab(t) {
     document.querySelectorAll('.tabbtn').forEach((x) => x.classList.toggle('on', x.dataset.tab === t));
-    document.querySelectorAll('.tab').forEach((s) => (s.hidden = true));
-    const sec = $('tab-' + t);
-    sec.hidden = false;
-    sec.classList.remove('fade');
-    void sec.offsetWidth;
-    sec.classList.add('fade');
+    $('tabbar').style.setProperty('--i', TAB_ORDER.indexOf(t));
+    document.querySelectorAll('.tab').forEach((s) => {
+      if (s.id === 'tab-' + t) {
+        s.hidden = false;
+        if (!reduce)
+          [...s.children].forEach((c) => {
+            c.style.animation = 'none';
+            void c.offsetWidth;
+            c.style.animation = '';
+          });
+      } else s.hidden = true;
+    });
     $('scroll').scrollTo({ top: 0, behavior: 'smooth' });
     try {
       if (tg && tg.BackButton) {
@@ -380,10 +536,11 @@
     haptic('light');
     if (t === 'board') loadBoard();
     if (t === 'trade') loadPrice();
+    if (t === 'boost') loadStats();
   }
   document.querySelectorAll('.tabbtn').forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
 
-  // ---- actions ------------------------------------------------------------ //
+  // ---- actions ----------------------------------------------------------------------- //
   $('wallet').onclick = async () => {
     if (!TOKEN || !PROFILE) return openSheet();
     if (await confirmNative('Disconnect this wallet?')) {
@@ -393,11 +550,14 @@
   };
   $('stakeBtn').onclick = function () {
     if (!requireLogin()) return;
-    withBusy(this, async () => {
+    const self = this;
+    withBusy(self, async () => {
       try {
         paint(await api('/api/stake', authedBody()));
         haptic('success');
+        burst(self);
         toast('Soft-staked ' + fmt(PROFILE.staked) + ' $CLEAN ✦');
+        logAct('🧤', 'Staked ' + fmt(PROFILE.staked) + ' $CLEAN');
       } catch (e) {
         haptic('error');
         toast(String(e.message));
@@ -408,9 +568,11 @@
     if (!requireLogin()) return;
     withBusy(this, async () => {
       try {
+        const was = PROFILE ? PROFILE.staked : 0;
         paint(await api('/api/unstake', authedBody()));
         haptic('warning');
         toast('Unstaked — tokens were never locked anyway');
+        logAct('↩️', 'Unstaked ' + fmt(was) + ' $CLEAN');
       } catch (e) {
         haptic('error');
         toast(String(e.message));
@@ -419,12 +581,15 @@
   };
   $('claimBtn').onclick = function () {
     if (!requireLogin()) return;
-    withBusy(this, async () => {
+    const self = this;
+    withBusy(self, async () => {
       try {
         const r = await api('/api/claim', authedBody());
         paint(r.profile);
         haptic('success');
+        burst(self);
         toast('Claimed ' + fmt(r.claimed) + ' $CLEAN ✦');
+        logAct('💧', 'Claimed ' + fmt(r.claimed) + ' $CLEAN');
       } catch (e) {
         haptic('error');
         toast(String(e.message));
@@ -435,13 +600,17 @@
     if (!requireLogin()) return;
     const sig = $('burnSig').value.trim();
     if (!sig) return toast('Paste your burn tx signature');
-    withBusy(this, async () => {
+    const self = this;
+    withBusy(self, async () => {
       try {
         const r = await api('/api/burn', authedBody({ signature: sig }));
         paint(r.profile);
         $('burnSig').value = '';
         haptic('success');
+        burst(self, 'var(--fire)');
         toast('Burned ' + fmt(r.burned) + ' 🔥 — bonus updated');
+        logAct('🔥', 'Burned ' + fmt(r.burned) + ' $CLEAN');
+        loadStats();
       } catch (e) {
         haptic('error');
         toast(String(e.message));
@@ -556,7 +725,7 @@
     else copy(url, 'Invite link copied ✦');
   };
 
-  // ---- login round-trip --------------------------------------------------- //
+  // ---- login round-trip ------------------------------------------------------------ //
   async function afterConnect(pubkey) {
     try {
       toast('Wallet connected — confirm the signature 🧤');
@@ -578,13 +747,16 @@
         ref: startParam || null,
       });
       TOKEN = r.token;
-      SS.setItem('clw_token', TOKEN);
+      LS.setItem('clw_token', TOKEN);
       closeSheet();
+      closeWelcome();
       paint(r.profile);
       setClosingConfirm(true);
       startPolling();
       haptic('success');
+      burst($('wallet'));
       toast('Gloves on — you are in 🧤✦');
+      logAct('🧤', 'Wallet connected');
     } catch (e) {
       toast('Login failed: ' + e.message);
     }
@@ -595,13 +767,15 @@
       paint(r.profile);
       haptic('success');
       toast('Burned ' + fmt(r.burned) + ' 🔥 — bonus updated');
+      logAct('🔥', 'Burned ' + fmt(r.burned) + ' $CLEAN');
+      loadStats();
     } catch (e) {
       haptic('error');
       toast('Burn submit failed: ' + String(e.message));
     }
-  };
+  }
 
-  // ---- boot ----------------------------------------------------------------- //
+  // ---- boot ----------------------------------------------------------------------------- //
   function applyEconomicsText() {
     setBoost('invMax', CONFIG.referral_cap);
     $('invMax').classList.remove('zero');
@@ -612,7 +786,7 @@
         '%</b> to your APR (up to <b>+' +
         Math.round(CONFIG.referral_cap * 100) +
         '%</b>). <span class="scr">gloves multiply ✦</span>';
-    if (CONFIG.burn_unit != null)
+    if (CONFIG.burn_unit != null) {
       $('burnDesc').innerHTML =
         'Burn $CLEAN to <b>permanently</b> raise your APR — <b>+' +
         Math.round(CONFIG.burn_apr_per_unit * 100) +
@@ -621,8 +795,12 @@
         '</b> burned, up to <b>+' +
         Math.round(CONFIG.burn_cap_apr * 100) +
         '%</b>. Burning shrinks supply for everyone.';
+      $('featBurn').textContent =
+        'Burn $CLEAN to lift your APR — up to +' + Math.round(CONFIG.burn_cap_apr * 100) + '%, forever.';
+    }
   }
   async function boot() {
+    renderActs();
     try {
       CONFIG = await fetch('/api/economics').then((r) => r.json());
     } catch (e) {
@@ -633,8 +811,9 @@
     applyEconomicsText();
     if (CONFIG.inAppBurn) $('burnInApp').classList.remove('hide');
     loadPrice();
+    loadStats();
 
-    // Resolve any wallet callback first (we just came back from a wallet app).
+    // Resolve any wallet callback / pending relay first.
     const step = CleanWallet.init({
       onConnect: afterConnect,
       onSign: afterSign,
@@ -642,9 +821,21 @@
       onError: (e) => {
         toast('Wallet: ' + (e.message || e));
         closeSheet();
+        if (!TOKEN) showWelcome();
       },
     });
-    if (step) return; // a callback handler is driving the flow
+    if (step) {
+      hideSplash();
+      return; // a callback handler is driving the flow
+    }
+    // Relaunched mid-handshake (Telegram killed the webview while we were in
+    // the wallet)? The relay poller is already resumed — just signal progress
+    // and let afterSign/afterConnect land the user on the staking page.
+    if (CleanWallet.pendingStep && CleanWallet.pendingStep() && initData) {
+      hideSplash();
+      toast('Finishing sign-in… 🧤');
+      return;
+    }
 
     // Returning user with a live token?
     if (TOKEN) {
@@ -652,12 +843,15 @@
         paint(await api('/api/profile', authedBody()));
         setClosingConfirm(true);
         startPolling();
+        hideSplash();
         return;
       } catch (e) {
         TOKEN = '';
-        SS.removeItem('clw_token');
+        LS.removeItem('clw_token');
       }
     }
+    hideSplash();
+    showWelcome();
   }
   boot();
 })(window);

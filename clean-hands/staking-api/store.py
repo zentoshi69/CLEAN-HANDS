@@ -28,6 +28,19 @@ class MemoryStore:
         with self._lock:
             self._d[key] = (value, time.time() + ttl)
 
+    def get(self, key: str) -> str | None:
+        """Read without consuming (relay payloads must survive webview relaunches)."""
+        with self._lock:
+            rec = self._d.get(key)
+        if not rec:
+            return None
+        value, exp = rec
+        return value if time.time() <= exp else None
+
+    def delete(self, key: str) -> None:
+        with self._lock:
+            self._d.pop(key, None)
+
     def getdel(self, key: str) -> str | None:
         with self._lock:
             rec = self._d.pop(key, None)
@@ -62,6 +75,12 @@ class RedisStore:
 
     def setex(self, key: str, ttl: int, value: str) -> None:
         self._r.setex(key, ttl, value)
+
+    def get(self, key: str) -> str | None:
+        return self._r.get(key)
+
+    def delete(self, key: str) -> None:
+        self._r.delete(key)
 
     def getdel(self, key: str) -> str | None:
         # GETDEL is atomic (Redis 6.2+); fall back to pipeline if unavailable.

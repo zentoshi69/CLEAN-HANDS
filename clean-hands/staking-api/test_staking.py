@@ -322,10 +322,12 @@ def test_relay():
     p = {"phantom_encryption_public_key": "Pub", "data": "EncData", "nonce": "N0nce"}
     r = c.post(f"/api/relay/{rid}", json={"params": p})
     assert r.status_code == 200, r.text
-    # webview reads it exactly once
-    r = c.get(f"/api/relay/{rid}")
-    assert r.status_code == 200 and r.json()["params"] == p
-    assert c.get(f"/api/relay/{rid}").status_code == 404  # consumed
+    # reads PEEK (a relaunched webview must still find the payload) ...
+    assert c.get(f"/api/relay/{rid}").json()["params"] == p
+    assert c.get(f"/api/relay/{rid}").json()["params"] == p
+    # ... until the webview acks after processing
+    assert c.delete(f"/api/relay/{rid}").status_code == 200
+    assert c.get(f"/api/relay/{rid}").status_code == 404
     # malformed ids and oversized payloads are rejected
     assert c.post("/api/relay/bad!id", json={"params": p}).status_code == 400
     assert (
