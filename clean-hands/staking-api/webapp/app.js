@@ -404,8 +404,10 @@
       $('refText').textContent = p.ref_code
         ? location.host + '/g/' + p.ref_code
         : 't.me/' + (CONFIG.botUsername || '') + '/' + (CONFIG.appShortName || 'app') + '?startapp=' + pk;
-    // claim vesting state — disclosed, never silent
+    // claim vesting + payout + fee state — disclosed, never silent
     const lockNote = $('lockNote');
+    const needsPayout = p.payout_setup_open && !p.payout_confirmed;
+    $('payoutSetup').classList.toggle('hide', !needsPayout);
     if (p.claim_locked && p.claim_lock_days > 0) {
       $('claimBtn').disabled = true;
       lockNote.textContent =
@@ -414,6 +416,20 @@
         ' days of staking — ' +
         p.claim_unlock_in_days +
         'd to go. Unstaking resets pending rewards.';
+      lockNote.classList.remove('hide');
+    } else if (needsPayout) {
+      $('claimBtn').disabled = true;
+      lockNote.textContent = '💳 Confirm your payout wallet below to enable claiming.';
+      lockNote.classList.remove('hide');
+    } else if (p.claim_fee_usd > 0) {
+      $('claimBtn').disabled = false;
+      lockNote.textContent =
+        '💳 A $' +
+        p.claim_fee_usd +
+        ' processing fee (in $CLEAN) is deducted from each claim.' +
+        (p.payout_wallet && p.payout_wallet !== p.wallet
+          ? ' Payout → ' + p.payout_wallet.slice(0, 4) + '…' + p.payout_wallet.slice(-4)
+          : '');
       lockNote.classList.remove('hide');
     } else {
       $('claimBtn').disabled = false;
@@ -631,8 +647,33 @@
         paint(r.profile);
         haptic('success');
         burst(self);
-        toast('Claimed ' + fmt(r.claimed) + ' $CLEAN ✦');
+        toast(
+          'Claimed ' +
+            fmt(r.claimed) +
+            ' $CLEAN ✦' +
+            (r.fee > 0 ? ' ($' + r.fee_usd + ' fee deducted)' : ''),
+        );
         logAct('💧', 'Claimed ' + fmt(r.claimed) + ' $CLEAN');
+      } catch (e) {
+        haptic('error');
+        toast(String(e.message));
+      }
+    });
+  };
+  $('payoutBtn').onclick = async function () {
+    if (!requireLogin()) return;
+    const addr = $('payoutAddr').value.trim();
+    const dest = addr || CleanWallet.currentPubkey() || (PROFILE && PROFILE.wallet) || '';
+    const short = dest ? dest.slice(0, 4) + '…' + dest.slice(-4) : 'this wallet';
+    if (!(await confirmNative('Send all claim payouts to ' + short + '?'))) return;
+    const self = this;
+    withBusy(self, async () => {
+      try {
+        paint(await api('/api/payout', authedBody({ address: addr || null })));
+        haptic('success');
+        burst(self);
+        toast('Payout wallet confirmed ✦');
+        logAct('💳', 'Payout wallet set');
       } catch (e) {
         haptic('error');
         toast(String(e.message));

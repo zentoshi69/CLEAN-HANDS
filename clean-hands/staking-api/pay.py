@@ -21,16 +21,23 @@ import db
 def cmd_list() -> int:
     with db.db() as conn:
         rows = db.list_pending_claims(conn)
+        payout = {}
+        for r in rows:
+            if r["wallet"] not in payout:
+                s = db.get_staker(conn, r["wallet"])
+                payout[r["wallet"]] = (s["payout_wallet"] if s else None) or r["wallet"]
     if not rows:
         print("No pending claims. 🎉")
         return 0
-    print(f"{'ID':>6}  {'AMOUNT ($CLEAN)':>18}  WALLET")
-    print("-" * 78)
+    print(f"{'ID':>6}  {'AMOUNT ($CLEAN)':>18}  PAY TO  (staker)")
+    print("-" * 100)
     total = 0
     for r in rows:
         total += r["amount"]
-        print(f"{r['id']:>6}  {db.to_ui(r['amount']):>18,.6f}  {r['wallet']}")
-    print("-" * 78)
+        dest = payout[r["wallet"]]
+        suffix = "" if dest == r["wallet"] else f"  (staker {r['wallet']})"
+        print(f"{r['id']:>6}  {db.to_ui(r['amount']):>18,.6f}  {dest}{suffix}")
+    print("-" * 100)
     print(f"{len(rows)} claim(s) — pay {db.to_ui(total):,.6f} $CLEAN total from the treasury.")
     return 0
 
