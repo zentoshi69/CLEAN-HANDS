@@ -1,16 +1,22 @@
 /*
- * wallet.js — Solana wallet connect + signMessage for a Telegram Mini App,
- * using the encrypted universal-link ("deeplink") protocol that Phantom defines
- * and Solflare / Backpack implement compatibly.
+ * wallet.js — Solana wallet connect + signMessage for the CLEAN app.
  *
- * Flow (mobile): we generate an ephemeral x25519 keypair, open the wallet's UL,
- * the wallet returns to our redirect_link with an encrypted payload, and we
- * decrypt it with a shared secret. connect() yields the pubkey + session;
- * signMessage() yields a base58 signature. Because the wallet round-trips through
- * the OS, each step completes on the *next* page load — we persist state in
- * sessionStorage and resolve pending steps in init().
+ * Two transports, picked automatically per wallet:
+ *   1. Injected extension provider (desktop: Phantom / Solflare / Backpack)
+ *      — direct async calls, no page reload.
+ *   2. Encrypted universal-link deeplinks (mobile) — the wallet round-trips
+ *      through the OS and each step completes on the NEXT page load.
  *
- * Requires global `nacl` (tweetnacl, loaded in index.html). base58 is inlined.
+ * Handshake state (ephemeral x25519 key, wallet session, shared secret) lives
+ * in localStorage, NOT sessionStorage: wallets routinely deliver the callback
+ * in a brand-new tab or webview, and sessionStorage does not survive that hop
+ * — that was the cause of "decrypt failed" on the website. localStorage is
+ * shared per-origin across tabs of the same browser, so the callback always
+ * finds the keys it needs. Nothing stored is a long-term secret: the x25519
+ * key is per-handshake transport encryption, the wallet session is issued by
+ * the wallet app, and both are cleared on disconnect.
+ *
+ * Requires global `nacl` (tweetnacl, served same-origin as /nacl.min.js).
  */
 (function (global) {
   'use strict';
@@ -43,7 +49,7 @@
     return s;
   }
   function b58decode(str) {
-    if (!str.length) return new Uint8Array(0);
+    if (!str || !str.length) return new Uint8Array(0);
     const bytes = [0];
     for (let i = 0; i < str.length; i++) {
       const value = MAP[str[i]];
@@ -63,25 +69,26 @@
     return new Uint8Array(bytes.reverse());
   }
 
-  // ---- wallet registry (all share Phantom's UL protocol) ---------------- //
+  // ---- wallet registry --------------------------------------------------- //
   const WALLETS = {
     phantom: { name: 'Phantom', base: 'https://phantom.app/ul/v1' },
     solflare: { name: 'Solflare', base: 'https://solflare.com/ul/v1' },
     backpack: { name: 'Backpack', base: 'https://backpack.app/ul/v1' },
   };
 
-  const SS = window.sessionStorage;
+  const LS = global.localStorage;
   const enc = new TextEncoder();
   const dec = new TextDecoder();
+  let HANDLERS = {};
 
   function save(k, v) {
-    SS.setItem('clw_' + k, v);
+    LS.setItem('clw_' + k, v);
   }
   function load(k) {
-    return SS.getItem('clw_' + k);
+    return LS.getItem('clw_' + k);
   }
   function clearStep() {
-    ['pending', 'sign_msg', 'sign_ctx'].forEach((k) => SS.removeItem('clw_' + k));
+    ['pending', 'sign_msg', 'sign_ctx'].forEach((k) => LS.removeItem('clw_' + k));
   }
 
   function redirectBase() {
@@ -95,7 +102,31 @@
     else window.location.href = url;
   }
 
-  // ---- key management --------------------------------------------------- //
+  function fail(e) {
+    clearStep();
+    HANDLERS.onError && HANDLERS.onError(e instanceof Error ? e : new Error(String(e)));
+  }
+
+  // ---- injected extension providers (desktop) ---------------------------- //
+  function extProvider(walletId) {
+    try {
+      if (walletId === 'phantom') {
+        const p = (global.phantom && global.phantom.solana) || global.solana;
+        if (p && p.isPhantom) return p;
+      }
+      if (walletId === 'solflare' && global.solflare && global.solflare.isSolflare)
+        return global.solflare;
+      if (walletId === 'backpack' && global.backpack) return global.backpack;
+    } catch (e) {}
+    return null;
+  }
+  function normSig(res) {
+    const s = res && res.signature !== undefined ? res.signature : res;
+    if (typeof s === 'string') return s; // already base58
+    return b58encode(s instanceof Uint8Array ? s : new Uint8Array(s));
+  }
+
+  // ---- key management ----------------------------------------------------- //
   function dappKeypair() {
     let sk = load('dapp_sk');
     if (sk) {
@@ -118,12 +149,27 @@
     return JSON.parse(dec.decode(out));
   }
 
-  // ---- public API ------------------------------------------------------- //
-  // connect(wallet): kicks off the UL; resolves after the callback on reload.
+  // ---- public API ---------------------------------------------------------- //
+  // connect(wallet): extension -> resolves via onConnect immediately;
+  // deeplink -> opens the UL and resolves after the callback on reload.
   function connect(walletId) {
     const w = WALLETS[walletId];
     if (!w) throw new Error('unknown wallet');
+    const ext = extProvider(walletId);
+    if (ext) {
+      save('wallet', walletId);
+      save('mode', 'ext');
+      Promise.resolve(ext.connect())
+        .then((res) => {
+          const pk = (res && res.publicKey ? res.publicKey : ext.publicKey).toString();
+          save('pubkey', pk);
+          HANDLERS.onConnect && HANDLERS.onConnect(pk);
+        })
+        .catch(fail);
+      return 'ext';
+    }
     save('wallet', walletId);
+    save('mode', 'link');
     save('pending', 'connect');
     const kp = dappKeypair();
     const params = new URLSearchParams({
@@ -133,11 +179,20 @@
       redirect_link: redirectBase() + '?clw=connect',
     });
     openLink(`${w.base}/connect?${params.toString()}`);
+    return 'link';
   }
 
-  // signMessage(message): encrypts payload, opens UL; resolves on reload.
+  // signMessage(message): extension -> signs in-page; deeplink -> UL round-trip.
   function signMessage(message, ctx) {
     const walletId = load('wallet');
+    if (load('mode') === 'ext') {
+      const ext = extProvider(walletId);
+      if (!ext) return fail(new Error('wallet extension not available'));
+      Promise.resolve(ext.signMessage(enc.encode(message), 'utf8'))
+        .then((res) => HANDLERS.onSign && HANDLERS.onSign(normSig(res), ctx || {}))
+        .catch(fail);
+      return;
+    }
     const w = WALLETS[walletId];
     const session = load('session');
     const sharedB58 = load('shared');
@@ -157,10 +212,20 @@
     openLink(`${w.base}/signMessage?${params.toString()}`);
   }
 
-  // signAndSendTransaction(txBase58): wallet signs AND broadcasts a serialized
-  // (legacy) transaction; resolves with the on-chain signature on reload.
-  function signAndSendTransaction(txBase58, ctx) {
+  // signAndSendTransaction(txBase58, ctx, txObj): wallet signs AND broadcasts.
+  // txObj (a @solana/web3.js Transaction) is used by the extension path;
+  // the deeplink path uses the base58 serialization.
+  function signAndSendTransaction(txBase58, ctx, txObj) {
     const walletId = load('wallet');
+    if (load('mode') === 'ext') {
+      const ext = extProvider(walletId);
+      if (!ext) return fail(new Error('wallet extension not available'));
+      if (!txObj) return fail(new Error('missing transaction object'));
+      Promise.resolve(ext.signAndSendTransaction(txObj))
+        .then((res) => HANDLERS.onTx && HANDLERS.onTx(normSig(res), ctx || {}))
+        .catch(fail);
+      return;
+    }
     const w = WALLETS[walletId];
     const session = load('session');
     const sharedB58 = load('shared');
@@ -181,8 +246,8 @@
   }
 
   function disconnect() {
-    ['wallet', 'session', 'shared', 'pubkey', 'pending', 'sign_ctx'].forEach((k) =>
-      SS.removeItem('clw_' + k),
+    ['wallet', 'mode', 'session', 'shared', 'pubkey', 'pending', 'sign_ctx', 'dapp_sk'].forEach(
+      (k) => LS.removeItem('clw_' + k),
     );
   }
 
@@ -190,15 +255,16 @@
     return load('pubkey');
   }
   function isConnected() {
-    return !!(load('pubkey') && load('session'));
+    return !!(load('pubkey') && (load('session') || load('mode') === 'ext'));
   }
   function listWallets() {
     return Object.entries(WALLETS).map(([id, w]) => ({ id, name: w.name }));
   }
 
-  // init(): call on boot. If we returned from a wallet callback, finish the step
-  // and invoke the matching handler. Returns the detected step name or null.
-  function init({ onConnect, onSign, onTx, onError }) {
+  // init(): call on boot. If we returned from a wallet callback, finish the
+  // step and invoke the matching handler. Returns the step name or null.
+  function init(handlers) {
+    HANDLERS = handlers || {};
     const url = new URL(location.href);
     const cb = url.searchParams.get('clw');
     if (!cb) return null;
@@ -206,48 +272,47 @@
     // clean the URL so a refresh doesn't reprocess
     history.replaceState(null, '', redirectBase());
 
-    const walletId = load('wallet');
     try {
       const errCode = url.searchParams.get('errorCode');
       if (errCode)
         throw new Error(url.searchParams.get('errorMessage') || 'wallet error ' + errCode);
 
       if (cb === 'connect') {
+        if (!load('dapp_sk'))
+          throw new Error(
+            'Connect started in another app — tap Connect once more to finish here.',
+          );
         const theirPub = url.searchParams.get('phantom_encryption_public_key');
         const data = url.searchParams.get('data');
         const nonce = url.searchParams.get('nonce');
+        if (!theirPub || !data || !nonce) throw new Error('incomplete wallet callback');
         const shared = sharedSecret(theirPub);
         save('shared', b58encode(shared));
         const info = decryptPayload(data, nonce, shared);
         save('session', info.session);
         save('pubkey', info.public_key);
         clearStep();
-        onConnect && onConnect(info.public_key);
+        HANDLERS.onConnect && HANDLERS.onConnect(info.public_key);
         return 'connect';
       }
-      if (cb === 'sign') {
+      if (cb === 'sign' || cb === 'tx') {
+        if (!load('shared'))
+          throw new Error(
+            'Signature finished in another app — tap Connect once more to finish here.',
+          );
         const data = url.searchParams.get('data');
         const nonce = url.searchParams.get('nonce');
+        if (!data || !nonce) throw new Error('incomplete wallet callback');
         const shared = b58decode(load('shared'));
         const info = decryptPayload(data, nonce, shared);
         const ctx = JSON.parse(load('sign_ctx') || '{}');
         clearStep();
-        onSign && onSign(info.signature, ctx); // signature is base58
-        return 'sign';
-      }
-      if (cb === 'tx') {
-        const data = url.searchParams.get('data');
-        const nonce = url.searchParams.get('nonce');
-        const shared = b58decode(load('shared'));
-        const info = decryptPayload(data, nonce, shared);
-        const ctx = JSON.parse(load('sign_ctx') || '{}');
-        clearStep();
-        onTx && onTx(info.signature, ctx); // on-chain tx signature (base58)
-        return 'tx';
+        if (cb === 'sign') HANDLERS.onSign && HANDLERS.onSign(info.signature, ctx);
+        else HANDLERS.onTx && HANDLERS.onTx(info.signature, ctx);
+        return cb;
       }
     } catch (e) {
-      clearStep();
-      onError && onError(e);
+      fail(e);
     }
     return cb;
   }
@@ -264,4 +329,4 @@
     b58encode,
     b58decode,
   };
-})(window);
+})(typeof window !== 'undefined' ? window : globalThis);

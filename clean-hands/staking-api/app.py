@@ -517,6 +517,11 @@ def wallet_js():
     return FileResponse(os.path.join(_WEB, "wallet.js"), media_type="application/javascript")
 
 
+@app.get("/nacl.min.js")
+def nacl_js():
+    return FileResponse(os.path.join(_WEB, "nacl.min.js"), media_type="application/javascript")
+
+
 @app.get("/glove.png")
 def glove_png():
     return FileResponse(os.path.join(os.path.dirname(_WEB), "..", "assets", "glove.png"))

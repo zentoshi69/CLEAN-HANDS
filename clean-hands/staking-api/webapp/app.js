@@ -16,7 +16,7 @@
   const tg = global.Telegram && global.Telegram.WebApp;
   const initData = (tg && tg.initData) || '';
   const startParam = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || '';
-  const SS = global.sessionStorage;
+  const SS = global.localStorage; // shared across tabs — survives wallet round-trips
   const BRAND_BG = '#F4FAFF';
   const SECONDS_PER_YEAR = 365 * 24 * 3600;
 
@@ -483,9 +483,11 @@
       tx.feePayer = owner;
       tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
       const ser = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
-      CleanWallet.signAndSendTransaction(CleanWallet.b58encode(new Uint8Array(ser)), {
-        amount: amt,
-      });
+      CleanWallet.signAndSendTransaction(
+        CleanWallet.b58encode(new Uint8Array(ser)),
+        { amount: amt },
+        tx, // extension path signs the live Transaction object directly
+      );
     } catch (e) {
       toast('Burn build failed: ' + (e.message || e));
     }
