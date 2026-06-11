@@ -98,6 +98,10 @@ if [ -z "$(get_kv SOLANA_RPC_URL)" ]; then
   ask "Solana RPC URL (Helius/Triton; Enter = public mainnet RPC for now): "
   set_kv SOLANA_RPC_URL "${REPLY:-https://api.mainnet-beta.solana.com}"
 fi
+# Season campaign defaults: wash 5% of the supply in 60 days (pump.fun = 1B)
+[ -n "$(get_kv STAKE_TOTAL_SUPPLY)" ]   || set_kv STAKE_TOTAL_SUPPLY 1000000000
+[ -n "$(get_kv SEASON_END_TS)" ]        || set_kv SEASON_END_TS "$(date -d '+60 days' +%s 2>/dev/null || date -v+60d +%s)"
+[ -n "$(get_kv SEASON_BURN_GOAL_PCT)" ] || set_kv SEASON_BURN_GOAL_PCT 5
 
 prompt_token() {  # prompt_token KEY LABEL — a skip or bad token must never abort the run
   local key="$1" label="$2" tok uname

@@ -337,6 +337,17 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--paper);color:va
           <button class="btn btn-fire" id="burnInAppBtn">🔥 Burn in-app</button>
         </div>
       </div>
+      <div class="card panel hide" id="seasonPanel">
+        <h3>🏆 <span id="seasonName">Season 1 — The Big Wash</span></h3>
+        <p class="desc" id="seasonDesc">Burn the supply clean — together.</p>
+        <div class="row"><span class="name">Community progress</span><span class="v" id="seasonPct">0%</span></div>
+        <div class="gauge"><i id="seasonBar"></i></div>
+        <div class="stats" style="margin:10px 0 0">
+          <div class="card stat"><div class="k" id="seasonDays">—</div><div class="l">Days left</div></div>
+          <div class="card stat"><div class="k" id="seasonGoal">—</div><div class="l">Goal</div></div>
+          <div class="card stat"><div class="k" id="seasonWashed">—</div><div class="l">Washed</div></div>
+        </div>
+      </div>
       <div class="card panel" id="supplyPanel">
         <h3>Supply washed</h3>
         <p class="desc">Every burn is on-chain and forever. Removed from supply so far:</p>

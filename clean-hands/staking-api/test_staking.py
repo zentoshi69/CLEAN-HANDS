@@ -480,7 +480,26 @@ def test_ref_codes():
     with _db.db() as conn:
         assert _db.get_staker(conn, ws)["referred_by"] is None
         assert _db.wallet_by_ref_code(conn, own) == ws
-    print("ref codes ✓")
+
+    # /g/<code> landing: branded OG page for a real code, 404 for junk
+    g = c.get(f"/g/{code.lower()}")  # case-insensitive
+    assert g.status_code == 200 and code in g.text and "og:image" in g.text
+    assert c.get("/g/NOPE99").status_code == 404
+    assert c.get("/g/<script>").status_code in (404, 422)
+
+    # season campaign appears in /api/stats when configured
+    import time as _t
+
+    os.environ["STAKE_TOTAL_SUPPLY"] = "1000000000"
+    os.environ["SEASON_END_TS"] = str(int(_t.time()) + 60 * 86400)
+    try:
+        se = c.get("/api/stats").json().get("season")
+        assert se and se["goal_pct"] == 5.0 and se["goal_tokens"] == 50_000_000.0
+        assert 1 <= se["days_left"] <= 60 and 0 <= se["progress_pct"] <= 100
+    finally:
+        os.environ.pop("SEASON_END_TS", None)
+    assert "season" not in c.get("/api/stats").json()
+    print("ref codes + glove links + season ✓")
 
 
 if __name__ == "__main__":
