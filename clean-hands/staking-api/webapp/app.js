@@ -402,7 +402,12 @@
     $('wallet').classList.toggle('live', !!pk && !!TOKEN);
     if (pk && CONFIG.botUsername)
       $('refText').textContent =
-        't.me/' + CONFIG.botUsername + '/' + (CONFIG.appShortName || 'app') + '?startapp=' + pk;
+        't.me/' +
+        CONFIG.botUsername +
+        '/' +
+        (CONFIG.appShortName || 'app') +
+        '?startapp=' +
+        (p.ref_code || pk);
     seedAccrual(p);
     paintPending(accrual.base);
     updatePortfolio();
@@ -699,14 +704,18 @@
     document.body.appendChild(s);
   };
   function refLink() {
-    const pk = CleanWallet.currentPubkey() || (PROFILE && PROFILE.wallet) || '';
+    const id =
+      (PROFILE && PROFILE.ref_code) ||
+      CleanWallet.currentPubkey() ||
+      (PROFILE && PROFILE.wallet) ||
+      '';
     return (
       'https://t.me/' +
       ((CONFIG && CONFIG.botUsername) || 'YOUR_BOT') +
       '/' +
       ((CONFIG && CONFIG.appShortName) || 'app') +
       '?startapp=' +
-      pk
+      id
     );
   }
   $('refChip').onclick = () => {
@@ -716,7 +725,11 @@
   $('shareBtn').onclick = () => {
     if (!requireLogin()) return;
     const url = refLink();
-    const text = 'Wash your bags with $CLEAN 🧤✨ — stake with me';
+    const code = (PROFILE && PROFILE.ref_code) || '';
+    const text =
+      '🧤 Wash your bags with $CLEAN\n' +
+      'Soft staking — tokens never leave your wallet. Burn to boost, invite to multiply.' +
+      (code ? '\nGlove code: ' + code : '');
     haptic('light');
     if (tg && tg.openTelegramLink)
       tg.openTelegramLink(

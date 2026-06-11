@@ -18,7 +18,7 @@ DB_PATH = os.environ.get("STAKE_DB", os.path.join(os.path.dirname(__file__), "st
 # --------------------------------------------------------------------------- #
 DECIMALS = int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
 BASE = 10**DECIMALS
-SCHEMA_VERSION = 3  # bumped by migrations
+SCHEMA_VERSION = 4  # bumped by migrations
 
 
 def to_base(ui_amount: float) -> int:
@@ -104,7 +104,8 @@ CREATE TABLE IF NOT EXISTS stakers (
     balance_ts BIGINT NOT NULL DEFAULT 0, stake_start_ts BIGINT NOT NULL DEFAULT 0,
     last_accrual_ts BIGINT NOT NULL DEFAULT 0, accrued BIGINT NOT NULL DEFAULT 0,
     claimed_total BIGINT NOT NULL DEFAULT 0, total_burned BIGINT NOT NULL DEFAULT 0,
-    referred_by TEXT, created_at BIGINT NOT NULL);
+    referred_by TEXT, ref_code TEXT UNIQUE, created_at BIGINT NOT NULL);
+ALTER TABLE stakers ADD COLUMN IF NOT EXISTS ref_code TEXT UNIQUE;
 CREATE TABLE IF NOT EXISTS burns (
     signature TEXT PRIMARY KEY, wallet TEXT NOT NULL, amount BIGINT NOT NULL, ts BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS ledger (
@@ -248,6 +249,13 @@ def _migrate(conn) -> None:
         )
         conn.execute("PRAGMA user_version = 3")
         conn.commit()
+        ver = 3
+    if ver < 4:
+        # v4: short shareable referral codes (lazily generated per staker).
+        conn.execute("ALTER TABLE stakers ADD COLUMN ref_code TEXT")
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_stakers_refcode ON stakers(ref_code)")
+        conn.execute("PRAGMA user_version = 4")
+        conn.commit()
 
 
 def get_staker(conn, wallet: str):
@@ -292,6 +300,41 @@ def active_referrals(conn, wallet: str) -> int:
         "SELECT COUNT(*) AS n FROM stakers WHERE referred_by=? AND recorded_staked > 0",
         (wallet,),
     ).fetchone()["n"]
+
+
+# No 0/O/1/I/L — codes survive being read aloud or hand-typed.
+_REF_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+
+
+def ref_code(conn, wallet: str) -> str | None:
+    """The staker's short shareable referral code, generated lazily once."""
+    import secrets as _secrets
+
+    row = conn.execute("SELECT ref_code FROM stakers WHERE wallet=?", (wallet,)).fetchone()
+    if row is None:
+        return None
+    if row["ref_code"]:
+        return row["ref_code"]
+    for _ in range(8):  # UNIQUE collision at 6 chars is ~1e-9; retry regardless
+        code = "".join(_secrets.choice(_REF_ALPHABET) for _ in range(6))
+        try:
+            conn.execute(
+                "UPDATE stakers SET ref_code=? WHERE wallet=? AND ref_code IS NULL",
+                (code, wallet),
+            )
+            conn.commit()
+        except Exception:  # noqa: BLE001 — unique race with another worker
+            conn.rollback()
+            continue
+        row = conn.execute("SELECT ref_code FROM stakers WHERE wallet=?", (wallet,)).fetchone()
+        if row and row["ref_code"]:
+            return row["ref_code"]
+    return None
+
+
+def wallet_by_ref_code(conn, code: str) -> str | None:
+    row = conn.execute("SELECT wallet FROM stakers WHERE ref_code=?", (code,)).fetchone()
+    return row["wallet"] if row else None
 
 
 def burn_seen(conn, signature: str) -> bool:
