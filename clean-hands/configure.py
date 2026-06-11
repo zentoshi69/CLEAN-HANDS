@@ -62,7 +62,8 @@ def configure(label: str, token: str, *, name, short, desc, commands, admin_righ
             )
             print(f"    ✓ menu button → {menu_url}")
     except Exception as e:  # noqa: BLE001
-        print(f"    ✗ {label}: {e}", file=sys.stderr)
+        # httpx errors embed the request URL, which contains the bot token
+        print(f"    ✗ {label}: {str(e).replace(token, '***')}", file=sys.stderr)
 
 
 def cmds(*pairs):

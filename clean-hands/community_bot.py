@@ -232,6 +232,18 @@ async def cmd_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --------------------------------------------------------------------------- #
 #  MEME GENERATOR (pure function, unit-testable)                               #
 # --------------------------------------------------------------------------- #
+MAX_PHOTO_BYTES = 8 * 1024 * 1024  # Telegram-compressed photos are far smaller
+MAX_MEME_TEXT = 200  # per caption block
+
+
+async def _download_photo(context, photo) -> bytes | None:
+    """Fetch a replied-to photo, refusing anything over MAX_PHOTO_BYTES."""
+    if photo.file_size and photo.file_size > MAX_PHOTO_BYTES:
+        return None
+    file = await context.bot.get_file(photo.file_id)
+    return bytes(await file.download_as_bytearray())
+
+
 def make_meme(img_bytes: bytes, top: str, bottom: str) -> bytes:
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     if img.width > 1080:  # normalise huge uploads
@@ -283,12 +295,14 @@ async def cmd_meme(update: Update, context: ContextTypes.DEFAULT_TYPE):
         top, bottom = (s.strip() for s in raw.split("|", 1))
     else:
         top, bottom = raw.strip(), ""
+    top, bottom = top[:MAX_MEME_TEXT], bottom[:MAX_MEME_TEXT]
     photo = reply.photo[-1]  # highest resolution
-    file = await context.bot.get_file(photo.file_id)
-    buf = bytearray()
-    buf += await file.download_as_bytearray()
+    buf = await _download_photo(context, photo)
+    if buf is None:
+        await update.message.reply_text("That image is too large to meme.")
+        return
     try:
-        meme_png = make_meme(bytes(buf), top, bottom)
+        meme_png = make_meme(buf, top, bottom)
     except Exception as e:  # noqa: BLE001
         log.warning("meme failed: %s", e)
         await update.message.reply_text("Couldn't make that meme.")
@@ -358,8 +372,10 @@ async def cmd_glove(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 scale = float(a)
             except ValueError:
                 pass
-    file = await context.bot.get_file(reply.photo[-1].file_id)
-    raw = bytes(await file.download_as_bytearray())
+    raw = await _download_photo(context, reply.photo[-1])
+    if raw is None:
+        await update.message.reply_text("That image is too large to glove.")
+        return
     try:
         out = add_glove(raw, position, scale)
     except Exception as e:  # noqa: BLE001
@@ -388,8 +404,10 @@ async def cmd_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not (reply and reply.photo):
         await update.message.reply_text("Reply to a photo with /sticker to convert it.")
         return
-    file = await context.bot.get_file(reply.photo[-1].file_id)
-    raw = bytes(await file.download_as_bytearray())
+    raw = await _download_photo(context, reply.photo[-1])
+    if raw is None:
+        await update.message.reply_text("That image is too large to convert.")
+        return
     try:
         webp = to_sticker_webp(raw)
     except Exception as e:  # noqa: BLE001

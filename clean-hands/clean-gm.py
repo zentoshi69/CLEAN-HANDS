@@ -62,11 +62,16 @@ async def main() -> int:
     if not (TOKEN and CHAT):
         print("set TG_ALERTS_TOKEN (or TG_COMMUNITY_TOKEN) + TG_ALERTS_CHAT", file=sys.stderr)
         return 2
-    async with httpx.AsyncClient(timeout=15) as c:
-        await c.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={"chat_id": CHAT, "text": msg, "parse_mode": "HTML", "disable_web_page_preview": True},
-        )
+    try:
+        async with httpx.AsyncClient(timeout=15) as c:
+            await c.post(
+                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                json={"chat_id": CHAT, "text": msg, "parse_mode": "HTML", "disable_web_page_preview": True},
+            )
+    except Exception as e:  # noqa: BLE001
+        # httpx errors embed the request URL, which contains the bot token
+        print(f"post failed: {str(e).replace(TOKEN, '***')}", file=sys.stderr)
+        return 1
     print("posted GM")
     return 0
 

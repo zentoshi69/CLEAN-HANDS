@@ -1,4 +1,11 @@
-# 🧤 CLEAN Mini App — staking · leaderboard · referrals
+# 🧤 CLEAN Mini App — points DEMO (not the production staking app)
+
+> ⚠️ **This is a standalone demo with its own database and points economy.**
+> The production Mini App — the one the website shares its backend with — is
+> bundled inside `../staking-api/webapp/` and served by the staking API at `/`.
+> `deploy/Caddyfile` routes ONLY to the staking API, so this server is never
+> reachable in the standard deployment. `install-systemd.sh` skips it unless
+> you pass `WITH_MINIAPP=1`.
 
 A Telegram Mini App with an **off-chain points economy**:
 
