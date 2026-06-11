@@ -52,6 +52,16 @@ BALANCE_TTL = int(os.environ.get("STAKE_BALANCE_TTL", "300"))  # re-check chain 
 # staking (the stake_start_ts clock, which survives re-stakes but resets on
 # unstake). Unstaking forfeits pending rewards. 0 disables the lock.
 CLAIM_LOCK_DAYS = int(os.environ.get("STAKE_CLAIM_LOCK_DAYS", "90"))
+
+
+# Payout setup window + claim fee are read per-request so operators can tune
+# them with just a restart (and tests can toggle them).
+def _payout_setup_days() -> int:
+    return int(os.environ.get("STAKE_PAYOUT_SETUP_DAYS", "3") or 0)
+
+
+def _claim_fee_usd() -> float:
+    return float(os.environ.get("STAKE_CLAIM_FEE_USD", "5") or 0)
 # Explicit allow-list so your website's browser can call this API cross-origin.
 # Comma-separated origins, e.g. "https://clean.fun,https://app.clean.fun".
 # The Telegram Mini App webview sends requests from the app's own HTTPS origin.
@@ -146,6 +156,7 @@ def _accrue(conn, wallet: str) -> None:
 def _profile(conn, wallet: str) -> dict:
     row = db.get_staker(conn, wallet)
     eff_base, secs, refs, apr = _apr_for(conn, wallet, row)
+    vest_secs = int(time.time()) - row["stake_start_ts"] if row["stake_start_ts"] else 0
     rank = conn.execute(
         "SELECT COUNT(*)+1 AS r FROM stakers WHERE recorded_staked > ?",
         (row["recorded_staked"],),
@@ -166,19 +177,30 @@ def _profile(conn, wallet: str) -> dict:
         "rank": rank,
         "ref_code": db.ref_code(conn, wallet),
         "claim_lock_days": CLAIM_LOCK_DAYS,
+        # vesting clock: raw stake_start_ts, independent of effective stake —
+        # must match what the /api/claim and /api/payout gates enforce
         "claim_locked": bool(
             CLAIM_LOCK_DAYS > 0
-            and (not row["stake_start_ts"] or secs < CLAIM_LOCK_DAYS * 86400)
+            and (not row["stake_start_ts"] or vest_secs < CLAIM_LOCK_DAYS * 86400)
         ),
         "claim_unlock_in_days": (
             0
             if CLAIM_LOCK_DAYS <= 0
             else (
-                -(-(CLAIM_LOCK_DAYS * 86400 - secs) // 86400)
-                if row["stake_start_ts"] and secs < CLAIM_LOCK_DAYS * 86400
+                -(-(CLAIM_LOCK_DAYS * 86400 - vest_secs) // 86400)
+                if row["stake_start_ts"] and vest_secs < CLAIM_LOCK_DAYS * 86400
                 else (0 if row["stake_start_ts"] else CLAIM_LOCK_DAYS)
             )
         ),
+        "payout_wallet": row["payout_wallet"],
+        "payout_confirmed": bool(row["payout_confirmed_ts"]),
+        # the setup window opens N days before unlock (or once unlocked)
+        "payout_setup_open": bool(
+            _payout_setup_days() > 0
+            and row["stake_start_ts"]
+            and vest_secs >= max(0, (CLAIM_LOCK_DAYS - _payout_setup_days())) * 86400
+        ),
+        "claim_fee_usd": _claim_fee_usd(),
         "apr": apr.to_dict(),
     }
 
@@ -201,6 +223,11 @@ class Tok(BaseModel):
 class BurnBody(BaseModel):
     token: str
     signature: str
+
+
+class PayoutBody(BaseModel):
+    token: str
+    address: str | None = None  # default: the staking wallet itself
 
 
 class TgStart(BaseModel):
@@ -333,6 +360,40 @@ async def api_unstake(body: Tok, request: Request):
         return _profile(conn, wallet)
 
 
+@app.post("/api/payout")
+def api_payout(body: PayoutBody, request: Request):
+    """Confirm where claim payouts go. Opens STAKE_PAYOUT_SETUP_DAYS before the
+    claim unlock (and stays open after). Wallet-session gated; the address
+    defaults to the staking wallet itself."""
+    wallet = _require(body.token)["w"]
+    ratelimit.hit(request, "write", extra_key=wallet)
+    with db.db() as conn:
+        row = db.get_staker(conn, wallet)
+        if not row:
+            raise HTTPException(404, "unknown wallet")
+        if _payout_setup_days() > 0 and CLAIM_LOCK_DAYS > 0:
+            start = row["stake_start_ts"] or 0
+            secs = int(time.time()) - start if start else 0
+            open_from = max(0, (CLAIM_LOCK_DAYS - _payout_setup_days())) * 86400
+            if not start or secs < open_from:
+                left = -(-(open_from - secs) // 86400) if start else CLAIM_LOCK_DAYS
+                raise HTTPException(
+                    400,
+                    f"payout setup opens {_payout_setup_days()} days before your claim "
+                    f"unlocks — {left}d to go",
+                )
+        addr = (body.address or wallet).strip()
+        if not auth.is_valid_wallet(addr):
+            raise HTTPException(400, "invalid payout wallet address")
+        conn.execute(
+            "UPDATE stakers SET payout_wallet=?, payout_confirmed_ts=? WHERE wallet=?",
+            (addr, int(time.time()), wallet),
+        )
+        conn.commit()
+        db.record(conn, wallet, "payout_set", 0, detail=addr)
+        return _profile(conn, wallet)
+
+
 @app.post("/api/claim")
 async def api_claim(body: Tok, request: Request):
     wallet = _require(body.token)["w"]
@@ -361,26 +422,54 @@ async def api_claim(body: Tok, request: Request):
                     400,
                     f"rewards unlock after {CLAIM_LOCK_DAYS} days of staking — {left}d to go",
                 )
+        # payout destination must be confirmed (window opens pre-unlock)
+        if _payout_setup_days() > 0 and not row["payout_confirmed_ts"]:
+            raise HTTPException(
+                400,
+                "confirm your payout wallet first — setup opens "
+                f"{_payout_setup_days()} days before your claim unlocks",
+            )
         amount = row["accrued"]
         if amount <= 0:
             raise HTTPException(400, "nothing to claim")
+        # $ claim fee, charged in $CLEAN at the live price and DEDUCTED from the
+        # payout (non-custodial: no extra payment transaction needed).
+        fee_base = 0
+        fee_usd = _claim_fee_usd()
+        if fee_usd > 0:
+            p = market.summary(await market.best_pair())
+            price = float(p["price_usd"]) if p and p.get("price_usd") else 0.0
+            if price <= 0:
+                raise HTTPException(503, "claim fee pricing unavailable — try again shortly")
+            fee_base = int(-(-(fee_usd / price) * db.BASE // 1))  # ceil in base units
+            if amount <= fee_base:
+                raise HTTPException(
+                    400,
+                    f"pending rewards must exceed the ${fee_usd:g} claim fee "
+                    f"({db.to_ui(fee_base)} $CLEAN right now)",
+                )
+        net = amount - fee_base
         # Atomic compare-and-swap: only one request can flip THIS exact accrued
         # amount to 0, so a claim can never be double-counted or double-paid even
-        # under concurrent submits.
+        # under concurrent submits. claimed_total counts the NET payout.
         cur = conn.execute(
             "UPDATE stakers SET accrued=0, claimed_total = claimed_total + ? "
             "WHERE wallet=? AND accrued=?",
-            (amount, wallet, amount),
+            (net, wallet, amount),
         )
         if cur.rowcount != 1:
             raise HTTPException(409, "claim already in progress")
         # Manual payout (PAYOUT_MODE=manual): record a 'requested' claim. An
         # operator/cron pays it from the treasury and marks it paid with the tx.
         # No funds move here and NO private key lives on the server.
-        db.create_claim(conn, wallet, amount, status="requested")
-        db.record(conn, wallet, "claim", amount)
+        db.create_claim(conn, wallet, net, status="requested")
+        db.record(conn, wallet, "claim", net)
+        if fee_base > 0:
+            db.record(conn, wallet, "fee", fee_base, detail=f"claim fee ${fee_usd:g}")
         return {
-            "claimed": db.to_ui(amount),
+            "claimed": db.to_ui(net),
+            "fee": db.to_ui(fee_base),
+            "fee_usd": fee_usd,
             "status": "requested",
             "profile": _profile(conn, wallet),
         }
@@ -538,6 +627,8 @@ def api_economics():
             "burn_apr_per_unit": econ.BURN_APR_PER_UNIT,
             "burn_cap_apr": econ.BURN_CAP_APR,
             "claim_lock_days": CLAIM_LOCK_DAYS,
+            "claim_fee_usd": _claim_fee_usd(),
+            "payout_setup_days": _payout_setup_days(),
             "botUsername": os.environ.get("MINIAPP_BOT_USERNAME", "").lstrip("@"),
             "appShortName": os.environ.get("MINIAPP_SHORT_NAME", "app"),
             # Browser-safe RPC for the in-app swap widget. NEVER expose the paid

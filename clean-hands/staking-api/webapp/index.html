@@ -278,6 +278,13 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--paper);color:va
         </div>
         <button class="btn btn-shine" id="claimBtn">Claim rewards (<span id="claimAmt">0.00</span>)</button>
         <p class="muted hide" id="lockNote" style="margin-top:10px;text-align:center"></p>
+        <div id="payoutSetup" class="hide" style="margin-top:12px">
+          <p class="desc" style="margin-bottom:8px">💳 <b>Payout setup is open.</b> Confirm where your rewards get sent — required before you can claim.</p>
+          <div class="field" style="margin:0 0 8px">
+            <div class="input"><input id="payoutAddr" placeholder="Payout wallet (empty = this wallet)" autocomplete="off"/></div>
+          </div>
+          <button class="btn btn-ghost" id="payoutBtn">Confirm payout wallet</button>
+        </div>
         <p class="live-note hide" id="rateNote"></p>
       </div>
       <div class="card panel">

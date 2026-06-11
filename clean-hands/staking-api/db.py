@@ -18,7 +18,7 @@ DB_PATH = os.environ.get("STAKE_DB", os.path.join(os.path.dirname(__file__), "st
 # --------------------------------------------------------------------------- #
 DECIMALS = int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
 BASE = 10**DECIMALS
-SCHEMA_VERSION = 4  # bumped by migrations
+SCHEMA_VERSION = 5  # bumped by migrations
 
 
 def to_base(ui_amount: float) -> int:
@@ -104,8 +104,11 @@ CREATE TABLE IF NOT EXISTS stakers (
     balance_ts BIGINT NOT NULL DEFAULT 0, stake_start_ts BIGINT NOT NULL DEFAULT 0,
     last_accrual_ts BIGINT NOT NULL DEFAULT 0, accrued BIGINT NOT NULL DEFAULT 0,
     claimed_total BIGINT NOT NULL DEFAULT 0, total_burned BIGINT NOT NULL DEFAULT 0,
-    referred_by TEXT, ref_code TEXT UNIQUE, created_at BIGINT NOT NULL);
+    referred_by TEXT, ref_code TEXT UNIQUE, payout_wallet TEXT,
+    payout_confirmed_ts BIGINT NOT NULL DEFAULT 0, created_at BIGINT NOT NULL);
 ALTER TABLE stakers ADD COLUMN IF NOT EXISTS ref_code TEXT UNIQUE;
+ALTER TABLE stakers ADD COLUMN IF NOT EXISTS payout_wallet TEXT;
+ALTER TABLE stakers ADD COLUMN IF NOT EXISTS payout_confirmed_ts BIGINT NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS burns (
     signature TEXT PRIMARY KEY, wallet TEXT NOT NULL, amount BIGINT NOT NULL, ts BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS ledger (
@@ -255,6 +258,13 @@ def _migrate(conn) -> None:
         conn.execute("ALTER TABLE stakers ADD COLUMN ref_code TEXT")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_stakers_refcode ON stakers(ref_code)")
         conn.execute("PRAGMA user_version = 4")
+        conn.commit()
+        ver = 4
+    if ver < 5:
+        # v5: payout wallet confirmation (set in the pre-unlock window).
+        conn.execute("ALTER TABLE stakers ADD COLUMN payout_wallet TEXT")
+        conn.execute("ALTER TABLE stakers ADD COLUMN payout_confirmed_ts INTEGER NOT NULL DEFAULT 0")
+        conn.execute("PRAGMA user_version = 5")
         conn.commit()
 
 

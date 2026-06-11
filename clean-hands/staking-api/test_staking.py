@@ -6,6 +6,10 @@ os.environ.setdefault("DEFAULT_TOKEN_MINT", "CLEANmint11111111111111111111111111
 os.environ["STAKE_DB"] = tempfile.mktemp(suffix=".db")
 os.environ["STAKE_SERVER_SECRET"] = "test-secret"
 os.environ["STAKE_ADMIN_TOKEN"] = "admin-test-secret"
+# payout window + claim fee are exercised by their dedicated group; off here so
+# the rest of the suite tests each mechanism in isolation
+os.environ["STAKE_PAYOUT_SETUP_DAYS"] = "0"
+os.environ["STAKE_CLAIM_FEE_USD"] = "0"
 
 import economics as econ
 import auth
@@ -563,6 +567,95 @@ def test_claim_lock_and_forfeit():
     print("claim lock + unstake forfeit ✓")
 
 
+def test_payout_and_fee():
+    """Payout-wallet setup window (opens pre-unlock) + $5 claim fee in $CLEAN."""
+    import app, db as _db, auth as _auth, market as _mkt
+    import time as _t
+    from fastapi.testclient import TestClient
+
+    c = TestClient(app.app)
+    sk = SigningKey.generate()
+    wallet = base58.b58encode(bytes(sk.verify_key)).decode()
+    nonce = c.get("/api/nonce", params={"wallet": wallet}).json()["nonce"]
+    sig = base58.b58encode(sk.sign(_auth.login_message(wallet, nonce).encode()).signature).decode()
+    token = c.post("/api/login", json={"wallet": wallet, "signature": sig, "nonce": nonce}).json()["token"]
+
+    os.environ["STAKE_PAYOUT_SETUP_DAYS"] = "3"
+    os.environ["STAKE_CLAIM_FEE_USD"] = "5"
+    real_best_pair = _mkt.best_pair
+
+    async def fake_pair(mint=None):
+        return {"baseToken": {"symbol": "CLEAN"}, "priceUsd": "0.05"}  # fee = 100 $CLEAN
+
+    _mkt.best_pair = fake_pair
+    now = int(_t.time())
+    try:
+        # day 30 of 90: window closed -> payout setup refused, claim locked
+        with _db.db() as conn:
+            conn.execute(
+                "UPDATE stakers SET accrued=?, stake_start_ts=? WHERE wallet=?",
+                (150_000_000, now - 30 * 86400, wallet),
+            )
+            conn.commit()
+        r = c.post("/api/payout", json={"token": token})
+        assert r.status_code == 400 and "opens" in r.json()["detail"], r.text
+        p = c.post("/api/profile", json={"token": token}).json()
+        assert p["payout_setup_open"] is False and p["claim_fee_usd"] == 5.0
+
+        # day 88: window open -> confirm a CUSTOM payout address
+        other = base58.b58encode(bytes(SigningKey.generate().verify_key)).decode()
+        with _db.db() as conn:
+            conn.execute("UPDATE stakers SET stake_start_ts=? WHERE wallet=?", (now - 88 * 86400, wallet))
+            conn.commit()
+        p = c.post("/api/profile", json={"token": token}).json()
+        assert p["payout_setup_open"] is True and p["payout_confirmed"] is False
+        assert c.post("/api/payout", json={"token": token, "address": "junk"}).status_code == 400
+        p = c.post("/api/payout", json={"token": token, "address": other}).json()
+        assert p["payout_confirmed"] is True and p["payout_wallet"] == other
+
+        # day 91: claim -> $5 fee at $0.05 = 100 $CLEAN deducted; net 50 paid
+        with _db.db() as conn:
+            conn.execute("UPDATE stakers SET stake_start_ts=? WHERE wallet=?", (now - 91 * 86400, wallet))
+            conn.commit()
+        r = c.post("/api/claim", json={"token": token}).json()
+        assert r["claimed"] == 50.0 and r["fee"] == 100.0 and r["fee_usd"] == 5.0, r
+        with _db.db() as conn:
+            fee = conn.execute(
+                "SELECT COALESCE(SUM(amount),0) AS s FROM ledger WHERE wallet=? AND action='fee'",
+                (wallet,),
+            ).fetchone()["s"]
+            assert fee == 100_000_000, fee
+        # pending below the fee -> refused with the fee amount in the message
+        with _db.db() as conn:
+            conn.execute("UPDATE stakers SET accrued=? WHERE wallet=?", (50_000_000, wallet))
+            conn.commit()
+        r = c.post("/api/claim", json={"token": token})
+        assert r.status_code == 400 and "fee" in r.json()["detail"], r.text
+
+        # a fresh unlocked wallet WITHOUT payout confirmation cannot claim
+        sk2 = SigningKey.generate()
+        w2 = base58.b58encode(bytes(sk2.verify_key)).decode()
+        n2 = c.get("/api/nonce", params={"wallet": w2}).json()["nonce"]
+        s2 = base58.b58encode(sk2.sign(_auth.login_message(w2, n2).encode()).signature).decode()
+        t2 = c.post("/api/login", json={"wallet": w2, "signature": s2, "nonce": n2}).json()["token"]
+        with _db.db() as conn:
+            conn.execute(
+                "UPDATE stakers SET accrued=?, stake_start_ts=? WHERE wallet=?",
+                (200_000_000, now - 91 * 86400, w2),
+            )
+            conn.commit()
+        r = c.post("/api/claim", json={"token": t2})
+        assert r.status_code == 400 and "payout" in r.json()["detail"], r.text
+        # economics exposes both knobs
+        e = c.get("/api/economics").json()
+        assert e["claim_fee_usd"] == 5.0 and e["payout_setup_days"] == 3
+    finally:
+        _mkt.best_pair = real_best_pair
+        os.environ["STAKE_PAYOUT_SETUP_DAYS"] = "0"
+        os.environ["STAKE_CLAIM_FEE_USD"] = "0"
+    print("payout setup window + $5 claim fee ✓")
+
+
 if __name__ == "__main__":
     test_economics()
     test_auth_signature()
@@ -576,6 +669,7 @@ if __name__ == "__main__":
     test_reconcile()
     test_ref_codes()
     test_claim_lock_and_forfeit()
+    test_payout_and_fee()
     test_rate_limit()  # exhausts the nonce bucket — keep it after nonce users
     test_relay()
     test_tg_handshake()
