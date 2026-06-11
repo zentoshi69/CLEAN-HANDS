@@ -339,6 +339,106 @@ def test_relay():
     print("wallet relay handoff ✓")
 
 
+def test_tg_handshake():
+    """Full server-side Telegram wallet handshake: start -> connect cb -> sign cb
+    -> poll, simulating the wallet's crypto exactly as Phantom would."""
+    import app, auth as _a
+    from fastapi.testclient import TestClient
+    import json as _json, time as _time, hmac as _hmac, hashlib as _hashlib, urllib.parse as _url
+    import re as _re
+    from nacl.public import PrivateKey, PublicKey, Box
+    from nacl.utils import random as _rnd
+
+    c = TestClient(app.app)
+    TOKEN = os.environ["TG_COMMUNITY_TOKEN"]
+
+    def init_data(uid):
+        pairs = {"user": _json.dumps({"id": uid, "username": "u" + str(uid)}), "auth_date": str(int(_time.time()))}
+        dcs = "\n".join(f"{k}={pairs[k]}" for k in sorted(pairs))
+        secret = _hmac.new(b"WebAppData", TOKEN.encode(), _hashlib.sha256).digest()
+        pairs["hash"] = _hmac.new(secret, dcs.encode(), _hashlib.sha256).hexdigest()
+        return _url.urlencode(pairs)
+
+    wsk = SigningKey.generate()
+    wallet = base58.b58encode(bytes(wsk.verify_key)).decode()
+    idata = init_data(424242)
+
+    # 1) start -> ephemeral server pubkey
+    r = c.post("/api/tg/start", json={"initData": idata, "wallet": "phantom"})
+    assert r.status_code == 200, r.text
+    sid, dapp_pub = r.json()["sid"], r.json()["dapp_pub"]
+    # bad initData is refused
+    assert c.post("/api/tg/start", json={"initData": "garbage", "wallet": "phantom"}).status_code == 401
+
+    # 2) wallet side: shared box, encrypt the connect reply, hit the connect cb
+    wkx = PrivateKey.generate()
+    shared = Box(wkx, PublicKey(base58.b58decode(dapp_pub)))
+    n1 = _rnd(24)
+    ct1 = shared.encrypt(_json.dumps({"public_key": wallet, "session": "wsess"}).encode(), n1).ciphertext
+    r2 = c.get(
+        f"/api/tg/connect/{sid}",
+        params={
+            "phantom_encryption_public_key": base58.b58encode(bytes(wkx.public_key)).decode(),
+            "data": base58.b58encode(ct1).decode(),
+            "nonce": base58.b58encode(n1).decode(),
+        },
+    )
+    assert r2.status_code == 200 and "signMessage" in r2.text
+    ul = _re.search(r"(https://phantom\.app/ul/v1/signMessage\?[^\"']+)", r2.text).group(1)
+    q = _url.parse_qs(_url.urlparse(ul).query)
+    info = _json.loads(shared.decrypt(base58.b58decode(q["payload"][0]), base58.b58decode(q["nonce"][0])))
+    msg_bytes = base58.b58decode(info["message"])  # exact bytes the server wants signed
+
+    # 3) wallet signs the message, encrypts the signature, hits the sign cb
+    sig = base58.b58encode(wsk.sign(msg_bytes).signature).decode()
+    n2 = _rnd(24)
+    ct2 = shared.encrypt(_json.dumps({"signature": sig}).encode(), n2).ciphertext
+    r3 = c.get(
+        f"/api/tg/sign/{sid}",
+        params={"data": base58.b58encode(ct2).decode(), "nonce": base58.b58encode(n2).decode()},
+    )
+    assert r3.status_code == 200 and "Signed" in r3.text
+
+    # 4) the webview polls and gets a working session + profile
+    j = c.post("/api/tg/poll", json={"initData": idata, "sid": sid}).json()
+    assert j["status"] == "done" and j["token"] and j["profile"]["wallet"] == wallet
+    assert c.post("/api/profile", json={"token": j["token"]}).status_code == 200
+    # recovery after a localStorage wipe: poll with NO sid resolves via tglast
+    assert c.post("/api/tg/poll", json={"initData": idata}).json()["status"] == "done"
+    # another Telegram user can never read this handshake
+    assert c.post("/api/tg/poll", json={"initData": init_data(999999), "sid": sid}).json()["status"] == "pending"
+
+    # a forged signature (wrong key over the right message) is rejected
+    r = c.post("/api/tg/start", json={"initData": init_data(515151), "wallet": "phantom"})
+    sid2, dapp2 = r.json()["sid"], r.json()["dapp_pub"]
+    w2 = SigningKey.generate()
+    wallet2 = base58.b58encode(bytes(w2.verify_key)).decode()
+    sh2 = Box(PrivateKey.generate(), PublicKey(base58.b58decode(dapp2)))
+    # need sh2's wallet-side pubkey to match what we encrypt with — rebuild cleanly
+    wkx2 = PrivateKey.generate()
+    sh2 = Box(wkx2, PublicKey(base58.b58decode(dapp2)))
+    nn = _rnd(24)
+    cc = sh2.encrypt(_json.dumps({"public_key": wallet2, "session": "x"}).encode(), nn).ciphertext
+    rc = c.get(
+        f"/api/tg/connect/{sid2}",
+        params={
+            "phantom_encryption_public_key": base58.b58encode(bytes(wkx2.public_key)).decode(),
+            "data": base58.b58encode(cc).decode(),
+            "nonce": base58.b58encode(nn).decode(),
+        },
+    )
+    ul2 = _re.search(r"(https://phantom\.app/ul/v1/signMessage\?[^\"']+)", rc.text).group(1)
+    q2 = _url.parse_qs(_url.urlparse(ul2).query)
+    info2 = _json.loads(sh2.decrypt(base58.b58decode(q2["payload"][0]), base58.b58decode(q2["nonce"][0])))
+    bad_sig = base58.b58encode(SigningKey.generate().sign(base58.b58decode(info2["message"])).signature).decode()
+    n3 = _rnd(24)
+    cc3 = sh2.encrypt(_json.dumps({"signature": bad_sig}).encode(), n3).ciphertext
+    rs = c.get(f"/api/tg/sign/{sid2}", params={"data": base58.b58encode(cc3).decode(), "nonce": base58.b58encode(n3).decode()})
+    assert "Signed" not in rs.text
+    assert c.post("/api/tg/poll", json={"initData": init_data(515151), "sid": sid2}).json()["status"] == "error"
+    print("tg server handshake ✓")
+
+
 if __name__ == "__main__":
     test_economics()
     test_auth_signature()
@@ -352,4 +452,5 @@ if __name__ == "__main__":
     test_reconcile()
     test_rate_limit()
     test_relay()
+    test_tg_handshake()
     print("\nALL STAKING TESTS PASSED")

@@ -28,6 +28,7 @@ LIMITS = {
     "burn": (_int("RL_BURN", 10), 60),
     "write": (_int("RL_WRITE", 60), 60),  # stake/unstake/claim
     "relay": (_int("RL_RELAY", 240), 60),  # wallet-callback handoff polling
+    "tg": (_int("RL_TG", 240), 60),  # Telegram server-side handshake start/poll
 }
 
 

@@ -177,71 +177,52 @@ function walletSideConnectCallback(connectUrl, sharedLocalStorageProbe) {
   console.log('sign round-trip across three tabs ✓');
 }
 
-// ---- case 4: Telegram relay mode — callback never reaches the webview ----- //
-// The webview opens the wallet with redirect_link -> /wallet-return?hid=...;
-// the bounce page posts the encrypted params to /api/relay/<hid>; the webview
-// polls, decrypts with its local key, and completes — no page reload at all.
+// ---- case 5: Telegram server-side handshake (client view) ----------------- //
+// In Telegram, connect() calls POST /api/tg/start, opens the wallet UL pointed
+// at the SERVER, and polls POST /api/tg/poll until it gets {status:done,...},
+// then fires onSession. No in-webview crypto, survives relaunches.
 {
-  const relayStore = new Map();
+  let started = 0;
   const fetchImpl = (url, opts) => {
-    const m = String(url).match(/\/api\/relay\/(.+)$/);
-    if (m && opts && opts.method === 'DELETE') {
-      relayStore.delete(m[1]); // the webview's ack after processing
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+    if (/\/api\/tg\/start$/.test(url)) {
+      started++;
+      const body = JSON.parse(opts.body);
+      assert.ok(body.initData && body.wallet === 'phantom', 'start carries initData + wallet');
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ sid: 'SID123', dapp_pub: 'PUB' }) });
     }
-    if (m && relayStore.has(m[1])) {
-      // peek — payload stays until acked, like the backend's get/delete pair
-      const params = relayStore.get(m[1]);
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ params }) });
+    if (/\/api\/tg\/poll$/.test(url)) {
+      // first poll pending, then done — exercises the retry loop
+      started++;
+      const done = started > 2;
+      return Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve(
+            done
+              ? { status: 'done', token: 'TOK. SIG', profile: { wallet: 'Wxyz' } }
+              : { status: 'connected' },
+          ),
+      });
     }
     return Promise.resolve({ ok: false });
   };
 
-  const tab = bootTab({
-    storage: makeStorage(),
-    href: ORIGIN,
-    initData: 'query_id=AAA&user=stub', // we are "inside Telegram"
-    fetchImpl,
-    pollMs: 5,
-  });
-  let resolveConnect;
-  const connected = new Promise((res) => (resolveConnect = res));
-  tab.CleanWallet.init({
-    onConnect: (pk) => resolveConnect(pk),
-    onError: (e) => assert.fail('relay flow error: ' + e.message),
-  });
-  tab.CleanWallet.connect('phantom');
-  assert.equal(tab.opened.length, 1);
+  const tab = bootTab({ storage: makeStorage(), href: ORIGIN, initData: 'user=stub', fetchImpl, pollMs: 5 });
+  let session = null;
+  tab.CleanWallet.init({ onSession: (tok, prof) => (session = { tok, prof }), onError: (e) => assert.fail(e.message) });
+  const mode = tab.CleanWallet.connect('phantom');
+  assert.equal(mode, 'tg', 'inside Telegram, connect uses the server handshake');
+  assert.equal(tab.opened.length, 0, 'connect UL opens only after /api/tg/start resolves');
 
-  const ul = new URL(tab.opened[0]);
-  const redirect = new URL(ul.searchParams.get('redirect_link'));
-  assert.ok(redirect.pathname.endsWith('/wallet-return'), 'TG mode must use the bounce page');
-  const hid = redirect.searchParams.get('hid');
-  assert.ok(/^[1-9A-HJ-NP-Za-km-z]{8,40}$/.test(hid), 'hid must be well-formed base58');
-
-  // wallet approves; bounce page would POST these params to /api/relay/<hid>
-  const dappPub = ul.searchParams.get('dapp_encryption_public_key');
-  const wkp = nacl.box.keyPair();
-  const shared = nacl.box.before(tab.CleanWallet.b58decode(dappPub), wkp.secretKey);
-  const payload = { public_key: 'TgRelayPubKey111111111111111111111111111111', session: 'sess' };
-  const nonce = nacl.randomBytes(24);
-  const box = nacl.box.after(new TextEncoder().encode(JSON.stringify(payload)), nonce, shared);
-  relayStore.set(hid, {
-    phantom_encryption_public_key: tab.CleanWallet.b58encode(wkp.publicKey),
-    nonce: tab.CleanWallet.b58encode(nonce),
-    data: tab.CleanWallet.b58encode(box),
-  });
-
-  const pk = await Promise.race([
-    connected,
-    new Promise((_, rej) => setTimeout(() => rej(new Error('relay poll timed out')), 2000)),
-  ]);
-  assert.equal(pk, 'TgRelayPubKey111111111111111111111111111111');
-  assert.equal(tab.CleanWallet.currentPubkey(), pk);
-  // the webview must ack so the backend can drop the payload
-  await new Promise((res) => setTimeout(res, 50));
-  assert.equal(relayStore.size, 0, 'payload must be acked (DELETEd) after success');
-  console.log('Telegram relay handshake (peek + ack, no reload) ✓');
+  await new Promise((res) => setTimeout(res, 1300)); // first poll fires at 800ms
+  const redirect = tab.opened[0] && new URL(tab.opened[0]).searchParams.get('redirect_link');
+  assert.ok(
+    redirect && redirect.endsWith('/api/tg/connect/SID123'),
+    'wallet UL redirect_link points at the server handshake: ' + redirect,
+  );
+  assert.ok(session && session.tok === 'TOK. SIG', 'onSession fired with the server token');
+  assert.equal(session.prof.wallet, 'Wxyz');
+  console.log('Telegram server-side handshake (client) ✓');
 }
 
 console.log('\nALL WALLET FLOW TESTS PASSED');

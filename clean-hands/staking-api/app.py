@@ -25,10 +25,16 @@ import re
 import json
 import time
 import hmac
+import secrets
+from urllib.parse import urlencode
+
+import base58
+from nacl.public import PrivateKey, PublicKey, Box
+from nacl.utils import random as nacl_random
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 import db
@@ -178,6 +184,16 @@ class BurnBody(BaseModel):
     signature: str
 
 
+class TgStart(BaseModel):
+    initData: str
+    wallet: str  # wallet id: phantom | solflare | backpack
+
+
+class TgPoll(BaseModel):
+    initData: str
+    sid: str | None = None
+
+
 # --------------------------------------------------------------------------- #
 #  AUTH                                                                        #
 # --------------------------------------------------------------------------- #
@@ -212,24 +228,32 @@ async def api_login(body: LoginBody, request: Request):
             raise HTTPException(401, "bad Telegram user")
         username = tg.get("username") or tg.get("first_name")
 
+    token, profile = await _complete_login(body.wallet, tg_id, body.ref, username)
+    return {"token": token, "profile": profile}
+
+
+async def _complete_login(wallet: str, tg_id, ref, username):
+    """Shared tail of every login: bind the (optional) Telegram identity, upsert
+    the staker, refresh balance, settle accrual, mint a session. Used by both the
+    body-based /api/login (site + extension) and the server-side Telegram flow."""
     with db.db() as conn:
         # One Telegram account links to one wallet — reject a hijack of someone
         # else's TG identity (and avoid the UNIQUE-constraint 500).
         if tg_id is not None:
             other = db.get_staker_by_tg(conn, tg_id)
-            if other and other["wallet"] != body.wallet:
+            if other and other["wallet"] != wallet:
                 raise HTTPException(409, "this Telegram account is already linked to another wallet")
-        existed = db.get_staker(conn, body.wallet) is not None
-        ref = None
-        if not existed and body.ref and body.ref != body.wallet and auth.is_valid_wallet(body.ref):
-            if db.get_staker(conn, body.ref):
-                ref = body.ref
-        db.upsert_staker(conn, body.wallet, tg_id=tg_id, username=username, referred_by=ref)
-        row = db.get_staker(conn, body.wallet)
+        existed = db.get_staker(conn, wallet) is not None
+        r = None
+        if not existed and ref and ref != wallet and auth.is_valid_wallet(ref):
+            if db.get_staker(conn, ref):
+                r = ref
+        db.upsert_staker(conn, wallet, tg_id=tg_id, username=username, referred_by=r)
+        row = db.get_staker(conn, wallet)
         await _refresh_balance(conn, row)
-        _accrue(conn, body.wallet)
-        token = auth.create_session(body.wallet, tg_id)
-        return {"token": token, "profile": _profile(conn, body.wallet)}
+        _accrue(conn, wallet)
+        token = auth.create_session(wallet, tg_id)
+        return token, _profile(conn, wallet)
 
 
 # --------------------------------------------------------------------------- #
@@ -507,6 +531,244 @@ def api_stats():
     if supply > 0:
         out["burned_pct"] = round(out["total_burned"] / supply * 100.0, 2)
     return out
+
+
+# --------------------------------------------------------------------------- #
+#  TELEGRAM WALLET HANDSHAKE (server-side)                                      #
+#  Telegram iOS kills/relaunches the Mini App webview across the wallet hop, so #
+#  doing the encrypted deeplink handshake IN the webview is unreliable (lost    #
+#  keys -> "decrypt failed" / stuck spinner). Here the SERVER holds the         #
+#  ephemeral x25519 key: Phantom's connect/sign callbacks land on the server,   #
+#  which decrypts, verifies the ed25519 signature over a single-use nonce, and  #
+#  mints the session. The webview only polls /api/tg/poll keyed by its verified #
+#  Telegram identity, so it completes no matter how often the webview reloads.  #
+#  Security is unchanged: ownership is still proven by the wallet signature over #
+#  a server nonce; the Telegram HMAC still binds one TG id to one wallet. The    #
+#  deeplink encryption is transport only, so moving it server-side adds no trust.#
+# --------------------------------------------------------------------------- #
+_WALLET_BASE = {
+    "phantom": "https://phantom.app/ul/v1",
+    "solflare": "https://solflare.com/ul/v1",
+    "backpack": "https://backpack.app/ul/v1",
+}
+_SID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+_TG_TTL = 600  # seconds for a whole connect->sign handshake
+
+
+def _b58(b: bytes) -> str:
+    return base58.b58encode(bytes(b)).decode()
+
+
+def _origin(request: Request) -> str:
+    base = os.environ.get("MINIAPP_URL", "").rstrip("/")
+    return base or str(request.base_url).rstrip("/")
+
+
+def _tg_get(sid: str):
+    v = store.get_store().get("tg:" + sid)
+    return json.loads(v) if v else None
+
+
+def _tg_put(sid: str, st: dict) -> None:
+    store.get_store().setex("tg:" + sid, _TG_TTL, json.dumps(st))
+
+
+def _tg_page(title: str, body: str, err: bool = False) -> HTMLResponse:
+    color = "#c0392b" if err else "#0F3E73"
+    html = (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>$CLEAN</title><style>"
+        "body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
+        "background:#F4FAFF;color:#16385c;display:flex;align-items:center;justify-content:center;"
+        "min-height:100vh;text-align:center;padding:24px}"
+        ".c{background:#fff;border:1.5px solid rgba(27,93,166,.16);border-radius:22px;"
+        "box-shadow:0 20px 50px -28px rgba(27,93,166,.4);padding:34px 26px;max-width:360px}"
+        "img{width:72px;height:72px;object-fit:contain;margin-bottom:10px}"
+        f"h1{{font-size:1.3rem;color:{color};margin:0 0 8px}}"
+        "p{color:#5d7ea3;font-size:.95rem;line-height:1.5;margin:0 0 18px}"
+        "a.btn{display:block;background:#2E74C0;color:#fff;text-decoration:none;font-weight:700;"
+        "border-radius:14px;padding:14px;box-shadow:0 12px 24px -12px rgba(46,116,192,.8)}"
+        "</style></head><body><div class='c'>"
+        "<img src='/glove.png' alt='$CLEAN'>"
+        f"<h1>{title}</h1>{body}</div></body></html>"
+    )
+    return HTMLResponse(html)
+
+
+def _tg_open_app_button(request: Request) -> str:
+    bot = os.environ.get("MINIAPP_BOT_USERNAME", "").lstrip("@")
+    short = os.environ.get("MINIAPP_SHORT_NAME", "app")
+    if bot:
+        return f"<a class='btn' href='https://t.me/{bot}/{short}'>↩ Open $CLEAN</a>"
+    return "<p>Switch back to Telegram to finish.</p>"
+
+
+@app.post("/api/tg/start")
+def api_tg_start(body: TgStart, request: Request):
+    ratelimit.hit(request, "tg")
+    tg = auth.verify_init_data(body.initData)
+    if not tg:
+        raise HTTPException(401, "bad Telegram initData")
+    try:
+        tg_id = int(tg["id"])
+    except (KeyError, ValueError, TypeError):
+        raise HTTPException(401, "bad Telegram user")
+    base = _WALLET_BASE.get(body.wallet)
+    if not base:
+        raise HTTPException(400, "unknown wallet")
+    sk = PrivateKey.generate()
+    sid = secrets.token_urlsafe(18)
+    _tg_put(
+        sid,
+        {
+            "tg": tg_id,
+            "base": base,
+            "sk": _b58(bytes(sk)),
+            "ref": tg.get("_start_param", "") or "",
+            "username": tg.get("username") or tg.get("first_name"),
+            "status": "started",
+        },
+    )
+    return {"sid": sid, "dapp_pub": _b58(bytes(sk.public_key))}
+
+
+@app.get("/api/tg/connect/{sid}")
+def api_tg_connect(
+    sid: str,
+    request: Request,
+    data: str | None = None,
+    nonce: str | None = None,
+    phantom_encryption_public_key: str | None = None,
+    errorCode: str | None = None,
+    errorMessage: str | None = None,
+):
+    if not _SID_RE.match(sid):
+        return _tg_page("Invalid link", "<p>Reopen the app and connect again.</p>", err=True)
+    st = _tg_get(sid)
+    if not st:
+        return _tg_page("Session expired", "<p>Reopen the app and connect again.</p>", err=True)
+    if errorCode:
+        st.update(status="error", err=errorMessage or "wallet error")
+        _tg_put(sid, st)
+        return _tg_page("Connection cancelled", _tg_open_app_button(request), err=True)
+    try:
+        sk = PrivateKey(base58.b58decode(st["sk"]))
+        their = PublicKey(base58.b58decode(phantom_encryption_public_key))
+        box = Box(sk, their)
+        info = json.loads(box.decrypt(base58.b58decode(data), base58.b58decode(nonce)))
+        wallet = info["public_key"]
+        wsession = info["session"]
+        if not auth.is_valid_wallet(wallet):
+            raise ValueError("bad wallet")
+        login_nonce = auth.issue_nonce(wallet)
+        msg = auth.login_message(wallet, login_nonce)
+        payload = json.dumps({"message": _b58(msg.encode()), "session": wsession}).encode()
+        n = nacl_random(24)
+        ct = box.encrypt(payload, n).ciphertext
+        st.update(
+            status="connected",
+            their=phantom_encryption_public_key,
+            wallet=wallet,
+            wsession=wsession,
+            nonce=login_nonce,
+        )
+        _tg_put(sid, st)
+        params = urlencode(
+            {
+                "dapp_encryption_public_key": _b58(bytes(sk.public_key)),
+                "nonce": _b58(n),
+                "redirect_link": _origin(request) + "/api/tg/sign/" + sid,
+                "payload": _b58(ct),
+            }
+        )
+        ul = f"{st['base']}/signMessage?{params}"
+        return _tg_page(
+            "🧤 Wallet linked",
+            f"<p>One more tap — approve the signature to finish.</p>"
+            f"<a class='btn' href='{ul}'>Approve signature</a>"
+            f"<script>setTimeout(function(){{location.href={json.dumps(ul)};}},400);</script>",
+        )
+    except Exception:  # noqa: BLE001
+        st.update(status="error", err="could not link wallet")
+        _tg_put(sid, st)
+        return _tg_page("Couldn't link wallet", "<p>Please reopen the app and try again.</p>", err=True)
+
+
+@app.get("/api/tg/sign/{sid}")
+async def api_tg_sign(
+    sid: str,
+    request: Request,
+    data: str | None = None,
+    nonce: str | None = None,
+    errorCode: str | None = None,
+    errorMessage: str | None = None,
+):
+    if not _SID_RE.match(sid):
+        return _tg_page("Invalid link", "<p>Reopen the app and connect again.</p>", err=True)
+    st = _tg_get(sid)
+    if not st or st.get("status") not in ("connected", "done"):
+        return _tg_page("Session expired", "<p>Reopen the app and connect again.</p>", err=True)
+    if errorCode:
+        st.update(status="error", err=errorMessage or "wallet error")
+        _tg_put(sid, st)
+        return _tg_page("Signature cancelled", _tg_open_app_button(request), err=True)
+    if st["status"] == "done":  # idempotent — Phantom re-delivered the callback
+        return _tg_page("🧤 Signed!", _tg_open_app_button(request))
+    try:
+        sk = PrivateKey(base58.b58decode(st["sk"]))
+        their = PublicKey(base58.b58decode(st["their"]))
+        info = json.loads(Box(sk, their).decrypt(base58.b58decode(data), base58.b58decode(nonce)))
+        signature = info["signature"]
+        wallet = st["wallet"]
+        msg = auth.login_message(wallet, st["nonce"])
+        if not auth.consume_nonce(wallet, st["nonce"]):
+            raise ValueError("nonce expired")
+        if not auth.verify_wallet_signature(wallet, msg, signature):
+            raise ValueError("bad signature")
+        token, _ = await _complete_login(wallet, st["tg"], st.get("ref"), st.get("username"))
+        st.update(status="done", token=token)
+        _tg_put(sid, st)
+        # so a fully cold-relaunched webview (empty localStorage) can still recover
+        store.get_store().setex("tglast:" + str(st["tg"]), _TG_TTL, sid)
+        return _tg_page("🧤 Signed!", _tg_open_app_button(request))
+    except HTTPException as e:
+        st.update(status="error", err=str(e.detail))
+        _tg_put(sid, st)
+        import html as _html
+
+        return _tg_page("Sign-in problem", f"<p>{_html.escape(str(e.detail))}</p>", err=True)
+    except Exception:  # noqa: BLE001
+        st.update(status="error", err="signature failed")
+        _tg_put(sid, st)
+        return _tg_page("Signature failed", "<p>Please reopen the app and try again.</p>", err=True)
+
+
+@app.post("/api/tg/poll")
+def api_tg_poll(body: TgPoll, request: Request):
+    ratelimit.hit(request, "tg")
+    tg = auth.verify_init_data(body.initData)
+    if not tg:
+        raise HTTPException(401, "bad Telegram initData")
+    try:
+        tg_id = int(tg["id"])
+    except (KeyError, ValueError, TypeError):
+        raise HTTPException(401, "bad Telegram user")
+    sid = body.sid
+    if not sid:  # recover after a localStorage wipe via the per-user pointer
+        sid = store.get_store().get("tglast:" + str(tg_id))
+    if not sid or not _SID_RE.match(sid):
+        return {"status": "pending"}
+    st = _tg_get(sid)
+    if not st or st.get("tg") != tg_id:  # never reveal another user's handshake
+        return {"status": "pending"}
+    if st["status"] == "done":
+        with db.db() as conn:
+            prof = _profile(conn, st["wallet"])
+        return {"status": "done", "token": st["token"], "profile": prof}
+    if st["status"] == "error":
+        return {"status": "error", "detail": st.get("err", "sign-in failed")}
+    return {"status": st["status"]}
 
 
 # --------------------------------------------------------------------------- #
