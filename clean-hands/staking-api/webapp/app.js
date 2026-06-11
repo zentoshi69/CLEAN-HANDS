@@ -400,14 +400,10 @@
     const pk = CleanWallet.currentPubkey() || p.wallet || '';
     $('walletTxt').textContent = pk ? pk.slice(0, 4) + '…' + pk.slice(-4) : 'Connect';
     $('wallet').classList.toggle('live', !!pk && !!TOKEN);
-    if (pk && CONFIG.botUsername)
-      $('refText').textContent =
-        't.me/' +
-        CONFIG.botUsername +
-        '/' +
-        (CONFIG.appShortName || 'app') +
-        '?startapp=' +
-        (p.ref_code || pk);
+    if (pk)
+      $('refText').textContent = p.ref_code
+        ? location.host + '/g/' + p.ref_code
+        : 't.me/' + (CONFIG.botUsername || '') + '/' + (CONFIG.appShortName || 'app') + '?startapp=' + pk;
     seedAccrual(p);
     paintPending(accrual.base);
     updatePortfolio();
@@ -479,6 +475,24 @@
       countUp($('totBurners'), s.burners || 0);
       if (s.burned_pct != null) countUp($('totPct'), s.burned_pct, { dec: 1, suffix: '%' });
       else $('totPctWrap').classList.add('hide');
+      // season campaign card (server-driven; hidden when no season is active)
+      if (s.season) {
+        const se = s.season;
+        $('seasonName').textContent = se.name;
+        $('seasonDesc').innerHTML =
+          'Wash <b>' +
+          se.goal_pct +
+          '%</b> of the supply together before the season ends. ' +
+          'Every burn boosts <b>your</b> APR forever — every invite stacks more. <span class="scr">gloves on ✦</span>';
+        $('seasonPct').textContent = se.progress_pct + '%';
+        $('seasonBar').style.width = Math.min(100, se.progress_pct) + '%';
+        $('seasonDays').textContent = se.days_left;
+        $('seasonGoal').textContent = fmt(se.goal_tokens);
+        $('seasonWashed').textContent = fmt(s.total_burned);
+        $('seasonPanel').classList.remove('hide');
+      } else {
+        $('seasonPanel').classList.add('hide');
+      }
     } catch (e) {
       $('supplyPanel').classList.add('hide');
     }
@@ -704,11 +718,9 @@
     document.body.appendChild(s);
   };
   function refLink() {
-    const id =
-      (PROFILE && PROFILE.ref_code) ||
-      CleanWallet.currentPubkey() ||
-      (PROFILE && PROFILE.wallet) ||
-      '';
+    const code = PROFILE && PROFILE.ref_code;
+    if (code) return location.origin + '/g/' + code; // unfurls with the banner
+    const id = CleanWallet.currentPubkey() || (PROFILE && PROFILE.wallet) || '';
     return (
       'https://t.me/' +
       ((CONFIG && CONFIG.botUsername) || 'YOUR_BOT') +

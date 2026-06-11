@@ -523,7 +523,8 @@ async def api_price():
 
 @app.get("/api/stats")
 def api_stats():
-    """Public, aggregate-only protocol stats for the app's 'Supply washed' panel."""
+    """Public, aggregate-only protocol stats for the app's 'Supply washed' panel
+    and the season campaign card. Real DB aggregates only — never invented."""
     with db.db() as conn:
         row = conn.execute(
             "SELECT COALESCE(SUM(total_burned),0) AS burned,"
@@ -541,6 +542,23 @@ def api_stats():
     supply = float(os.environ.get("STAKE_TOTAL_SUPPLY", "0") or 0)
     if supply > 0:
         out["burned_pct"] = round(out["total_burned"] / supply * 100.0, 2)
+    # Season campaign: community goal to burn SEASON_BURN_GOAL_PCT of the supply
+    # before SEASON_END_TS. Pure presentation over real aggregates.
+    season_end = int(os.environ.get("SEASON_END_TS", "0") or 0)
+    now = int(time.time())
+    if season_end > now and supply > 0:
+        goal_pct = float(os.environ.get("SEASON_BURN_GOAL_PCT", "5") or 5)
+        goal_tokens = supply * goal_pct / 100.0
+        out["season"] = {
+            "name": os.environ.get("SEASON_NAME", "Season 1 — The Big Wash"),
+            "ends_at": season_end,
+            "days_left": max(1, -(-(season_end - now) // 86400)),
+            "goal_pct": goal_pct,
+            "goal_tokens": goal_tokens,
+            "progress_pct": round(min(100.0, out["total_burned"] / goal_tokens * 100.0), 2)
+            if goal_tokens > 0
+            else 0,
+        }
     return out
 
 
@@ -880,6 +898,69 @@ def wallet_return():
 @app.get("/glove.png")
 def glove_png():
     return FileResponse(os.path.join(os.path.dirname(_WEB), "..", "assets", "glove.png"))
+
+
+@app.get("/banner.png")
+def banner_png():
+    return FileResponse(os.path.join(os.path.dirname(_WEB), "..", "assets", "banner.png"))
+
+
+# --------------------------------------------------------------------------- #
+#  GLOVE-CODE LANDING (/g/<code>) — the shareable invite link                   #
+#  Unfurls with a branded OG card in Telegram/X/Discord and funnels the tap     #
+#  into the Mini App with the code as start_param.                              #
+# --------------------------------------------------------------------------- #
+_CODE_RE = re.compile(r"^[A-Za-z0-9]{4,12}$")
+
+
+@app.get("/g/{code}")
+def glove_link(code: str, request: Request):
+    if not _CODE_RE.match(code):
+        raise HTTPException(404, "unknown glove code")
+    code = code.upper()
+    with db.db() as conn:
+        if not db.wallet_by_ref_code(conn, code):
+            raise HTTPException(404, "unknown glove code")
+    origin = _origin(request)
+    bot = os.environ.get("MINIAPP_BOT_USERNAME", "").lstrip("@")
+    short = os.environ.get("MINIAPP_SHORT_NAME", "app")
+    tme = f"https://t.me/{bot}/{short}?startapp={code}" if bot else origin
+    title = f"Join $CLEAN with glove code {code}"
+    desc = "Soft staking — tokens never leave your wallet. Burn to boost, invite to multiply. 🧤"
+    html = (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        f"<title>{title}</title>"
+        f"<meta property='og:title' content='{title}'>"
+        f"<meta property='og:description' content='{desc}'>"
+        f"<meta property='og:image' content='{origin}/banner.png'>"
+        f"<meta property='og:url' content='{origin}/g/{code}'>"
+        "<meta property='og:type' content='website'>"
+        "<meta name='twitter:card' content='summary_large_image'>"
+        f"<meta name='twitter:image' content='{origin}/banner.png'>"
+        "<style>"
+        "body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
+        "background:#F4FAFF;color:#16385c;display:flex;align-items:center;justify-content:center;"
+        "min-height:100vh;text-align:center;padding:24px}"
+        ".c{background:#fff;border:1.5px solid rgba(27,93,166,.16);border-radius:22px;"
+        "box-shadow:0 20px 50px -28px rgba(27,93,166,.4);padding:34px 26px;max-width:380px}"
+        "img{width:84px;height:84px;object-fit:contain;margin-bottom:10px}"
+        "h1{font-size:1.35rem;color:#0F3E73;margin:0 0 6px}"
+        ".code{font-family:ui-monospace,Menlo,monospace;font-size:1.6rem;font-weight:700;"
+        "color:#2E74C0;letter-spacing:.18em;background:#EAF4FE;border:1.5px solid rgba(27,93,166,.28);"
+        "border-radius:12px;padding:10px 16px;display:inline-block;margin:8px 0 14px}"
+        "p{color:#5d7ea3;font-size:.95rem;line-height:1.5;margin:0 0 18px}"
+        "a.btn{display:block;background:#2E74C0;color:#fff;text-decoration:none;font-weight:700;"
+        "border-radius:14px;padding:15px;box-shadow:0 12px 24px -12px rgba(46,116,192,.8)}"
+        "</style></head><body><div class='c'>"
+        "<img src='/glove.png' alt='$CLEAN'>"
+        "<h1>You're invited to $CLEAN</h1>"
+        f"<div class='code'>{code}</div>"
+        f"<p>{desc}<br>Connect, stake, and you BOTH get the referral boost.</p>"
+        f"<a class='btn' href='{tme}'>🧤 Open in Telegram</a>"
+        "</div></body></html>"
+    )
+    return HTMLResponse(html)
 
 
 if __name__ == "__main__":
