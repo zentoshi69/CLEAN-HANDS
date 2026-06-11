@@ -67,9 +67,9 @@ set_kv() {  # set_kv KEY VALUE — replace the line or append; never logs values
     echo "$1=$2" >> "$ENVF"
   fi
 }
-get_kv() {  # get_kv KEY — value with any trailing inline comment stripped
-  grep -E "^$1=" "$ENVF" 2>/dev/null | head -1 | cut -d= -f2- \
-    | sed -e 's/[[:space:]]\+#.*$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+get_kv() {  # get_kv KEY — value with any inline comment stripped; missing key = ''
+  { grep -E "^$1=" "$ENVF" 2>/dev/null | head -1 | cut -d= -f2- \
+      | sed -e 's/[[:space:]]\+#.*$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; } || true
 }
 ask() {  # ask PROMPT -> $REPLY ('' when non-interactive or skipped)
   REPLY=""
@@ -99,35 +99,37 @@ if [ -z "$(get_kv SOLANA_RPC_URL)" ]; then
   set_kv SOLANA_RPC_URL "${REPLY:-https://api.mainnet-beta.solana.com}"
 fi
 
-prompt_token() {  # prompt_token KEY LABEL
+prompt_token() {  # prompt_token KEY LABEL — a skip or bad token must never abort the run
   local key="$1" label="$2" tok uname
   tok="$(get_kv "$key")"
   if [ -z "$tok" ]; then
     ask "$label token from @BotFather (Enter = skip, that bot stays off): "
     tok="$REPLY"
-    [ -n "$tok" ] && set_kv "$key" "$tok"
+    if [ -n "$tok" ]; then set_kv "$key" "$tok"; fi
   fi
   if [ -n "$tok" ]; then
-    uname="$(tg_username "$tok")"
+    uname="$(tg_username "$tok" || true)"
     if [ -n "$uname" ]; then
       c_grn "    ✓ $key -> @$uname"
-      [ "$key" = "TG_COMMUNITY_TOKEN" ] && [ -z "$(get_kv MINIAPP_BOT_USERNAME)" ] \
-        && set_kv MINIAPP_BOT_USERNAME "$uname"
+      if [ "$key" = "TG_COMMUNITY_TOKEN" ] && [ -z "$(get_kv MINIAPP_BOT_USERNAME)" ]; then
+        set_kv MINIAPP_BOT_USERNAME "$uname"
+      fi
     else
       c_yel "    ⚠ $key set but Telegram getMe failed — check it (kept anyway)"
     fi
   fi
+  return 0
 }
 prompt_token TG_COMMUNITY_TOKEN "Community bot (/price, Mini App, notifier)"
 prompt_token TG_BOT_TOKEN       "Guardian bot (anti-scam gatekeeper)"
 prompt_token TG_SCANNER_TOKEN   "Scanner bot (RugCheck verdicts)"
 if [ -z "$(get_kv TG_ADMIN_IDS)" ]; then
   ask "Your numeric Telegram id (@userinfobot; Enter = skip): "
-  [ -n "$REPLY" ] && set_kv TG_ADMIN_IDS "$REPLY"
+  if [ -n "$REPLY" ]; then set_kv TG_ADMIN_IDS "$REPLY"; fi
 fi
 if [ -z "$(get_kv TG_ALERTS_CHAT)" ] && [ -n "$(get_kv TG_COMMUNITY_TOKEN)" ]; then
   ask "Alerts channel (@yourchannel; bot must be admin; Enter = skip alerts): "
-  [ -n "$REPLY" ] && set_kv TG_ALERTS_CHAT "$REPLY"
+  if [ -n "$REPLY" ]; then set_kv TG_ALERTS_CHAT "$REPLY"; fi
 fi
 chown "$RUN_USER:$RUN_USER" "$ENVF" && chmod 600 "$ENVF"
 
