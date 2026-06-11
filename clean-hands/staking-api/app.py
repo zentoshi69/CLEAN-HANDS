@@ -580,6 +580,16 @@ _WALLET_BASE = {
     "solflare": "https://solflare.com/ul/v1",
     "backpack": "https://backpack.app/ul/v1",
 }
+# Custom URL schemes open the installed app unconditionally. iOS sometimes
+# refuses to app-open an https universal link that points back at the app the
+# user just came from (anti-loop heuristic) and lands on the wallet's website
+# — the "download Phantom" page — so the primary button uses the scheme and
+# the https UL stays as a fallback link.
+_WALLET_SCHEME = {
+    "phantom": "phantom://ul/v1",
+    "solflare": "solflare://ul/v1",
+    "backpack": "backpack://ul/v1",
+}
 _SID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 _TG_TTL = 600  # seconds for a whole connect->sign handshake
 
@@ -653,6 +663,7 @@ def api_tg_start(body: TgStart, request: Request):
         {
             "tg": tg_id,
             "base": base,
+            "wid": body.wallet,
             "sk": _b58(bytes(sk)),
             "ref": tg.get("_start_param", "") or "",
             "username": tg.get("username") or tg.get("first_name"),
@@ -712,13 +723,17 @@ def api_tg_connect(
             }
         )
         ul = f"{st['base']}/signMessage?{params}"
-        # NO auto-redirect: a JS navigation to a universal link is not a user
-        # gesture, so iOS opens the wallet's WEBSITE (the download page) instead
-        # of the app. A real tap on the button reliably opens the wallet.
+        scheme_base = _WALLET_SCHEME.get(st.get("wid", ""), "")
+        app_ul = f"{scheme_base}/signMessage?{params}" if scheme_base else ul
+        # NO auto-redirect (JS navigation is not a user gesture). The primary
+        # button uses the wallet's custom scheme — iOS opens the installed app
+        # unconditionally — with the https UL as a fallback link.
         return _tg_page(
             "🧤 Wallet linked",
-            "<p>One more tap — sign in Phantom to finish, then you land back in $CLEAN.</p>"
-            f"<a class='btn' href='{ul}'>✍️ Approve signature</a>",
+            "<p>One more tap — sign in your wallet to finish, then you land back in $CLEAN.</p>"
+            f"<a class='btn' href='{app_ul}'>✍️ Approve signature</a>"
+            f"<p style='margin-top:14px;font-size:.82rem'><a href='{ul}' "
+            "style='color:#5d7ea3'>Wallet didn't open? Tap here.</a></p>",
         )
     except Exception:  # noqa: BLE001
         st.update(status="error", err="could not link wallet")
