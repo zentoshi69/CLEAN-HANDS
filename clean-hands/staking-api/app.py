@@ -683,11 +683,13 @@ def api_tg_connect(
             }
         )
         ul = f"{st['base']}/signMessage?{params}"
+        # NO auto-redirect: a JS navigation to a universal link is not a user
+        # gesture, so iOS opens the wallet's WEBSITE (the download page) instead
+        # of the app. A real tap on the button reliably opens the wallet.
         return _tg_page(
             "🧤 Wallet linked",
-            f"<p>One more tap — approve the signature to finish.</p>"
-            f"<a class='btn' href='{ul}'>Approve signature</a>"
-            f"<script>setTimeout(function(){{location.href={json.dumps(ul)};}},400);</script>",
+            "<p>One more tap — sign in Phantom to finish, then you land back in $CLEAN.</p>"
+            f"<a class='btn' href='{ul}'>✍️ Approve signature</a>",
         )
     except Exception:  # noqa: BLE001
         st.update(status="error", err="could not link wallet")
