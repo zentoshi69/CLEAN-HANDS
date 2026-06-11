@@ -6,7 +6,9 @@ Commands:
   /price  [mint]   — quick price, 24h change, market cap (DexScreener, no key).
   /stats  [mint]   — full readout: price, MC, FDV, liquidity, volume, changes.
   /chart  [mint]   — link to the live DexScreener chart.
-  /meme   top | bottom   — REPLY to a photo with this to caption it meme-style.
+  /meme   [top | bottom] — photo caption or reply: AI regenerates the image
+                           with every hand wearing the $CLEAN glove (needs
+                           OPENAI_API_KEY; admin /memetest diagnoses setup).
   /sticker         — REPLY to a photo to convert it into a 512px sticker file.
   /help            — list commands.
 
@@ -268,22 +270,29 @@ CLEANING_FRAMES = [
     "✨ Polishing the shine…",
     "🚿 Final rinse…",
 ]
-_ai_last: dict[int, float] = {}  # user_id -> last AI run (cooldown)
+_ai_last: dict[int, float] = {}  # user_id -> last SUCCESSFUL AI run (cooldown)
+_AI_LAST_ERR = ""  # last failure detail, surfaced by /memetest
+ADMIN_IDS = {
+    int(x) for x in os.environ.get("TG_ADMIN_IDS", "").split(",") if x.strip().isdigit()
+}
 
 
-def _ai_ready(user_id: int) -> bool:
-    """AI path available for this user right now? (key set + off cooldown)"""
+def _ai_allowed(user_id: int) -> bool:
+    """AI path available for this user right now? (key set + off cooldown).
+    Does NOT start the cooldown — only a successful render charges it, so a
+    failed attempt can be retried immediately."""
     if not OPENAI_API_KEY:
         return False
+    return time.time() - _ai_last.get(user_id, 0) >= MEME_AI_COOLDOWN
+
+
+def _ai_mark(user_id: int) -> None:
     now = time.time()
-    if now - _ai_last.get(user_id, 0) < MEME_AI_COOLDOWN:
-        return False
     if len(_ai_last) > 4096:  # bound memory
         cutoff = now - MEME_AI_COOLDOWN
         for k in [k for k, v in _ai_last.items() if v < cutoff]:
             _ai_last.pop(k, None)
     _ai_last[user_id] = now
-    return True
 
 
 async def ai_glove_hands(img_bytes: bytes) -> bytes | None:
@@ -306,11 +315,14 @@ async def ai_glove_hands(img_bytes: bytes) -> bytes | None:
                 },
             )
         if r.status_code != 200:
-            log.warning("ai meme failed: HTTP %s %s", r.status_code, r.text[:200])
+            global _AI_LAST_ERR
+            _AI_LAST_ERR = f"HTTP {r.status_code}: {r.text[:300]}"
+            log.warning("ai meme failed: %s", _AI_LAST_ERR)
             return None
         b64 = (r.json().get("data") or [{}])[0].get("b64_json")
         return base64.b64decode(b64) if b64 else None
     except Exception as e:  # noqa: BLE001
+        globals()["_AI_LAST_ERR"] = f"{type(e).__name__}: {e}"
         log.warning("ai meme failed: %s", type(e).__name__)
         return None
 
@@ -416,10 +428,13 @@ async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_ms
     user_id = update.effective_user.id if update.effective_user else 0
     out = None
     ai_ok = False
+    ai_expected = _ai_allowed(user_id)
     try:
-        if _ai_ready(user_id):
+        if ai_expected:
             out = await ai_glove_hands(buf)  # hands -> gloves, AI
             ai_ok = out is not None
+            if ai_ok:
+                _ai_mark(user_id)  # only a successful wash charges the cooldown
         if out is None:
             out = buf  # AI off/cooldown/failed: local pipeline below still delivers
         if top or bottom:
@@ -432,13 +447,26 @@ async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_ms
             except Exception:  # noqa: BLE001 — missing asset must not kill the meme
                 pass
         fx.cancel()
-        try:
-            await placeholder.delete()
-        except Exception:  # noqa: BLE001
-            pass
         await context.bot.send_photo(
-            chat_id, photo=io.BytesIO(out), caption="🧤 washed by $CLEAN"
+            chat_id,
+            photo=io.BytesIO(out),
+            caption="🧤 washed by $CLEAN" if ai_ok else "🧤 $CLEAN",
         )
+        if ai_expected and not ai_ok:
+            # NEVER silently downgrade the flagship: leave the placeholder as a
+            # visible notice instead of deleting it.
+            try:
+                await placeholder.edit_text(
+                    "⚠️ The AI wash engine hiccupped — posted the classic stamp instead. "
+                    "Admins: send /memetest for the exact reason."
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        else:
+            try:
+                await placeholder.delete()
+            except Exception:  # noqa: BLE001
+                pass
     except Exception as e:  # noqa: BLE001
         log.warning("meme failed: %s", e)
         fx.cancel()
@@ -446,6 +474,48 @@ async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_ms
             await placeholder.edit_text("Couldn't wash that one — try another image. 🧤")
         except Exception:  # noqa: BLE001
             pass
+
+
+async def cmd_memetest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin-only: end-to-end diagnosis of the AI wash engine, from inside TG."""
+    uid = update.effective_user.id if update.effective_user else 0
+    if ADMIN_IDS and uid not in ADMIN_IDS:
+        return
+    if not OPENAI_API_KEY:
+        await update.message.reply_text(
+            "❌ OPENAI_API_KEY is NOT set in .env — /meme is running the local "
+            "stamp fallback.\nAdd the key, then: sudo systemctl restart degen-community"
+        )
+        return
+    await update.message.reply_text(
+        f"🧪 Testing the wash engine (model {MEME_AI_MODEL}, quality {MEME_AI_QUALITY})…"
+    )
+    # tiny synthetic test image so the call is as cheap+fast as possible
+    img = Image.new("RGB", (256, 256), (240, 248, 255))
+    d = ImageDraw.Draw(img)
+    d.ellipse((60, 60, 196, 196), fill=(230, 200, 170))  # a "hand"
+    buf = io.BytesIO()
+    img.save(buf, "JPEG")
+    out = await ai_glove_hands(buf.getvalue())
+    if out:
+        await update.message.reply_photo(
+            photo=io.BytesIO(out), caption="✅ AI wash engine LIVE — /meme will regenerate images."
+        )
+    else:
+        hint = ""
+        if "403" in _AI_LAST_ERR or "verif" in _AI_LAST_ERR.lower():
+            hint = (
+                "\n\n→ gpt-image-1 requires a VERIFIED OpenAI organization: "
+                "platform.openai.com → Settings → Organization → Verify. "
+                "Until then every /meme falls back to the stamp."
+            )
+        elif "401" in _AI_LAST_ERR:
+            hint = "\n\n→ The API key is invalid/revoked — paste a fresh one into .env."
+        elif "429" in _AI_LAST_ERR or "quota" in _AI_LAST_ERR.lower():
+            hint = "\n\n→ Out of credits / rate limited — check platform.openai.com billing."
+        await update.message.reply_text(
+            f"❌ AI call failed:\n{_AI_LAST_ERR[:350] or 'no error captured'}{hint}"
+        )
 
 
 async def cmd_meme(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -690,6 +760,12 @@ async def _post_init(app):
 
 
 def main():
+    log.info(
+        "AI meme engine: %s",
+        f"ENABLED (model={MEME_AI_MODEL}, quality={MEME_AI_QUALITY})"
+        if OPENAI_API_KEY
+        else "DISABLED — set OPENAI_API_KEY for the AI glove-wash",
+    )
     if not BOT_TOKEN:
         raise SystemExit("Set TG_COMMUNITY_TOKEN (from @BotFather).")
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(_post_init).build()
@@ -702,6 +778,7 @@ def main():
     app.add_handler(CommandHandler("chart", cmd_chart))
     app.add_handler(CommandHandler(["trade", "buy", "sell"], cmd_trade))
     app.add_handler(CommandHandler("meme", cmd_meme))
+    app.add_handler(CommandHandler("memetest", cmd_memetest))
     app.add_handler(CommandHandler("glove", cmd_glove))
     app.add_handler(CommandHandler("sticker", cmd_sticker))
     # photos uploaded WITH the command as caption — the natural mobile flow
