@@ -384,6 +384,9 @@ def test_tg_handshake():
         },
     )
     assert r2.status_code == 200 and "signMessage" in r2.text
+    # primary button must use the custom scheme (opens the installed app
+    # unconditionally); the https UL stays as the fallback link
+    assert "phantom://ul/v1/signMessage?" in r2.text
     ul = _re.search(r"(https://phantom\.app/ul/v1/signMessage\?[^\"']+)", r2.text).group(1)
     q = _url.parse_qs(_url.urlparse(ul).query)
     info = _json.loads(shared.decrypt(base58.b58decode(q["payload"][0]), base58.b58decode(q["nonce"][0])))
