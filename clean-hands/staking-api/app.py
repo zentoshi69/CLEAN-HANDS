@@ -21,6 +21,8 @@ See README.md for the economics and the full flow.
 from __future__ import annotations
 
 import os
+import re
+import json
 import time
 import hmac
 
@@ -484,6 +486,44 @@ async def api_price():
     return JSONResponse(s, headers={"Cache-Control": "no-store"})
 
 
+# --------------------------------------------------------------------------- #
+#  WALLET CALLBACK RELAY                                                        #
+#  Inside Telegram the wallet's deeplink callback cannot reach the Mini App's   #
+#  webview — it lands on /wallet-return in the external browser. That page      #
+#  posts the still-ENCRYPTED payload here under a one-time id; the webview      #
+#  polls the id and decrypts locally (the x25519 key never leaves the webview). #
+# --------------------------------------------------------------------------- #
+_RID_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{8,40}$")  # base58, unguessable
+_RELAY_TTL = 180  # seconds; single read via getdel
+
+
+class RelayBody(BaseModel):
+    params: dict
+
+
+@app.post("/api/relay/{rid}")
+def api_relay_put(rid: str, body: RelayBody, request: Request):
+    ratelimit.hit(request, "relay")
+    if not _RID_RE.match(rid):
+        raise HTTPException(400, "bad relay id")
+    if not isinstance(body.params, dict) or len(body.params) > 8:
+        raise HTTPException(400, "bad relay payload")
+    params = {str(k)[:64]: str(v)[:4096] for k, v in body.params.items()}
+    store.get_store().setex("relay:" + rid, _RELAY_TTL, json.dumps(params))
+    return {"ok": True}
+
+
+@app.get("/api/relay/{rid}")
+def api_relay_get(rid: str, request: Request):
+    ratelimit.hit(request, "relay")
+    if not _RID_RE.match(rid):
+        raise HTTPException(400, "bad relay id")
+    v = store.get_store().getdel("relay:" + rid)
+    if v is None:
+        raise HTTPException(404, "not ready")
+    return {"params": json.loads(v)}
+
+
 @app.get("/healthz")
 def healthz():
     try:
@@ -520,6 +560,11 @@ def wallet_js():
 @app.get("/nacl.min.js")
 def nacl_js():
     return FileResponse(os.path.join(_WEB, "nacl.min.js"), media_type="application/javascript")
+
+
+@app.get("/wallet-return")
+def wallet_return():
+    return FileResponse(os.path.join(_WEB, "return.html"))
 
 
 @app.get("/glove.png")

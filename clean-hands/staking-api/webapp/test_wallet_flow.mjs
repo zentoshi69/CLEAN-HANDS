@@ -34,11 +34,12 @@ function makeStorage() {
 // Boot one "tab": evaluates wallet.js against a fake window with the given
 // storage and URL. Returns { CleanWallet, opened } where opened collects
 // outbound deeplink URLs.
-function bootTab({ storage, href }) {
+function bootTab({ storage, href, initData = '', fetchImpl = null, pollMs = 0 }) {
   const opened = [];
   const win = {
     localStorage: storage,
-    Telegram: { WebApp: { openLink: (u) => opened.push(u) } },
+    Telegram: { WebApp: { initData, openLink: (u) => opened.push(u) } },
+    CLW_POLL_MS: pollMs || undefined,
   };
   const ctx = {
     window: win,
@@ -56,6 +57,11 @@ function bootTab({ storage, href }) {
     Uint8Array,
     Promise,
     Error,
+    Date,
+    setTimeout,
+    clearTimeout,
+    fetch: fetchImpl || (() => Promise.reject(new Error('no fetch in this tab'))),
+    document: { addEventListener: () => {}, hidden: false },
   };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
@@ -169,6 +175,66 @@ function walletSideConnectCallback(connectUrl, sharedLocalStorageProbe) {
   assert.equal(sig, 'FaKeSiG');
   assert.deepEqual(ctx, { nonce: 'abc', wallet: 'W' });
   console.log('sign round-trip across three tabs ✓');
+}
+
+// ---- case 4: Telegram relay mode — callback never reaches the webview ----- //
+// The webview opens the wallet with redirect_link -> /wallet-return?hid=...;
+// the bounce page posts the encrypted params to /api/relay/<hid>; the webview
+// polls, decrypts with its local key, and completes — no page reload at all.
+{
+  const relayStore = new Map();
+  const fetchImpl = (url) => {
+    const m = String(url).match(/\/api\/relay\/(.+)$/);
+    if (m && relayStore.has(m[1])) {
+      const params = relayStore.get(m[1]);
+      relayStore.delete(m[1]); // single read, like the backend's getdel
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ params }) });
+    }
+    return Promise.resolve({ ok: false });
+  };
+
+  const tab = bootTab({
+    storage: makeStorage(),
+    href: ORIGIN,
+    initData: 'query_id=AAA&user=stub', // we are "inside Telegram"
+    fetchImpl,
+    pollMs: 5,
+  });
+  let resolveConnect;
+  const connected = new Promise((res) => (resolveConnect = res));
+  tab.CleanWallet.init({
+    onConnect: (pk) => resolveConnect(pk),
+    onError: (e) => assert.fail('relay flow error: ' + e.message),
+  });
+  tab.CleanWallet.connect('phantom');
+  assert.equal(tab.opened.length, 1);
+
+  const ul = new URL(tab.opened[0]);
+  const redirect = new URL(ul.searchParams.get('redirect_link'));
+  assert.ok(redirect.pathname.endsWith('/wallet-return'), 'TG mode must use the bounce page');
+  const hid = redirect.searchParams.get('hid');
+  assert.ok(/^[1-9A-HJ-NP-Za-km-z]{8,40}$/.test(hid), 'hid must be well-formed base58');
+
+  // wallet approves; bounce page would POST these params to /api/relay/<hid>
+  const dappPub = ul.searchParams.get('dapp_encryption_public_key');
+  const wkp = nacl.box.keyPair();
+  const shared = nacl.box.before(tab.CleanWallet.b58decode(dappPub), wkp.secretKey);
+  const payload = { public_key: 'TgRelayPubKey111111111111111111111111111111', session: 'sess' };
+  const nonce = nacl.randomBytes(24);
+  const box = nacl.box.after(new TextEncoder().encode(JSON.stringify(payload)), nonce, shared);
+  relayStore.set(hid, {
+    phantom_encryption_public_key: tab.CleanWallet.b58encode(wkp.publicKey),
+    nonce: tab.CleanWallet.b58encode(nonce),
+    data: tab.CleanWallet.b58encode(box),
+  });
+
+  const pk = await Promise.race([
+    connected,
+    new Promise((_, rej) => setTimeout(() => rej(new Error('relay poll timed out')), 2000)),
+  ]);
+  assert.equal(pk, 'TgRelayPubKey111111111111111111111111111111');
+  assert.equal(tab.CleanWallet.currentPubkey(), pk);
+  console.log('Telegram relay handshake (no reload) ✓');
 }
 
 console.log('\nALL WALLET FLOW TESTS PASSED');

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>$CLEAN — almost there</title>
+<style>
+  body{margin:0;font-family:'Plus Jakarta Sans',-apple-system,sans-serif;background:#F4FAFF;color:#16385c;
+    display:flex;align-items:center;justify-content:center;min-height:100dvh;text-align:center;padding:24px}
+  .card{background:rgba(255,255,255,.8);border:1.5px solid rgba(27,93,166,.16);border-radius:22px;
+    box-shadow:0 20px 50px -28px rgba(27,93,166,.4);padding:34px 26px;max-width:360px}
+  img{width:72px;height:72px;object-fit:contain;margin-bottom:10px}
+  h1{font-size:1.3rem;color:#0F3E73;margin:0 0 8px}
+  p{color:#5d7ea3;font-size:.95rem;line-height:1.5;margin:0 0 18px}
+  a.btn{display:block;background:#2E74C0;color:#fff;text-decoration:none;font-weight:700;
+    border-radius:14px;padding:14px;box-shadow:0 12px 24px -12px rgba(46,116,192,.8)}
+  .err{color:#c0392b}
+</style>
+</head>
+<body>
+<div class="card">
+  <img src="/glove.png" alt="$CLEAN"/>
+  <h1 id="t">Linking your wallet…</h1>
+  <p id="m">One second.</p>
+  <a class="btn" id="back" href="#" style="display:none">↩ Back to Telegram</a>
+</div>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var hid = q.get('hid');
+  var t = document.getElementById('t'), m = document.getElementById('m'), back = document.getElementById('back');
+  function done(ok) {
+    if (ok) {
+      t.textContent = '🧤 Approved!';
+      m.textContent = 'Head back to Telegram — your wallet links there automatically.';
+    } else {
+      t.textContent = 'Hmm, that did not go through';
+      t.className = 'err';
+      m.textContent = 'Go back to Telegram and tap Connect again.';
+    }
+    back.style.display = 'block';
+    fetch('/api/economics').then(function (r) { return r.json(); }).then(function (c) {
+      if (c.botUsername) {
+        back.href = 'https://t.me/' + c.botUsername + '/' + (c.appShortName || 'app');
+        // auto-jump back into Telegram after a beat
+        if (ok) setTimeout(function () { location.href = back.href; }, 1200);
+      }
+    }).catch(function () {});
+  }
+  if (!hid || !/^[1-9A-HJ-NP-Za-km-z]{8,40}$/.test(hid)) { done(false); return; }
+  var params = {};
+  q.forEach(function (v, k) { if (k !== 'hid') params[k] = v; });
+  fetch('/api/relay/' + hid, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ params: params }),
+  }).then(function (r) { done(r.ok); }).catch(function () { done(false); });
+})();
+</script>
+</body>
+</html>

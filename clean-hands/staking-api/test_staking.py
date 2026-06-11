@@ -309,6 +309,34 @@ def test_rate_limit():
     print("rate limit -> 429 ✓")
 
 
+def test_relay():
+    """Wallet-callback relay: one-time write, single read, validated ids."""
+    import app
+    from fastapi.testclient import TestClient
+
+    c = TestClient(app.app)
+    rid = "5KQvfYV2zJxA3p9rW8mN4cTuD"  # well-formed base58 id
+    # not ready yet
+    assert c.get(f"/api/relay/{rid}").status_code == 404
+    # bounce page stores the encrypted callback params
+    p = {"phantom_encryption_public_key": "Pub", "data": "EncData", "nonce": "N0nce"}
+    r = c.post(f"/api/relay/{rid}", json={"params": p})
+    assert r.status_code == 200, r.text
+    # webview reads it exactly once
+    r = c.get(f"/api/relay/{rid}")
+    assert r.status_code == 200 and r.json()["params"] == p
+    assert c.get(f"/api/relay/{rid}").status_code == 404  # consumed
+    # malformed ids and oversized payloads are rejected
+    assert c.post("/api/relay/bad!id", json={"params": p}).status_code == 400
+    assert (
+        c.post(f"/api/relay/{rid}", json={"params": {str(i): "x" for i in range(9)}}).status_code
+        == 400
+    )
+    # the bounce page itself is served
+    assert c.get("/wallet-return").status_code == 200
+    print("wallet relay handoff ✓")
+
+
 if __name__ == "__main__":
     test_economics()
     test_auth_signature()
@@ -321,4 +349,5 @@ if __name__ == "__main__":
     test_robustness()
     test_reconcile()
     test_rate_limit()
+    test_relay()
     print("\nALL STAKING TESTS PASSED")
