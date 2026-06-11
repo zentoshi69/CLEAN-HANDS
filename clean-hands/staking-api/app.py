@@ -486,6 +486,29 @@ async def api_price():
     return JSONResponse(s, headers={"Cache-Control": "no-store"})
 
 
+@app.get("/api/stats")
+def api_stats():
+    """Public, aggregate-only protocol stats for the app's 'Supply washed' panel."""
+    with db.db() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(total_burned),0) AS burned,"
+            " SUM(CASE WHEN total_burned > 0 THEN 1 ELSE 0 END) AS burners,"
+            " SUM(CASE WHEN recorded_staked > 0 THEN 1 ELSE 0 END) AS stakers,"
+            " COALESCE(SUM(recorded_staked),0) AS staked"
+            " FROM stakers"
+        ).fetchone()
+    out = {
+        "total_burned": db.to_ui(row["burned"] or 0),
+        "burners": int(row["burners"] or 0),
+        "stakers": int(row["stakers"] or 0),
+        "total_staked": db.to_ui(row["staked"] or 0),
+    }
+    supply = float(os.environ.get("STAKE_TOTAL_SUPPLY", "0") or 0)
+    if supply > 0:
+        out["burned_pct"] = round(out["total_burned"] / supply * 100.0, 2)
+    return out
+
+
 # --------------------------------------------------------------------------- #
 #  WALLET CALLBACK RELAY                                                        #
 #  Inside Telegram the wallet's deeplink callback cannot reach the Mini App's   #
@@ -515,13 +538,25 @@ def api_relay_put(rid: str, body: RelayBody, request: Request):
 
 @app.get("/api/relay/{rid}")
 def api_relay_get(rid: str, request: Request):
+    # Peek WITHOUT consuming: Telegram may relaunch the Mini App webview while
+    # it is mid-poll, and the relaunched instance must still find the payload.
+    # The webview acks with DELETE after processing; the TTL is the backstop.
     ratelimit.hit(request, "relay")
     if not _RID_RE.match(rid):
         raise HTTPException(400, "bad relay id")
-    v = store.get_store().getdel("relay:" + rid)
+    v = store.get_store().get("relay:" + rid)
     if v is None:
         raise HTTPException(404, "not ready")
     return {"params": json.loads(v)}
+
+
+@app.delete("/api/relay/{rid}")
+def api_relay_ack(rid: str, request: Request):
+    ratelimit.hit(request, "relay")
+    if not _RID_RE.match(rid):
+        raise HTTPException(400, "bad relay id")
+    store.get_store().delete("relay:" + rid)
+    return {"ok": True}
 
 
 @app.get("/healthz")

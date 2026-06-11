@@ -183,11 +183,15 @@ function walletSideConnectCallback(connectUrl, sharedLocalStorageProbe) {
 // polls, decrypts with its local key, and completes — no page reload at all.
 {
   const relayStore = new Map();
-  const fetchImpl = (url) => {
+  const fetchImpl = (url, opts) => {
     const m = String(url).match(/\/api\/relay\/(.+)$/);
+    if (m && opts && opts.method === 'DELETE') {
+      relayStore.delete(m[1]); // the webview's ack after processing
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+    }
     if (m && relayStore.has(m[1])) {
+      // peek — payload stays until acked, like the backend's get/delete pair
       const params = relayStore.get(m[1]);
-      relayStore.delete(m[1]); // single read, like the backend's getdel
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ params }) });
     }
     return Promise.resolve({ ok: false });
@@ -234,7 +238,10 @@ function walletSideConnectCallback(connectUrl, sharedLocalStorageProbe) {
   ]);
   assert.equal(pk, 'TgRelayPubKey111111111111111111111111111111');
   assert.equal(tab.CleanWallet.currentPubkey(), pk);
-  console.log('Telegram relay handshake (no reload) ✓');
+  // the webview must ack so the backend can drop the payload
+  await new Promise((res) => setTimeout(res, 50));
+  assert.equal(relayStore.size, 0, 'payload must be acked (DELETEd) after success');
+  console.log('Telegram relay handshake (peek + ack, no reload) ✓');
 }
 
 console.log('\nALL WALLET FLOW TESTS PASSED');

@@ -31,19 +31,24 @@
   var t = document.getElementById('t'), m = document.getElementById('m'), back = document.getElementById('back');
   function done(ok) {
     if (ok) {
-      t.textContent = '🧤 Approved!';
-      m.textContent = 'Head back to Telegram — your wallet links there automatically.';
+      t.textContent = '🧤 Signed!';
+      m.textContent = 'One tap and you land back on your staking page, signed in.';
+      back.textContent = '↩ Open $CLEAN';
     } else {
       t.textContent = 'Hmm, that did not go through';
       t.className = 'err';
       m.textContent = 'Go back to Telegram and tap Connect again.';
     }
-    back.style.display = 'block';
+    // NO auto-redirect: a JS redirect to t.me is not a user gesture, so iOS
+    // shows the "Download Telegram" interstitial. A real TAP universal-links
+    // straight into the Mini App — and thanks to the relay's peek-until-ack
+    // semantics, even a relaunched webview completes the login instantly.
     fetch('/api/economics').then(function (r) { return r.json(); }).then(function (c) {
       if (c.botUsername) {
         back.href = 'https://t.me/' + c.botUsername + '/' + (c.appShortName || 'app');
-        // auto-jump back into Telegram after a beat
-        if (ok) setTimeout(function () { location.href = back.href; }, 1200);
+        back.style.display = 'block';
+      } else {
+        m.textContent += ' Switch back to Telegram to finish.';
       }
     }).catch(function () {});
   }

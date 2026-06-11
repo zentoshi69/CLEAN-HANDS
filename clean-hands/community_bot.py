@@ -50,6 +50,8 @@ from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
+    filters,
 )
 
 # --------------------------------------------------------------------------- #
@@ -283,31 +285,51 @@ def make_meme(img_bytes: bytes, top: str, bottom: str) -> bytes:
     return out.getvalue()
 
 
-async def cmd_meme(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reply = update.message.reply_to_message
-    if not (reply and reply.photo):
-        await update.message.reply_text(
-            "Reply to a photo with:  /meme top text | bottom text"
-        )
-        return
-    raw = " ".join(context.args)
+def _photo_source(update: Update):
+    """The photo to work on: the replied-to message, or the message itself
+    when the command arrives as a photo caption (upload + '/meme ...')."""
+    msg = update.message
+    if msg.reply_to_message and msg.reply_to_message.photo:
+        return msg.reply_to_message
+    if msg.photo:
+        return msg
+    return None
+
+
+async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_msg, args):
+    raw = " ".join(args)
     if "|" in raw:
         top, bottom = (s.strip() for s in raw.split("|", 1))
     else:
         top, bottom = raw.strip(), ""
     top, bottom = top[:MAX_MEME_TEXT], bottom[:MAX_MEME_TEXT]
-    photo = reply.photo[-1]  # highest resolution
-    buf = await _download_photo(context, photo)
+    buf = await _download_photo(context, photo_msg.photo[-1])
     if buf is None:
         await update.message.reply_text("That image is too large to meme.")
         return
     try:
         meme_png = make_meme(buf, top, bottom)
+        try:
+            # every meme leaves with the gloves on — brand stamp, bottom-right
+            meme_png = add_glove(meme_png, "br", 0.2)
+        except Exception:  # noqa: BLE001 — missing asset must not kill the meme
+            pass
     except Exception as e:  # noqa: BLE001
         log.warning("meme failed: %s", e)
         await update.message.reply_text("Couldn't make that meme.")
         return
     await update.message.reply_photo(photo=io.BytesIO(meme_png))
+
+
+async def cmd_meme(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    photo_msg = _photo_source(update)
+    if not photo_msg:
+        await update.message.reply_text(
+            "Send a photo with caption  /meme top text | bottom text\n"
+            "…or reply to a photo with the same command."
+        )
+        return
+    await _run_meme(update, context, photo_msg, context.args)
 
 
 # --------------------------------------------------------------------------- #
@@ -354,16 +376,9 @@ def add_glove(img_bytes: bytes, position: str = "br", scale: float = 0.45) -> by
     return out.getvalue()
 
 
-async def cmd_glove(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reply = update.message.reply_to_message
-    if not (reply and reply.photo):
-        await update.message.reply_text(
-            "Reply to a photo with /glove to slap the $CLEAN glove on it.\n"
-            "Options: /glove [br|bl|tr|tl|center] [scale 0.2-1.0]  e.g. /glove tl 0.6"
-        )
-        return
+async def _run_glove(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_msg, args):
     position, scale = "br", 0.45
-    for a in context.args:
+    for a in args:
         al = a.lower()
         if al in _GLOVE_POSITIONS:
             position = al
@@ -372,7 +387,7 @@ async def cmd_glove(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 scale = float(a)
             except ValueError:
                 pass
-    raw = await _download_photo(context, reply.photo[-1])
+    raw = await _download_photo(context, photo_msg.photo[-1])
     if raw is None:
         await update.message.reply_text("That image is too large to glove.")
         return
@@ -383,6 +398,18 @@ async def cmd_glove(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Couldn't glove that image.")
         return
     await update.message.reply_photo(photo=io.BytesIO(out), caption="🧤 $CLEAN")
+
+
+async def cmd_glove(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    photo_msg = _photo_source(update)
+    if not photo_msg:
+        await update.message.reply_text(
+            "Send a photo with caption  /glove  to slap the $CLEAN glove on it "
+            "(or reply to a photo).\n"
+            "Options: /glove [br|bl|tr|tl|center] [scale 0.2-1.0]  e.g. /glove tl 0.6"
+        )
+        return
+    await _run_glove(update, context, photo_msg, context.args)
 
 
 # --------------------------------------------------------------------------- #
@@ -399,12 +426,30 @@ def to_sticker_webp(img_bytes: bytes) -> bytes:
     return out.getvalue()
 
 
-async def cmd_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    reply = update.message.reply_to_message
-    if not (reply and reply.photo):
-        await update.message.reply_text("Reply to a photo with /sticker to convert it.")
+async def on_photo_caption(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Dispatch photos whose CAPTION is a command: upload + '/meme top | bottom'."""
+    cap = (update.message.caption or "").strip()
+    if not cap.startswith("/"):
         return
-    raw = await _download_photo(context, reply.photo[-1])
+    parts = cap.split()
+    cmd = parts[0][1:].split("@")[0].lower()
+    args = parts[1:]
+    if cmd == "meme":
+        await _run_meme(update, context, update.message, args)
+    elif cmd == "glove":
+        await _run_glove(update, context, update.message, args)
+    elif cmd == "sticker":
+        await cmd_sticker(update, context)
+
+
+async def cmd_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    photo_msg = _photo_source(update)
+    if not photo_msg:
+        await update.message.reply_text(
+            "Send a photo with caption  /sticker  (or reply to a photo) to convert it."
+        )
+        return
+    raw = await _download_photo(context, photo_msg.photo[-1])
     if raw is None:
         await update.message.reply_text("That image is too large to convert.")
         return
@@ -530,6 +575,13 @@ def main():
     app.add_handler(CommandHandler("meme", cmd_meme))
     app.add_handler(CommandHandler("glove", cmd_glove))
     app.add_handler(CommandHandler("sticker", cmd_sticker))
+    # photos uploaded WITH the command as caption — the natural mobile flow
+    app.add_handler(
+        MessageHandler(
+            filters.PHOTO & filters.CaptionRegex(r"^/(meme|glove|sticker)\b"),
+            on_photo_caption,
+        )
+    )
     log.info("Degen Community bot starting…")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 

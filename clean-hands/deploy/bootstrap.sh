@@ -43,7 +43,7 @@ REPO_URL="${REPO_URL:-https://github.com/zentoshi69/CLEAN-HANDS.git}"
 echo "==> [1/7] OS packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq git python3-venv python3-pip curl ca-certificates >/dev/null
+apt-get install -y -qq git python3-venv python3-pip curl ca-certificates fonts-dejavu-core >/dev/null
 
 echo "==> [2/7] service user '$RUN_USER'"
 id "$RUN_USER" &>/dev/null || adduser --disabled-password --gecos "" "$RUN_USER"
