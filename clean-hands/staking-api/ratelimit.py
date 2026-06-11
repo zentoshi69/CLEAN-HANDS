@@ -27,6 +27,7 @@ LIMITS = {
     "login": (_int("RL_LOGIN", 20), 60),
     "burn": (_int("RL_BURN", 10), 60),
     "write": (_int("RL_WRITE", 60), 60),  # stake/unstake/claim
+    "relay": (_int("RL_RELAY", 240), 60),  # wallet-callback handoff polling
 }
 
 
