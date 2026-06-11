@@ -280,6 +280,27 @@
     }
     return false;
   }
+  // One-shot recovery: after a COLD webview relaunch (storage wiped mid-
+  // handshake) the server still knows this Telegram user's finished login via
+  // its per-user pointer — a single sid-less poll picks the session up.
+  function checkTgSession() {
+    if (!inTelegram()) return Promise.resolve(false);
+    return fetch('/api/tg/poll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ initData: tgInitData(), sid: load('tg_sid') || null }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+      .then((j) => {
+        if (j && j.status === 'done') {
+          if (j.profile && j.profile.wallet) save('pubkey', j.profile.wallet);
+          HANDLERS.onSession && HANDLERS.onSession(j.token, j.profile);
+          return true;
+        }
+        return false;
+      });
+  }
 
   if (typeof document !== 'undefined' && document.addEventListener) {
     document.addEventListener('visibilitychange', () => {
@@ -483,6 +504,7 @@
     isConnected,
     currentPubkey,
     pendingStep,
+    checkTgSession,
     listWallets,
     b58encode,
     b58decode,

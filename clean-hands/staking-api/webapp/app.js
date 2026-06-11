@@ -885,6 +885,11 @@
         LS.removeItem('clw_token');
       }
     }
+    // Cold relaunch mid-handshake (storage wiped)? Recover from the server.
+    if (CleanWallet.checkTgSession && (await CleanWallet.checkTgSession())) {
+      hideSplash();
+      return;
+    }
     hideSplash();
     showWelcome();
   }
