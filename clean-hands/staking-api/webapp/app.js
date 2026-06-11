@@ -330,7 +330,14 @@
     CleanWallet.listWallets().forEach((w) => {
       const b = document.createElement('button');
       b.className = 'btn btn-solid';
-      b.textContent = 'Connect ' + w.name;
+      if (w.icon) {
+        const img = document.createElement('img');
+        img.src = w.icon; // wallet-provided data URI (validated in wallet.js)
+        img.style.cssText =
+          'width:20px;height:20px;border-radius:6px;vertical-align:-4px;margin-right:9px';
+        b.appendChild(img);
+        b.appendChild(document.createTextNode('Connect ' + w.name));
+      } else b.textContent = 'Connect ' + w.name;
       b.onclick = () => {
         haptic('light');
         $('sheetSpin').classList.remove('hide');
