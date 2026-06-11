@@ -594,6 +594,13 @@ _SID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 _TG_TTL = 600  # seconds for a whole connect->sign handshake
 
 
+def _tg_log(sid: str, step: str, **kv) -> None:
+    """One greppable line per handshake step in journalctl. Never logs secrets —
+    sid is truncated, wallets shortened, payloads never printed."""
+    extras = " ".join(f"{k}={v}" for k, v in kv.items())
+    print(f"[tg-handshake] sid={sid[:8]}… {step} {extras}".rstrip(), flush=True)
+
+
 def _b58(b: bytes) -> str:
     return base58.b58encode(bytes(b)).decode()
 
@@ -670,6 +677,7 @@ def api_tg_start(body: TgStart, request: Request):
             "status": "started",
         },
     )
+    _tg_log(sid, "start", tg=tg_id, wallet_app=body.wallet)
     return {"sid": sid, "dapp_pub": _b58(bytes(sk.public_key))}
 
 
@@ -691,6 +699,7 @@ def api_tg_connect(
     if errorCode:
         st.update(status="error", err=errorMessage or "wallet error")
         _tg_put(sid, st)
+        _tg_log(sid, "connect CANCELLED", code=errorCode)
         return _tg_page("Connection cancelled", _tg_open_app_button(request), err=True)
     try:
         sk = PrivateKey(base58.b58decode(st["sk"]))
@@ -706,6 +715,7 @@ def api_tg_connect(
         payload = json.dumps({"message": _b58(msg.encode()), "session": wsession}).encode()
         n = nacl_random(24)
         ct = box.encrypt(payload, n).ciphertext
+        _tg_log(sid, "connect OK", wallet=wallet[:6] + "…")
         st.update(
             status="connected",
             their=phantom_encryption_public_key,
@@ -735,9 +745,10 @@ def api_tg_connect(
             f"<p style='margin-top:14px;font-size:.82rem'><a href='{ul}' "
             "style='color:#5d7ea3'>Wallet didn't open? Tap here.</a></p>",
         )
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         st.update(status="error", err="could not link wallet")
         _tg_put(sid, st)
+        _tg_log(sid, "connect FAILED", reason=type(e).__name__)
         return _tg_page("Couldn't link wallet", "<p>Please reopen the app and try again.</p>", err=True)
 
 
@@ -758,6 +769,7 @@ async def api_tg_sign(
     if errorCode:
         st.update(status="error", err=errorMessage or "wallet error")
         _tg_put(sid, st)
+        _tg_log(sid, "sign CANCELLED", code=errorCode)
         return _tg_page("Signature cancelled", _tg_open_app_button(request), err=True)
     if st["status"] == "done":  # idempotent — Phantom re-delivered the callback
         return _tg_page("🧤 Signed!", _tg_open_app_button(request))
@@ -775,18 +787,21 @@ async def api_tg_sign(
         token, _ = await _complete_login(wallet, st["tg"], st.get("ref"), st.get("username"))
         st.update(status="done", token=token)
         _tg_put(sid, st)
+        _tg_log(sid, "sign OK -> session minted", wallet=wallet[:6] + "…")
         # so a fully cold-relaunched webview (empty localStorage) can still recover
         store.get_store().setex("tglast:" + str(st["tg"]), _TG_TTL, sid)
         return _tg_page("🧤 Signed!", _tg_open_app_button(request))
     except HTTPException as e:
         st.update(status="error", err=str(e.detail))
         _tg_put(sid, st)
+        _tg_log(sid, "sign FAILED", reason=str(e.detail)[:60])
         import html as _html
 
         return _tg_page("Sign-in problem", f"<p>{_html.escape(str(e.detail))}</p>", err=True)
-    except Exception:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         st.update(status="error", err="signature failed")
         _tg_put(sid, st)
+        _tg_log(sid, "sign FAILED", reason=type(e).__name__)
         return _tg_page("Signature failed", "<p>Please reopen the app and try again.</p>", err=True)
 
 
@@ -883,41 +898,58 @@ def healthz():
 #  STATIC FRONTEND (the Mini App, served same-origin → no CORS for the app)    #
 # --------------------------------------------------------------------------- #
 _WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webapp")
+# Without Cache-Control, webviews use HEURISTIC caching (reuse without
+# revalidating, for ~10% of the file's age) — Telegram's webview kept serving
+# STALE app.js/wallet.js across deploys, so client fixes never reached phones.
+# no-cache forces an ETag revalidation on every load: 304 when unchanged,
+# fresh bytes the moment a deploy lands.
+_NO_CACHE = {"Cache-Control": "no-cache, max-age=0, must-revalidate"}
+_DAY_CACHE = {"Cache-Control": "public, max-age=86400"}
 
 
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(_WEB, "index.html"))
+    return FileResponse(os.path.join(_WEB, "index.html"), headers=_NO_CACHE)
 
 
 @app.get("/app.js")
 def app_js():
-    return FileResponse(os.path.join(_WEB, "app.js"), media_type="application/javascript")
+    return FileResponse(
+        os.path.join(_WEB, "app.js"), media_type="application/javascript", headers=_NO_CACHE
+    )
 
 
 @app.get("/wallet.js")
 def wallet_js():
-    return FileResponse(os.path.join(_WEB, "wallet.js"), media_type="application/javascript")
+    return FileResponse(
+        os.path.join(_WEB, "wallet.js"), media_type="application/javascript", headers=_NO_CACHE
+    )
 
 
 @app.get("/nacl.min.js")
 def nacl_js():
-    return FileResponse(os.path.join(_WEB, "nacl.min.js"), media_type="application/javascript")
+    return FileResponse(
+        os.path.join(_WEB, "nacl.min.js"), media_type="application/javascript", headers=_NO_CACHE
+    )
 
 
 @app.get("/wallet-return")
 def wallet_return():
-    return FileResponse(os.path.join(_WEB, "return.html"))
+    return FileResponse(os.path.join(_WEB, "return.html"), headers=_NO_CACHE)
 
 
 @app.get("/glove.png")
 def glove_png():
-    return FileResponse(os.path.join(os.path.dirname(_WEB), "..", "assets", "glove.png"))
+    return FileResponse(
+        os.path.join(os.path.dirname(_WEB), "..", "assets", "glove.png"), headers=_DAY_CACHE
+    )
 
 
 @app.get("/banner.png")
 def banner_png():
-    return FileResponse(os.path.join(os.path.dirname(_WEB), "..", "assets", "banner.png"))
+    return FileResponse(
+        os.path.join(os.path.dirname(_WEB), "..", "assets", "banner.png"), headers=_DAY_CACHE
+    )
 
 
 # --------------------------------------------------------------------------- #
