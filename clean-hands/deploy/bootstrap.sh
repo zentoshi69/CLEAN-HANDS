@@ -98,6 +98,10 @@ if [ -z "$(get_kv SOLANA_RPC_URL)" ]; then
   ask "Solana RPC URL (Helius/Triton; Enter = public mainnet RPC for now): "
   set_kv SOLANA_RPC_URL "${REPLY:-https://api.mainnet-beta.solana.com}"
 fi
+if [ -z "$(get_kv OPENAI_API_KEY)" ]; then
+  ask "OpenAI API key for the AI /meme glove-wash (Enter = skip, local stamp fallback): "
+  if [ -n "$REPLY" ]; then set_kv OPENAI_API_KEY "$REPLY"; fi
+fi
 # Season campaign defaults: wash 5% of the supply in 60 days (pump.fun = 1B)
 [ -n "$(get_kv STAKE_TOTAL_SUPPLY)" ]   || set_kv STAKE_TOTAL_SUPPLY 1000000000
 [ -n "$(get_kv SEASON_END_TS)" ]        || set_kv SEASON_END_TS "$(date -d '+60 days' +%s 2>/dev/null || date -v+60d +%s)"

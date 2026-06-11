@@ -32,6 +32,9 @@ import io
 import os
 import glob
 import math
+import time
+import base64
+import asyncio
 import logging
 import textwrap
 
@@ -237,6 +240,75 @@ async def cmd_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
 MAX_PHOTO_BYTES = 8 * 1024 * 1024  # Telegram-compressed photos are far smaller
 MAX_MEME_TEXT = 200  # per caption block
 
+# --- AI hand-washing (OpenAI image edits). Optional: no key -> local stamp --- #
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+MEME_AI_MODEL = os.environ.get("MEME_AI_MODEL", "gpt-image-1")
+MEME_AI_COOLDOWN = int(os.environ.get("MEME_AI_COOLDOWN", "60"))  # s per user
+GLOVE_PROMPT = (
+    "Replace every visible human hand in this image with a hand wearing the "
+    "iconic $CLEAN light-blue latex glove — a glossy, light-blue nitrile/"
+    "surgical glove (like a clenched-fist mascot glove). Keep everything else "
+    "identical: faces, bodies, clothing, background, lighting and art style. "
+    "If no hands are visible, add one light-blue gloved hand naturally into "
+    "the scene (a fist or thumbs-up). Blend seamlessly with the original style."
+)
+CLEANING_FRAMES = [
+    "🫧 Soaking the image…",
+    "🧼 Scrubbing the pixels…",
+    "🧤 Fitting the gloves…",
+    "✨ Polishing the shine…",
+    "🚿 Final rinse…",
+]
+_ai_last: dict[int, float] = {}  # user_id -> last AI run (cooldown)
+
+
+def _ai_ready(user_id: int) -> bool:
+    """AI path available for this user right now? (key set + off cooldown)"""
+    if not OPENAI_API_KEY:
+        return False
+    now = time.time()
+    if now - _ai_last.get(user_id, 0) < MEME_AI_COOLDOWN:
+        return False
+    if len(_ai_last) > 4096:  # bound memory
+        cutoff = now - MEME_AI_COOLDOWN
+        for k in [k for k, v in _ai_last.items() if v < cutoff]:
+            _ai_last.pop(k, None)
+    _ai_last[user_id] = now
+    return True
+
+
+async def ai_glove_hands(img_bytes: bytes) -> bytes | None:
+    """Ask the image model to swap all hands for the $CLEAN glove. Returns PNG
+    bytes, or None on any failure (caller falls back to the local stamp)."""
+    try:
+        async with httpx.AsyncClient(timeout=90) as client:
+            r = await client.post(
+                "https://api.openai.com/v1/images/edits",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                files={"image": ("photo.jpg", img_bytes, "image/jpeg")},
+                data={"model": MEME_AI_MODEL, "prompt": GLOVE_PROMPT, "size": "auto"},
+            )
+        if r.status_code != 200:
+            log.warning("ai meme failed: HTTP %s %s", r.status_code, r.text[:200])
+            return None
+        b64 = (r.json().get("data") or [{}])[0].get("b64_json")
+        return base64.b64decode(b64) if b64 else None
+    except Exception as e:  # noqa: BLE001
+        log.warning("ai meme failed: %s", type(e).__name__)
+        return None
+
+
+async def _cleaning_fx(msg) -> None:
+    """Edit-loop 'cleaning' animation on the placeholder message."""
+    i = 0
+    while True:
+        await asyncio.sleep(1.4)
+        i += 1
+        try:
+            await msg.edit_text(CLEANING_FRAMES[i % len(CLEANING_FRAMES)])
+        except Exception:  # noqa: BLE001 — deleted or rate-limited: stop quietly
+            return
+
 
 async def _download_photo(context, photo) -> bytes | None:
     """Fetch a replied-to photo, refusing anything over MAX_PHOTO_BYTES."""
@@ -303,30 +375,66 @@ async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_ms
     else:
         top, bottom = raw.strip(), ""
     top, bottom = top[:MAX_MEME_TEXT], bottom[:MAX_MEME_TEXT]
+    chat_id = update.message.chat_id
     buf = await _download_photo(context, photo_msg.photo[-1])
     if buf is None:
         await update.message.reply_text("That image is too large to meme.")
         return
+
+    # the upload disappears INSTANTLY (needs Delete-messages rights in groups)
+    for m in {photo_msg.message_id, update.message.message_id}:
+        try:
+            await context.bot.delete_message(chat_id, m)
+        except Exception:  # noqa: BLE001 — no delete rights: continue anyway
+            pass
+
+    # visible cleaning FX while the wash runs
+    placeholder = await context.bot.send_message(chat_id, CLEANING_FRAMES[0])
+    fx = asyncio.create_task(_cleaning_fx(placeholder))
     try:
-        meme_png = make_meme(buf, top, bottom)
+        await context.bot.send_chat_action(chat_id, "upload_photo")
+    except Exception:  # noqa: BLE001
+        pass
+
+    user_id = update.effective_user.id if update.effective_user else 0
+    out = None
+    try:
+        if _ai_ready(user_id):
+            out = await ai_glove_hands(buf)  # hands -> gloves, AI
+        if out is None:
+            out = buf  # AI off/cooldown/failed: local pipeline below still delivers
+        if top or bottom:
+            out = make_meme(out, top, bottom)
         try:
             # every meme leaves with the gloves on — brand stamp, bottom-right
-            meme_png = add_glove(meme_png, "br", 0.2)
+            out = add_glove(out, "br", 0.2)
         except Exception:  # noqa: BLE001 — missing asset must not kill the meme
             pass
+        fx.cancel()
+        try:
+            await placeholder.delete()
+        except Exception:  # noqa: BLE001
+            pass
+        await context.bot.send_photo(
+            chat_id, photo=io.BytesIO(out), caption="🧤 washed by $CLEAN"
+        )
     except Exception as e:  # noqa: BLE001
         log.warning("meme failed: %s", e)
-        await update.message.reply_text("Couldn't make that meme.")
-        return
-    await update.message.reply_photo(photo=io.BytesIO(meme_png))
+        fx.cancel()
+        try:
+            await placeholder.edit_text("Couldn't wash that one — try another image. 🧤")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def cmd_meme(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_msg = _photo_source(update)
     if not photo_msg:
+        ai = " — AI swaps every hand for the $CLEAN glove 🧤" if OPENAI_API_KEY else ""
         await update.message.reply_text(
-            "Send a photo with caption  /meme top text | bottom text\n"
-            "…or reply to a photo with the same command."
+            "Send a photo with caption  /meme  (optional: top text | bottom text)\n"
+            f"…or reply to a photo with the same command{ai}.\n"
+            "Your upload is deleted the moment the wash starts."
         )
         return
     await _run_meme(update, context, photo_msg, context.args)
