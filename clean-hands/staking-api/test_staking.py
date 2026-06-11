@@ -439,6 +439,50 @@ def test_tg_handshake():
     print("tg server handshake ✓")
 
 
+def test_ref_codes():
+    """Short shareable referral codes: stable per wallet, resolvable at login."""
+    import app, db as _db
+    from fastapi.testclient import TestClient
+
+    c = TestClient(app.app)
+
+    def login(sk, ref=None):
+        wallet = base58.b58encode(bytes(sk.verify_key)).decode()
+        nonce = c.get("/api/nonce", params={"wallet": wallet}).json()["nonce"]
+        msg = auth.login_message(wallet, nonce)
+        sig = base58.b58encode(sk.sign(msg.encode()).signature).decode()
+        return c.post("/api/login", json={"wallet": wallet, "signature": sig, "nonce": nonce, "ref": ref})
+
+    a = SigningKey.generate()
+    ra = login(a)
+    assert ra.status_code == 200, ra.text
+    code = ra.json()["profile"]["ref_code"]
+    assert code and len(code) == 6 and all(ch in _db._REF_ALPHABET for ch in code), code
+    # stable across logins
+    assert login(a).json()["profile"]["ref_code"] == code
+    # a friend joins with the code (messy casing + spaces still resolves)
+    b = SigningKey.generate()
+    rb = login(b, ref=" " + code.lower() + " ")
+    assert rb.status_code == 200, rb.text
+    wa = base58.b58encode(bytes(a.verify_key)).decode()
+    wb = base58.b58encode(bytes(b.verify_key)).decode()
+    with _db.db() as conn:
+        assert _db.get_staker(conn, wb)["referred_by"] == wa
+    # /api/referrals exposes the code
+    tok = ra.json()["token"]
+    j = c.post("/api/referrals", json={"token": tok}).json()
+    assert j["ref_code"] == code
+    # self-referral with your own code is ignored
+    s = SigningKey.generate()
+    rs = login(s)
+    own = rs.json()["profile"]["ref_code"]
+    ws = base58.b58encode(bytes(s.verify_key)).decode()
+    with _db.db() as conn:
+        assert _db.get_staker(conn, ws)["referred_by"] is None
+        assert _db.wallet_by_ref_code(conn, own) == ws
+    print("ref codes ✓")
+
+
 if __name__ == "__main__":
     test_economics()
     test_auth_signature()
@@ -450,7 +494,8 @@ if __name__ == "__main__":
     test_claims_manual()
     test_robustness()
     test_reconcile()
-    test_rate_limit()
+    test_ref_codes()
+    test_rate_limit()  # exhausts the nonce bucket — keep it after nonce users
     test_relay()
     test_tg_handshake()
     print("\nALL STAKING TESTS PASSED")

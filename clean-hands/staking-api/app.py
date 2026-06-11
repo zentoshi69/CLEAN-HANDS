@@ -160,6 +160,7 @@ def _profile(conn, wallet: str) -> dict:
         "active_referrals": refs,
         "days_staked": round(secs / 86400, 2),
         "rank": rank,
+        "ref_code": db.ref_code(conn, wallet),
         "apr": apr.to_dict(),
     }
 
@@ -245,9 +246,15 @@ async def _complete_login(wallet: str, tg_id, ref, username):
                 raise HTTPException(409, "this Telegram account is already linked to another wallet")
         existed = db.get_staker(conn, wallet) is not None
         r = None
-        if not existed and ref and ref != wallet and auth.is_valid_wallet(ref):
-            if db.get_staker(conn, ref):
-                r = ref
+        if not existed and ref:
+            # the referral may be a full wallet (legacy links) or a short code
+            cand = ref if auth.is_valid_wallet(ref) else None
+            if cand is None:
+                code = re.sub(r"[^A-Za-z0-9]", "", str(ref)).upper()
+                if 4 <= len(code) <= 12:
+                    cand = db.wallet_by_ref_code(conn, code)
+            if cand and cand != wallet and db.get_staker(conn, cand):
+                r = cand
         db.upsert_staker(conn, wallet, tg_id=tg_id, username=username, referred_by=r)
         row = db.get_staker(conn, wallet)
         await _refresh_balance(conn, row)
@@ -415,8 +422,12 @@ def api_leaderboard(body: Tok):
 def api_referrals(body: Tok):
     wallet = _require(body.token)["w"]
     with db.db() as conn:
+        code = db.ref_code(conn, wallet)
+        bot = os.environ.get("MINIAPP_BOT_USERNAME", "").lstrip("@")
+        short = os.environ.get("MINIAPP_SHORT_NAME", "app")
         return {
-            "ref_code": wallet,
+            "ref_code": code or wallet,
+            "link": f"https://t.me/{bot}/{short}?startapp={code or wallet}" if bot else None,
             "active_referrals": db.active_referrals(conn, wallet),
             "reward": "each active referral adds to your APR (see /api/profile apr.referral_boost)",
         }
