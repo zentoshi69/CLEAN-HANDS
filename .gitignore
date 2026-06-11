@@ -1,0 +1,47 @@
+# ---------------------------------------------------------------------------
+# CLEAN HANDS — keep secrets, runtime state, and build junk out of git.
+# The docs (README / THREAT-MODEL) assume .env is git-ignored — this enforces it.
+# ---------------------------------------------------------------------------
+
+# --- secrets / runtime config (NEVER commit) ---
+.env
+.env.*
+!.env.example
+
+# --- databases & runtime state ---
+*.db
+*.sqlite
+*.sqlite3
+*-wal
+*-shm
+*.db-wal
+*.db-shm
+alerts_state.json
+*_state.json
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+*/venv/
+**/venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# --- build artifacts / archives ---
+*.tgz
+*.tar.gz
+dist/
+build/
+
+# --- editor / OS ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.log

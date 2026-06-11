@@ -41,7 +41,7 @@ chmod 600 .env
 python3 -m venv venv && venv/bin/pip install -r requirements.txt
 # staking-api venv (FastAPI + crypto)
 python3 -m venv staking-api/venv && staking-api/venv/bin/pip install -r staking-api/requirements.txt
-# (optional) mini-app points demo venv if you run it: miniapp/venv
+# (optional) mini-app points demo: create miniapp/venv AND pass WITH_MINIAPP=1 below
 
 sudo bash install-systemd.sh   # starts every service that has a venv
 ```

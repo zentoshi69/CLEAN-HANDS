@@ -162,7 +162,8 @@ async def post(text: str) -> None:
         async with httpx.AsyncClient(timeout=15) as c:
             await c.post(url, json={"chat_id": CHAT, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True})
     except Exception as e:  # noqa: BLE001
-        log.warning("post failed: %s", e)
+        # httpx errors embed the request URL, which contains the bot token
+        log.warning("post failed: %s", str(e).replace(TOKEN, "***"))
 
 
 async def run() -> None:

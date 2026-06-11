@@ -41,8 +41,14 @@ declare -A VENV=(
   [notifier]="$DIR/staking-api/venv/bin/python"
 )
 
+# The miniapp points DEMO is a separate economy from the staking API and is not
+# routed by deploy/Caddyfile. It is opt-in so it can't shadow the real app:
+#   sudo WITH_MINIAPP=1 bash install-systemd.sh
+SERVICES=(guardian scanner community alerts staking notifier)
+[ "${WITH_MINIAPP:-0}" = "1" ] && SERVICES+=(miniapp)
+
 enabled=()
-for svc in guardian scanner community alerts miniapp staking notifier; do
+for svc in "${SERVICES[@]}"; do
   src="systemd/degen-$svc.service"
   [ -f "$src" ] || continue
   dst="/etc/systemd/system/degen-$svc.service"

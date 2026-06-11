@@ -79,6 +79,16 @@ logging.basicConfig(
 log = logging.getLogger("scanner")
 
 _cache: dict[str, tuple[float, dict]] = {}
+_CACHE_MAX = 512  # bound memory in busy groups; dict order = insertion order
+
+
+def _cache_put(mint: str, data: dict, now: float) -> None:
+    if len(_cache) >= _CACHE_MAX:
+        for k in [k for k, (t, _) in _cache.items() if now - t >= CACHE_TTL]:
+            _cache.pop(k, None)
+    while len(_cache) >= _CACHE_MAX:
+        _cache.pop(next(iter(_cache)))
+    _cache[mint] = (now, data)
 
 
 # --------------------------------------------------------------------------- #
@@ -98,7 +108,7 @@ async def fetch_report(mint: str) -> dict | None:
         data = r.json()
         if not isinstance(data, dict) or "score_normalised" not in data:
             return None
-        _cache[mint] = (now, data)
+        _cache_put(mint, data, now)
         return data
     except Exception as e:  # noqa: BLE001
         log.warning("rugcheck fetch failed for %s: %s", mint, e)

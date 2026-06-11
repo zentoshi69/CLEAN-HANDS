@@ -253,7 +253,11 @@ async def _kick_unverified(context: ContextTypes.DEFAULT_TYPE):
 
 async def on_verify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    target_uid = int(query.data.split(":")[1])
+    parts = (query.data or "").split(":")
+    if len(parts) < 2 or not parts[1].lstrip("-").isdigit():
+        await query.answer("This button has expired.", show_alert=True)
+        return
+    target_uid = int(parts[1])
     presser = query.from_user.id
 
     if presser != target_uid:
