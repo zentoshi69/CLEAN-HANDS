@@ -1052,6 +1052,13 @@ def app_js():
     )
 
 
+@app.get("/whitepaper")
+def whitepaper():
+    # Self-contained white paper; numbers hydrate live from /api/economics +
+    # /api/stats client-side, so it can never disagree with the app.
+    return FileResponse(os.path.join(_WEB, "whitepaper.html"), headers=_NO_CACHE)
+
+
 @app.get("/wallet.js")
 def wallet_js():
     return FileResponse(
