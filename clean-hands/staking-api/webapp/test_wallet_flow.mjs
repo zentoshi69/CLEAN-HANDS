@@ -65,6 +65,8 @@ function bootTab({ storage, href, initData = '', fetchImpl = null, pollMs = 0 })
     Date,
     setTimeout,
     clearTimeout,
+    setInterval,
+    clearInterval,
     fetch: fetchImpl || (() => Promise.reject(new Error('no fetch in this tab'))),
     document: { addEventListener: () => {}, hidden: false },
     CustomEvent: class {
@@ -188,58 +190,26 @@ function walletSideConnectCallback(connectUrl, sharedLocalStorageProbe) {
   console.log('sign round-trip across three tabs ✓');
 }
 
-// ---- case 5: Telegram server-side handshake (client view) ----------------- //
-// In Telegram, connect() calls POST /api/tg/start, opens the wallet UL pointed
-// at the SERVER, and polls POST /api/tg/poll until it gets {status:done,...},
-// then fires onSession. No in-webview crypto, survives relaunches.
+// ---- case 5 (v1.0): the in-webview Telegram server-handshake CLIENT was ---- //
+// replaced by the webview-proof trio (openInWallet browse / WalletConnect /
+// deeplink). openInWallet must re-open THIS app inside the wallet's browser.
 {
-  let started = 0;
-  const fetchImpl = (url, opts) => {
-    if (/\/api\/tg\/start$/.test(url)) {
-      started++;
-      const body = JSON.parse(opts.body);
-      assert.ok(body.initData && body.wallet === 'phantom', 'start carries initData + wallet');
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({ sid: 'SID123', dapp_pub: 'PUB' }) });
-    }
-    if (/\/api\/tg\/poll$/.test(url)) {
-      // first poll pending, then done — exercises the retry loop
-      started++;
-      const done = started > 2;
-      return Promise.resolve({
-        ok: true,
-        json: () =>
-          Promise.resolve(
-            done
-              ? { status: 'done', token: 'TOK. SIG', profile: { wallet: 'Wxyz' } }
-              : { status: 'connected' },
-          ),
-      });
-    }
-    return Promise.resolve({ ok: false });
-  };
-
-  const tab = bootTab({ storage: makeStorage(), href: ORIGIN, initData: 'user=stub', fetchImpl, pollMs: 5 });
-  let session = null;
-  tab.CleanWallet.init({ onSession: (tok, prof) => (session = { tok, prof }), onError: (e) => assert.fail(e.message) });
-  const mode = tab.CleanWallet.connect('phantom');
-  assert.equal(mode, 'tg', 'inside Telegram, connect uses the server handshake');
-  assert.equal(tab.opened.length, 0, 'connect UL opens only after /api/tg/start resolves');
-
-  await new Promise((res) => setTimeout(res, 1300)); // first poll fires at 800ms
-  const redirect = tab.opened[0] && new URL(tab.opened[0]).searchParams.get('redirect_link');
+  const tab = bootTab({ storage: makeStorage(), href: ORIGIN, initData: 'user=stub' });
+  tab.CleanWallet.openInWallet('phantom');
+  assert.equal(tab.opened.length, 1, 'openInWallet must open a UL');
+  const u = tab.opened[0];
+  assert.ok(/^https:\/\/phantom\.app\/ul\/browse\//.test(u), 'browse UL targets the wallet browser: ' + u);
   assert.ok(
-    redirect && redirect.endsWith('/api/tg/connect/SID123'),
-    'wallet UL redirect_link points at the server handshake: ' + redirect,
+    decodeURIComponent(u).indexOf(ORIGIN) >= 0,
+    'browse UL must point the wallet browser back at this app',
   );
-  assert.ok(session && session.tok === 'TOK. SIG', 'onSession fired with the server token');
-  assert.equal(session.prof.wallet, 'Wxyz');
-  console.log('Telegram server-side handshake (client) ✓');
+  console.log('openInWallet browse deeplink (webview-proof path) ✓');
 }
 
 // ---- case 6: Wallet Standard — any modern wallet announces itself --------- //
-// A wallet registers through the real event protocol; it must appear in the
-// picker (deduped against the deeplink trio), and connect+signMessage must
-// flow through its standard features.
+// A wallet registers through the real event protocol; it must appear in
+// detected() (the live picker source), and connect+signMessage must flow
+// through its standard features via connectInjected/signInjected.
 {
   const tab = bootTab({ storage: makeStorage(), href: ORIGIN });
   const signed = [];
@@ -267,23 +237,15 @@ function walletSideConnectCallback(connectUrl, sharedLocalStorageProbe) {
     }),
   );
 
-  const list = tab.CleanWallet.listWallets();
-  assert.ok(list.find((w) => w.id === 'ws:OKX Wallet' && w.icon), 'standard wallet listed with icon');
-  assert.ok(list.find((w) => w.id === 'phantom'), 'deeplink trio still offered');
+  const list = tab.CleanWallet.detected();
+  assert.ok(list.find((w) => w.id === 'std:OKX Wallet' && w.kind === 'standard'), 'standard wallet detected');
   assert.equal(list.filter((w) => w.name.toLowerCase() === 'okx wallet').length, 1, 'deduped');
+  assert.ok(tab.CleanWallet.listWallets().find((w) => w.id === 'phantom'), 'deeplink trio still offered');
 
-  let pk = null;
-  let sig = null;
-  tab.CleanWallet.init({
-    onConnect: (p) => (pk = p),
-    onSign: (s) => (sig = s),
-    onError: (e) => assert.fail('std flow error: ' + e.message),
-  });
-  assert.equal(tab.CleanWallet.connect('ws:OKX Wallet'), 'std');
-  await new Promise((r) => setTimeout(r, 30));
+  const pk = await tab.CleanWallet.connectInjected('std:OKX Wallet');
   assert.equal(pk, 'OkxAddr1111111111111111111111111111111111111');
-  tab.CleanWallet.signMessage('login msg', { nonce: 'n' });
-  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(tab.CleanWallet.currentPubkey(), pk, 'pubkey persisted');
+  const sig = await tab.CleanWallet.signInjected('login msg');
   assert.ok(sig && sig.length > 0, 'b58 signature delivered');
   assert.equal(signed[0].account.address, pk, 'signed with the authorized account');
   console.log('Wallet Standard discovery + connect + sign ✓');

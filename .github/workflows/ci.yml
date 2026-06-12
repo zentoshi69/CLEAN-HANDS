@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  staking-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: clean-hands/staking-api/requirements.txt
+
+      - name: Install API deps
+        run: pip install -r clean-hands/staking-api/requirements.txt pytest
+
+      - name: API test suite
+        working-directory: clean-hands/staking-api
+        run: python -m pytest test_staking.py -q
+
+      - name: Compile every Python file (bots included)
+        run: find clean-hands -name '*.py' -print0 | xargs -0 -n1 python -m py_compile
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Wallet flow regression tests
+        working-directory: clean-hands/staking-api/webapp
+        run: node test_wallet_flow.mjs
+
+      - name: Telegram handshake cross-impl e2e (tweetnacl ⇄ PyNaCl over HTTP)
+        working-directory: clean-hands/staking-api
+        env:
+          TG_COMMUNITY_TOKEN: "123456:TEST_token"
+        run: |
+          STAKE_ENV=dev STAKE_PORT=8096 STAKE_DB=/tmp/ci-tg.db \
+            MINIAPP_URL=http://127.0.0.1:8096 \
+            DEFAULT_TOKEN_MINT=CLEANmint1111111111111111111111111111111111 \
+            STAKE_SERVER_SECRET=ci-only-secret \
+            python app.py & SERVER=$!
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8096/healthz >/dev/null && break; sleep 0.5
+          done
+          BASE=http://127.0.0.1:8096 node webapp/test_tg_e2e.mjs
+          kill $SERVER
+
+      - name: Shell scripts parse
+        run: |
+          find clean-hands -name '*.sh' -print0 | xargs -0 -n1 bash -n
+
+      - name: Dependency vulnerability audit
+        run: |
+          pip install pip-audit
+          pip-audit -r clean-hands/staking-api/requirements.txt

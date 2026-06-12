@@ -1107,9 +1107,16 @@ def app_js():
 
 @app.get("/whitepaper")
 def whitepaper():
-    # Self-contained white paper; numbers hydrate live from /api/economics +
-    # /api/stats client-side, so it can never disagree with the app.
     return FileResponse(os.path.join(_WEB, "whitepaper.html"), headers=_NO_CACHE)
+
+
+@app.get("/whitepaper.js")
+def whitepaper_js():
+    # The whitepaper's ambience script lives in its own file because the CSP
+    # has no 'unsafe-inline' for scripts — an inline block would be blocked.
+    return FileResponse(
+        os.path.join(_WEB, "whitepaper.js"), media_type="application/javascript", headers=_NO_CACHE
+    )
 
 
 @app.get("/wallet.js")
