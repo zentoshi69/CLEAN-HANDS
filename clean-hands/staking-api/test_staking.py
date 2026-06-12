@@ -838,11 +838,17 @@ def test_portfolio_multi_wallet():
     bad = base58.b58encode(ska.sign(auth.login_message(wc_, nc).encode()).signature).decode()
     assert c.post("/api/link", json={"token": tok_a, "wallet": wc_, "signature": bad, "nonce": nc}).status_code == 401
 
-    # B can't be claimed by another portfolio
+    # another portfolio CAN reclaim B — but only with B's own fresh signature
+    # (proof of CURRENT control re-homes the wallet instead of dead-ending)
     wd, tok_d = login(SigningKey.generate())
     wb2, nb2, sigb2 = signed_nonce(skb)
     r = c.post("/api/link", json={"token": tok_d, "wallet": wb2, "signature": sigb2, "nonce": nb2})
-    assert r.status_code == 409
+    assert r.status_code == 200 and r.json()["count"] == 2
+    # ...and B left A's portfolio in the process
+    assert c.post("/api/portfolio", json={"token": tok_a}).json()["count"] == 1
+    # reclaim it back for A so the rest of the test continues unchanged
+    wb3, nb3, sigb3 = signed_nonce(skb)
+    assert c.post("/api/link", json={"token": tok_a, "wallet": wb3, "signature": sigb3, "nonce": nb3}).status_code == 200
 
     # a linked wallet's own session sees the same cluster
     _, tok_b = login(skb)
@@ -852,4 +858,4 @@ def test_portfolio_multi_wallet():
     # unlink B; anchor can't be unlinked
     assert c.post("/api/unlink", json={"token": tok_a, "wallet": wb}).json()["count"] == 1
     assert c.post("/api/unlink", json={"token": tok_a, "wallet": wa}).status_code == 400
-    print("multi-wallet portfolio ✓")
+    print("multi-wallet portfolio + reclaim ✓")

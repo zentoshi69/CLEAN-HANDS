@@ -428,12 +428,14 @@ def link_wallet(conn, sess_wallet: str, new_wallet: str, limit: int = 10) -> str
     o = link_owner(conn, sess_wallet)
     if new_wallet in cluster_wallets(conn, o):
         return "that wallet is already in your portfolio"
-    if conn.execute("SELECT 1 FROM wallet_links WHERE wallet=?", (new_wallet,)).fetchone():
-        return "that wallet is already linked to another portfolio"
     if conn.execute("SELECT 1 FROM wallet_links WHERE owner=?", (new_wallet,)).fetchone():
         return "that wallet anchors its own portfolio — unlink its wallets there first"
     if len(cluster_wallets(conn, o)) >= limit:
         return f"portfolio limit reached ({limit} wallets)"
+    # If the wallet is linked under some other portfolio, the FRESH signature we
+    # just verified proves the caller controls it NOW — re-home it instead of
+    # dead-ending (self-healing for re-tests, migrations, and shared devices).
+    conn.execute("DELETE FROM wallet_links WHERE wallet=?", (new_wallet,))
     conn.execute(
         "INSERT INTO wallet_links (wallet, owner, ts) VALUES (?,?,?)",
         (new_wallet, o, int(time.time())),

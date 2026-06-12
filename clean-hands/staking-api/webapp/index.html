@@ -1045,9 +1045,10 @@
           <div id="folio-rows"></div>
           <div class="card">
             <div class="btn-row">
-              <button class="btn btn-solid" onclick="App.linkWallet()">➕ Link a wallet</button>
+              <button class="btn btn-solid" onclick="App.linkPicker()">➕ Link a wallet</button>
               <button class="btn btn-ghost" id="f-wc" onclick="App.linkWalletWC()">🔗 WalletConnect</button>
             </div>
+            <div id="f-picker" class="hide btn-row" style="flex-wrap:wrap;margin-top:8px"></div>
             <p class="lbl" style="margin-top:10px">
               Each wallet signs once to prove it's yours — then it's saved to your
               portfolio <b>forever</b>, until you remove it with ✕. Up to 20 wallets.
