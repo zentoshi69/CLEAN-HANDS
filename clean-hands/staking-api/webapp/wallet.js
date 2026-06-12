@@ -265,7 +265,14 @@
     try {
       // Every callback must echo the per-step state we issued AND match the step
       // we're actually waiting on. Reject forged/unsolicited callbacks outright.
-      if (!stateOk(url) || load('pending') !== cb) throw new Error('unexpected wallet response');
+      if (!stateOk(url) || load('pending') !== cb) {
+        // Fail CLOSED either way — but when THIS context has no handshake in
+        // flight at all (webview relaunch wiped storage, or the callback landed
+        // in a different browser), say so kindly instead of cryptically.
+        if (!load('pending') && !load('state'))
+          throw new Error('Almost there — tap Connect once more to finish.');
+        throw new Error('unexpected wallet response');
+      }
       const errCode = url.searchParams.get('errorCode');
       // Never surface attacker-controlled errorMessage text (social-engineering
       // vector in a hostile group) — show a fixed string keyed off the code only.

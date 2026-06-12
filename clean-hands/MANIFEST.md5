@@ -5,10 +5,11 @@ ecdb820ba950fff2bdf365792535e5f0  ./deploy/install-everything.sh
 c3c67685ec0641ac4c41a64a839c8265  ./deploy/nginx-root.conf
 3fd8b0f02f16dd562ac44b0d0a26ff66  ./deploy/redeploy.sh
 c3581310de2f3af05cca12f77253cd42  ./deploy/site-index.html
-351f4c376fb0a2f2298a64ccfc76dd1c  ./staking-api/app.py
+c91119703b21cf03e12ff48be36e0db7  ./staking-api/app.py
 429fd5aaff3c7b5226ca6c1b77295f47  ./staking-api/auth.py
 69b79be2ca6faabb3713b85fda5e8212  ./staking-api/test_staking.py
 abec3cc253495caa3e86976b4d15d50b  ./staking-api/webapp/app.js
 4ab95c78a6865535a4b2647fc7d7e088  ./staking-api/webapp/index.html
-648b9fab69b06dd1a79516d131aa3c97  ./staking-api/webapp/wallet.js
-e26a938280479f8211f849fd12c168e0  ./staking-api/webapp/whitepaper.html
+3a45ebe00a3e1f39a840380817fb7c46  ./staking-api/webapp/wallet.js
+7d78de057f29b088510b5b8cb830d6db  ./staking-api/webapp/whitepaper.js
+75d3ef5c2dbdb9044a2e870f3aac2572  ./staking-api/webapp/whitepaper.html
