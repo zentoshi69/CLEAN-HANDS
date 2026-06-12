@@ -631,6 +631,28 @@
       return;
     }
     if (newAddr === (PROFILE && PROFILE.wallet)) return; // same account, no-op
+    // PORTFOLIO MODE: with the All-wallets screen open, switching accounts
+    // inside the extension means "add this one" — the only way to reach a
+    // 2nd/3rd account of the SAME extension (connect() always returns the
+    // active account, so a plain Link can never see the others).
+    const folioView = $('view-folio');
+    if (TOKEN && folioView && !folioView.hidden) {
+      if (_switching) return;
+      _switching = true;
+      try {
+        toast('Adding ' + newAddr.slice(0, 4) + '… — sign once to prove it\'s yours');
+        const { nonce, message } = await getNonce(newAddr);
+        const sig = await CleanWallet.signInjected(message);
+        const r = await api('/api/link', authedBody({ wallet: newAddr, signature: sig, nonce: nonce }));
+        renderFolio(r);
+        toast('🧤 ' + newAddr.slice(0, 4) + '…' + newAddr.slice(-4) + ' added to your portfolio');
+      } catch (e) {
+        toast('Add failed: ' + (e.message || e));
+      } finally {
+        _switching = false;
+      }
+      return;
+    }
     if (_switching) return;
     _switching = true;
     // keep the CURRENT session alive until the new wallet actually signs in —
@@ -931,7 +953,10 @@
     loadFolio();
   }
   async function _finishLink(pk, sign) {
-    if (PROFILE && pk === PROFILE.wallet) throw new Error('that is already your signed-in wallet');
+    if (PROFILE && pk === PROFILE.wallet)
+      throw new Error(
+        "that's your signed-in wallet — for another account of the SAME extension, keep this screen open and switch accounts inside the wallet; it links automatically",
+      );
     const { nonce, message } = await getNonce(pk);
     const sig = await sign(message);
     const r = await api('/api/link', authedBody({ wallet: pk, signature: sig, nonce: nonce }));

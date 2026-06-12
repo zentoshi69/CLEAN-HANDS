@@ -8,8 +8,8 @@ c3c67685ec0641ac4c41a64a839c8265  ./deploy/nginx-root.conf
 5fb527ff9c0f8893ea5328d451d1190a  ./staking-api/app.py
 429fd5aaff3c7b5226ca6c1b77295f47  ./staking-api/auth.py
 e83bfba61a778c7a7c665afd14622dee  ./staking-api/test_staking.py
-a180859d43ea8e2ce33fa99ba1182154  ./staking-api/webapp/app.js
-d6e96112096308da99cd12342ea986d1  ./staking-api/webapp/index.html
+afda06cad6cb48a495156424c677e84e  ./staking-api/webapp/app.js
+6f3c17d84b419eac89682f301c86c89d  ./staking-api/webapp/index.html
 157f88c5a9a749d948fe7411948bcc51  ./staking-api/webapp/wallet.js
 7d78de057f29b088510b5b8cb830d6db  ./staking-api/webapp/whitepaper.js
 75d3ef5c2dbdb9044a2e870f3aac2572  ./staking-api/webapp/whitepaper.html
