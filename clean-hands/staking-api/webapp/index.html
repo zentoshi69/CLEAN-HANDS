@@ -844,6 +844,7 @@
               </svg>
               Change wallet
             </button>
+            <button onclick="App.portfolio()">📊 All wallets</button>
             <div class="wmenu-sep"></div>
             <button class="wmenu-danger" onclick="App.logout()">
               <svg
@@ -928,6 +929,39 @@
             >
               Claim rewards (<span id="claimable">0</span>)
             </button>
+          </div>
+        </section>
+
+        <!-- PORTFOLIO — every linked wallet, one dashboard (App.portfolio) -->
+        <section class="tab" id="view-folio" hidden>
+          <div class="card apr">
+            <div class="num" id="f-holdings">—</div>
+            <div class="lbl">Total $CLEAN across your wallets · <span id="f-usd">—</span></div>
+          </div>
+          <div class="stats">
+            <div class="card stat">
+              <div class="k" id="f-bal">—</div>
+              <div class="l">In wallets</div>
+            </div>
+            <div class="card stat">
+              <div class="k" id="f-staked">—</div>
+              <div class="l">Staked</div>
+            </div>
+            <div class="card stat">
+              <div class="k" id="f-pend">—</div>
+              <div class="l">Pending</div>
+            </div>
+          </div>
+          <div id="folio-rows"></div>
+          <div class="card">
+            <div class="btn-row">
+              <button class="btn btn-solid" onclick="App.linkWallet()">➕ Link a wallet</button>
+              <button class="btn btn-ghost" id="f-wc" onclick="App.linkWalletWC()">🔗 WalletConnect</button>
+            </div>
+            <p class="lbl" style="margin-top:10px">
+              Each wallet signs once to prove it's yours — balances then show here live.
+              On a phone, open this app inside that wallet's own browser and tap Link there.
+            </p>
           </div>
         </section>
 

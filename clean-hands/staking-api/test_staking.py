@@ -789,3 +789,67 @@ if __name__ == "__main__":
     test_relay()
     test_tg_handshake()
     print("\nALL STAKING TESTS PASSED")
+
+
+def test_portfolio_multi_wallet():
+    """Link wallet B (and C) under A's session with REAL signatures; the
+    dashboard must aggregate live balances and enforce ownership + exclusivity."""
+    import solana
+
+    async def fake_balance(wallet, mint=None):
+        return 1_000.0  # every wallet holds 1k $CLEAN on-chain
+
+    solana.token_balance = fake_balance
+    import app
+    from fastapi.testclient import TestClient
+
+    c = TestClient(app.app)
+
+    def login(sk):
+        w = base58.b58encode(bytes(sk.verify_key)).decode()
+        n = c.get("/api/nonce", params={"wallet": w}).json()["nonce"]
+        sig = base58.b58encode(sk.sign(auth.login_message(w, n).encode()).signature).decode()
+        r = c.post("/api/login", json={"wallet": w, "signature": sig, "nonce": n})
+        assert r.status_code == 200, r.text
+        return w, r.json()["token"]
+
+    def signed_nonce(sk):
+        w = base58.b58encode(bytes(sk.verify_key)).decode()
+        n = c.get("/api/nonce", params={"wallet": w}).json()["nonce"]
+        sig = base58.b58encode(sk.sign(auth.login_message(w, n).encode()).signature).decode()
+        return w, n, sig
+
+    ska, skb, skc = SigningKey.generate(), SigningKey.generate(), SigningKey.generate()
+    wa, tok_a = login(ska)
+
+    # solo portfolio: just A
+    p = c.post("/api/portfolio", json={"token": tok_a}).json()
+    assert p["count"] == 1 and p["wallets"][0]["anchor"]
+
+    # link B with a real signature
+    wb, nb, sigb = signed_nonce(skb)
+    p = c.post("/api/link", json={"token": tok_a, "wallet": wb, "signature": sigb, "nonce": nb})
+    assert p.status_code == 200, p.text
+    p = p.json()
+    assert p["count"] == 2 and p["totals"]["balance"] == 2000.0
+
+    # forged signature for C is rejected
+    wc_, nc, _ = signed_nonce(skc)
+    bad = base58.b58encode(ska.sign(auth.login_message(wc_, nc).encode()).signature).decode()
+    assert c.post("/api/link", json={"token": tok_a, "wallet": wc_, "signature": bad, "nonce": nc}).status_code == 401
+
+    # B can't be claimed by another portfolio
+    wd, tok_d = login(SigningKey.generate())
+    wb2, nb2, sigb2 = signed_nonce(skb)
+    r = c.post("/api/link", json={"token": tok_d, "wallet": wb2, "signature": sigb2, "nonce": nb2})
+    assert r.status_code == 409
+
+    # a linked wallet's own session sees the same cluster
+    _, tok_b = login(skb)
+    p = c.post("/api/portfolio", json={"token": tok_b}).json()
+    assert p["count"] == 2 and any(x["me"] and x["wallet"] == wb for x in p["wallets"])
+
+    # unlink B; anchor can't be unlinked
+    assert c.post("/api/unlink", json={"token": tok_a, "wallet": wb}).json()["count"] == 1
+    assert c.post("/api/unlink", json={"token": tok_a, "wallet": wa}).status_code == 400
+    print("multi-wallet portfolio ✓")
