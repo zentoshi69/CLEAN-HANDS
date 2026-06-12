@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>$CLEAN — White Paper</title>
+<meta name="description" content="The $CLEAN white paper."/>
+<meta property="og:title" content="$CLEAN — White Paper"/>
+<meta property="og:description" content="The cleanest paper in crypto."/>
+<meta property="og:image" content="https://cleanhands.fun/glove.png"/>
+<link rel="icon" href="/glove.png"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --sky:#86BFF8;--sky-2:#A9D3FB;--sky-soft:#D6EAFD;--glove:#EAF4FE;
+  --paper:#F4FAFF;--white:#FFFFFF;
+  --ink:#1B5DA6;--ink-2:#2E74C0;--ink-deep:#0F3E73;
+  --skin:#E7B492;--sol:#9945FF;--sol-2:#14F195;
+  --line:rgba(27,93,166,.16);--line-2:rgba(27,93,166,.28);
+  --text:#16385c;--muted:#5d7ea3;
+  --shadow:0 24px 60px -28px rgba(27,93,166,.35);
+  --shadow-sm:0 10px 30px -18px rgba(27,93,166,.45);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--paper);color:var(--ink-deep);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+
+/* progress bar */
+#prog{position:fixed;top:0;left:0;height:3px;width:0;z-index:50;
+  background:linear-gradient(90deg,var(--sky),var(--ink-2));box-shadow:0 0 12px rgba(134,191,248,.9)}
+
+/* nav — identical to cleanhands.fun landing */
+a{color:inherit;text-decoration:none}
+nav{position:fixed;top:0;left:0;right:0;z-index:50;transition:.35s ease}
+nav .bar{margin:14px auto;max-width:1180px;display:flex;align-items:center;justify-content:space-between;padding:10px 14px 10px 16px;border-radius:20px;border:1.5px solid transparent;background:transparent;transition:.35s ease}
+nav.scrolled .bar{background:rgba(255,255,255,.72);backdrop-filter:blur(16px);border-color:var(--line);box-shadow:var(--shadow-sm)}
+.brand{display:flex;align-items:center;gap:12px;font-weight:700;cursor:pointer}
+.brand img{width:42px;height:42px;border-radius:50%;border:1.5px solid var(--line);background:#fff;object-fit:cover}
+.brand .lock{display:flex;flex-direction:column;line-height:.9}
+.brand b{font-family:'Fraunces',serif;font-size:1.06rem;font-weight:700;letter-spacing:.07em;color:var(--ink-deep)}
+.brand .sub{font-family:'Caveat',cursive;font-size:1.2rem;color:var(--ink-2);margin-top:-1px}
+.navlinks{display:flex;gap:26px;font-weight:500;font-size:.95rem;color:var(--ink-deep)}
+.navlinks a{position:relative;opacity:.8;transition:.2s;cursor:pointer}
+.navlinks a:hover,.navlinks a.cur{opacity:1}
+.navlinks a::after{content:"";position:absolute;left:0;bottom:-6px;height:2px;width:0;background:var(--ink-2);transition:.25s}
+.navlinks a:hover::after,.navlinks a.cur::after{width:100%}
+@media(max-width:900px){.navlinks{display:none}}
+.nav-right{display:flex;align-items:center;gap:10px}
+.btn{font-family:inherit;font-weight:600;font-size:.95rem;cursor:pointer;border-radius:14px;padding:12px 22px;transition:.22s ease;border:1.5px solid var(--ink-2);white-space:nowrap}
+.btn-solid{background:var(--ink-2);color:#fff;box-shadow:0 10px 24px -12px rgba(46,116,192,.8)}
+.btn-solid:hover{background:var(--ink);transform:translateY(-2px);box-shadow:0 16px 30px -14px rgba(27,93,166,.85)}
+.icon-btn{position:relative;width:46px;height:46px;border-radius:14px;border:1.5px solid var(--line-2);background:rgba(255,255,255,.5);cursor:pointer;display:grid;place-items:center;color:var(--ink-deep);transition:.2s;font-size:1.1rem;text-decoration:none}
+.icon-btn:hover{background:#fff;transform:translateY(-2px)}
+@media(max-width:900px){.icon-btn{width:42px;height:42px}}
+
+/* layout: toc + stages */
+.wrap{display:flex;max-width:1180px;margin:0 auto;padding:104px 20px 0;gap:36px}
+.toc{position:sticky;top:104px;align-self:flex-start;min-width:200px;padding:18px 0;display:none}
+@media(min-width:880px){.toc{display:block}}
+.toc .ttl{font-size:.68rem;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.toc a{display:block;padding:7px 12px;margin:2px 0;font-size:.85rem;font-weight:600;color:var(--muted);
+  text-decoration:none;border-left:2px solid var(--line);transition:.25s}
+.toc a.on{color:var(--ink-2);border-left-color:var(--ink-2);text-shadow:0 0 14px rgba(134,191,248,.9)}
+.main{flex:1;min-width:0}
+
+/* hero */
+.hero{min-height:62vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative}
+.hero img{width:96px;height:96px;border-radius:50%;border:2px solid var(--line);background:#fff;
+  box-shadow:0 24px 60px -28px rgba(27,93,166,.5);animation:bob 5s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-9px)}}
+.hero h1{font-family:'Fraunces',serif;font-weight:700;font-size:clamp(2rem,6vw,3.2rem);margin-top:22px;letter-spacing:-.01em}
+.hero .sub{margin-top:8px;color:var(--muted);font-size:.95rem;font-weight:600}
+
+/* THE STAGES — sections of pure clean */
+.s{position:relative;min-height:78vh;border-bottom:1px dashed var(--line);overflow:hidden}
+.s:last-of-type{border-bottom:none}
+
+/* glow orbs drifting in each stage */
+.orb{position:absolute;border-radius:50%;filter:blur(34px);opacity:.5;pointer-events:none;
+  animation:drift 16s ease-in-out infinite alternate}
+@keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(46px,-38px) scale(1.18)}}
+
+/* twinkling stars */
+.star{position:absolute;color:var(--sky);pointer-events:none;opacity:0;
+  text-shadow:0 0 10px rgba(134,191,248,.95),0 0 26px rgba(169,211,251,.7);
+  animation:twinkle var(--d,3s) ease-in-out var(--w,0s) infinite}
+@keyframes twinkle{0%,100%{opacity:0;transform:scale(.5) rotate(0deg)}
+  50%{opacity:var(--o,.95);transform:scale(1.12) rotate(22deg)}}
+
+/* ——— per-section motion variations (each stage feels different) ——— */
+/* fairy dust: tiny motes rising like embers of light */
+.mote{position:absolute;bottom:-12px;width:var(--sz,5px);height:var(--sz,5px);border-radius:50%;
+  background:radial-gradient(circle,#fff 0%,var(--sky) 55%,transparent 75%);pointer-events:none;opacity:0;
+  filter:drop-shadow(0 0 6px rgba(169,211,251,.95));
+  animation:rise var(--d,9s) linear var(--w,0s) infinite}
+@keyframes rise{0%{opacity:0;transform:translate(0,0) scale(.6)}
+  12%{opacity:var(--o,.9)}55%{transform:translate(var(--sway,18px),-46vh) scale(1)}
+  100%{opacity:0;transform:translate(calc(var(--sway,18px) * -1),-86vh) scale(.4)}}
+
+/* aurora: soft ribbons of light breathing across the stage */
+.aur{position:absolute;left:-12%;right:-12%;height:34%;pointer-events:none;opacity:0;
+  background:linear-gradient(100deg,transparent,rgba(134,191,248,.22) 30%,rgba(214,234,253,.36) 50%,rgba(153,69,255,.10) 70%,transparent);
+  filter:blur(26px);transform:skewY(-4deg);
+  animation:aurora var(--d,11s) ease-in-out var(--w,0s) infinite alternate}
+@keyframes aurora{from{opacity:.35;transform:skewY(-4deg) translateX(-7%)}
+  to{opacity:.8;transform:skewY(-2.5deg) translateX(7%)}}
+
+/* halo: expanding rings of clean */
+.ring{position:absolute;border-radius:50%;border:1.5px solid rgba(134,191,248,.7);pointer-events:none;opacity:0;
+  animation:ringx var(--d,5s) ease-out var(--w,0s) infinite}
+@keyframes ringx{0%{opacity:.85;transform:scale(.15)}100%{opacity:0;transform:scale(1.6)}}
+
+/* comet: little arcs of glitter drifting sideways */
+.comet{position:absolute;width:64px;height:1.5px;border-radius:2px;pointer-events:none;opacity:0;
+  background:linear-gradient(90deg,transparent,#fff);filter:drop-shadow(0 0 5px rgba(134,191,248,.9));
+  animation:cometx var(--d,7s) ease-in var(--w,0s) infinite}
+@keyframes cometx{0%{opacity:0;transform:translate(0,0) rotate(var(--rot,12deg))}
+  10%{opacity:.95}100%{opacity:0;transform:translate(46vw,12vh) rotate(var(--rot,12deg))}}
+
+/* glitter rain: soft flecks falling slow */
+.fleck{position:absolute;top:-12px;width:3px;height:9px;border-radius:3px;pointer-events:none;opacity:0;
+  background:linear-gradient(180deg,#fff,rgba(134,191,248,.1));filter:drop-shadow(0 0 4px rgba(169,211,251,.9));
+  animation:fall var(--d,8s) linear var(--w,0s) infinite}
+@keyframes fall{0%{opacity:0;transform:translateY(0) rotate(8deg)}10%{opacity:var(--o,.8)}
+  100%{opacity:0;transform:translateY(82vh) rotate(-10deg)}}
+
+/* pulse glyph: a slow heavenly bloom in the middle of a stage */
+.bloom{position:absolute;pointer-events:none;color:#fff;font-size:var(--sz,42px);opacity:0;
+  text-shadow:0 0 18px rgba(134,191,248,1),0 0 54px rgba(169,211,251,.8);
+  animation:bloomx var(--d,6s) ease-in-out var(--w,0s) infinite}
+@keyframes bloomx{0%,100%{opacity:0;transform:scale(.5) rotate(-8deg)}
+  50%{opacity:.95;transform:scale(1.25) rotate(8deg)}}
+
+.s [class]{animation-play-state:paused}
+.s.in [class]{animation-play-state:running}
+
+/* shine sweep when a stage reveals */
+.s::after{content:"";position:absolute;top:-30%;bottom:-30%;left:-25%;width:24%;pointer-events:none;
+  background:linear-gradient(105deg,transparent,rgba(255,255,255,.85) 50%,transparent);
+  transform:skewX(-14deg) translateX(-160%);opacity:0}
+.s.in::after{animation:sweep 1.7s cubic-bezier(.4,0,.2,1) .15s 1 forwards}
+@keyframes sweep{0%{opacity:0;transform:skewX(-14deg) translateX(-160%)}
+  12%{opacity:1}88%{opacity:1}100%{opacity:0;transform:skewX(-14deg) translateX(640%)}}
+
+/* sparkle pop on reveal */
+.s .star{animation-play-state:paused}
+.s.in .star{animation-play-state:running}
+
+/* shooting stars across the whole page */
+.shoot{position:fixed;top:0;left:0;width:130px;height:2px;z-index:5;pointer-events:none;opacity:0;
+  background:linear-gradient(90deg,rgba(134,191,248,0),rgba(255,255,255,.95));
+  border-radius:2px;filter:drop-shadow(0 0 8px rgba(134,191,248,.9))}
+.shoot.go{animation:shoot 1.25s ease-in 1 forwards}
+@keyframes shoot{0%{opacity:0;transform:translate(var(--sx),var(--sy)) rotate(24deg)}
+  8%{opacity:1}100%{opacity:0;transform:translate(calc(var(--sx) + 64vw),calc(var(--sy) + 30vh)) rotate(24deg)}}
+
+/* footer: just the glove, gleaming */
+.end{min-height:46vh;display:flex;align-items:center;justify-content:center;position:relative}
+.end img{width:190px;height:190px;border-radius:50%;border:2px solid var(--line);background:#fff;
+  object-fit:contain;padding:26px;
+  box-shadow:0 0 0 0 rgba(134,191,248,.55);animation:halo 3.2s ease-out infinite}
+@keyframes halo{0%{box-shadow:0 0 0 0 rgba(134,191,248,.55)}100%{box-shadow:0 0 0 42px rgba(134,191,248,0)}}
+
+@media(prefers-reduced-motion:reduce){
+  *,.s::after{animation:none!important}
+  .star{opacity:.6}
+}
+</style>
+</head>
+<body>
+<div id="prog"></div>
+<nav id="nav">
+  <div class="bar">
+    <a class="brand" href="https://cleanhands.fun/"><img src="/glove.png" alt="CLEAN"/><span class="lock"><b>CLEAN HANDS.</b><span class="sub">Dirty money</span></span></a>
+    <div class="navlinks">
+      <a href="https://cleanhands.fun/">Wash</a>
+      <a href="https://cleanhands.fun/">Shop</a>
+      <a href="https://cleanhands.fun/">FAQ</a>
+      <a href="/whitepaper" class="cur">Paper</a>
+    </div>
+    <div class="nav-right">
+      <a class="btn btn-solid" href="https://app.cleanhands.fun/">Connect</a>
+      <a class="icon-btn" href="https://cleanhands.fun/" aria-label="Back to site" title="Back to site">←</a>
+    </div>
+  </div>
+</nav>
+
+<div class="wrap">
+  <nav class="toc" id="toc">
+    <div class="ttl">Contents</div>
+    <a href="#summary">01 · Summary</a>
+    <a href="#problem">02 · Why memes die</a>
+    <a href="#mechanics">03 · Mechanics</a>
+    <a href="#tokenomics">04 · Tokenomics</a>
+    <a href="#architecture">05 · Architecture</a>
+    <a href="#security">06 · Security</a>
+    <a href="#roadmap">07 · Roadmap</a>
+    <a href="#marketing">08 · Marketing</a>
+    <a href="#risk">09 · Risk</a>
+  </nav>
+
+  <main class="main">
+    <header class="hero" id="top">
+      <img src="/glove.png" alt="$CLEAN glove"/>
+      <h1>White&nbsp;Paper</h1>
+      <div class="sub">v1.0 · final</div>
+    </header>
+
+    <section class="s" id="summary"></section>
+    <section class="s" id="problem"></section>
+    <section class="s" id="mechanics"></section>
+    <section class="s" id="tokenomics"></section>
+    <section class="s" id="architecture"></section>
+    <section class="s" id="security"></section>
+    <section class="s" id="roadmap"></section>
+    <section class="s" id="marketing"></section>
+    <section class="s" id="risk"></section>
+
+    <div class="end"><img src="/glove.png" alt=""/></div>
+  </main>
+</div>
+
+<script>
+(function(){
+  var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* populate every stage: shared base (orbs + stars) plus a THEMED recipe per
+     section, so the magic changes as you scroll — never the same stage twice */
+  var GLYPHS = ['✦','✧','✶','·','✷'];
+  var HUES = ['rgba(134,191,248,.55)','rgba(169,211,251,.5)','rgba(214,234,253,.65)','rgba(46,116,192,.28)'];
+  var R = Math.random;
+  function el(sec, cls, css, txt){
+    var n = document.createElement('span'); n.className = cls; n.style.cssText = css;
+    if (txt) n.textContent = txt; sec.appendChild(n);
+  }
+  /* one recipe per section, cycling: dust → aurora → rings → comets → rain → bloom */
+  var RECIPES = [
+    function dust(s){ for (var i=0;i<22;i++) el(s,'mote','left:'+(R()*96)+'%;--sz:'+(3+R()*6)+'px;--d:'+(7+R()*7)+'s;--w:-'+(R()*9)+'s;--o:'+(0.5+R()*0.5)+';--sway:'+(10+R()*40)+'px'); },
+    function aurora(s){ for (var i=0;i<3;i++) el(s,'aur','top:'+(8+i*26+R()*8)+'%;--d:'+(9+R()*6)+'s;--w:-'+(R()*8)+'s'); },
+    function rings(s){ for (var i=0;i<5;i++){ var sz=90+R()*220; el(s,'ring','width:'+sz+'px;height:'+sz+'px;left:'+(R()*80)+'%;top:'+(R()*70)+'%;--d:'+(4+R()*4)+'s;--w:-'+(R()*5)+'s'); } },
+    function comets(s){ for (var i=0;i<6;i++) el(s,'comet','left:'+(R()*55)+'%;top:'+(R()*80)+'%;--d:'+(5+R()*5)+'s;--w:-'+(R()*7)+'s;--rot:'+(6+R()*14)+'deg'); },
+    function rain(s){ for (var i=0;i<18;i++) el(s,'fleck','left:'+(R()*97)+'%;--d:'+(6+R()*6)+'s;--w:-'+(R()*8)+'s;--o:'+(0.4+R()*0.5)); },
+    function blooms(s){ for (var i=0;i<4;i++) el(s,'bloom','left:'+(8+R()*78)+'%;top:'+(10+R()*70)+'%;--sz:'+(26+R()*40)+'px;--d:'+(5+R()*4)+'s;--w:-'+(R()*6)+'s', GLYPHS[i%GLYPHS.length]); }
+  ];
+  document.querySelectorAll('.s').forEach(function(sec, si){
+    for (var o = 0; o < 3; o++){
+      var orb = document.createElement('i'); orb.className = 'orb';
+      var sz = 140 + R()*220;
+      orb.style.cssText = 'width:'+sz+'px;height:'+sz+'px;left:'+(R()*85)+'%;top:'+(R()*70)+'%;'+
+        'background:'+HUES[(si+o)%HUES.length]+';animation-duration:'+(12+R()*10)+'s;animation-delay:-'+(R()*12)+'s';
+      sec.appendChild(orb);
+    }
+    var n = 18 + Math.floor(R()*12);
+    for (var i = 0; i < n; i++){
+      el(sec,'star','left:'+(R()*96)+'%;top:'+(R()*92)+'%;font-size:'+(7+R()*20)+'px;'+
+        '--d:'+(2.2+R()*4)+'s;--w:'+(R()*5)+'s;--o:'+(0.45+R()*0.55), GLYPHS[Math.floor(R()*GLYPHS.length)]);
+    }
+    /* this stage's signature effect + a hint of the next one for depth */
+    RECIPES[si % RECIPES.length](sec);
+    if (si % 2 === 1) RECIPES[(si + 3) % RECIPES.length](sec);
+  });
+
+  /* reveal stages (starts twinkle + fires the shine sweep) */
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){ if (e.isIntersecting){ e.target.classList.add('in'); } });
+  }, { threshold: 0.25 });
+  document.querySelectorAll('.s').forEach(function(s){ io.observe(s); });
+
+  /* scroll-spy TOC */
+  var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var secs = links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+  var spy = new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if (e.isIntersecting){
+        var i = secs.indexOf(e.target);
+        links.forEach(function(l){ l.classList.remove('on'); });
+        if (links[i]) links[i].classList.add('on');
+      }
+    });
+  }, { rootMargin: '-40% 0px -55% 0px' });
+  secs.forEach(function(s){ if (s) spy.observe(s); });
+
+  /* progress bar + nav condense (same as landing) */
+  var prog = document.getElementById('prog');
+  var navEl = document.getElementById('nav');
+  addEventListener('scroll', function(){
+    var h = document.documentElement;
+    prog.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+    if (navEl) navEl.classList.toggle('scrolled', h.scrollTop > 12);
+  }, { passive: true });
+
+  /* occasional shooting star */
+  if (!reduce){
+    var shoot = document.createElement('div'); shoot.className = 'shoot'; document.body.appendChild(shoot);
+    (function fire(){
+      setTimeout(function(){
+        shoot.style.setProperty('--sx', (5 + Math.random()*40) + 'vw');
+        shoot.style.setProperty('--sy', (5 + Math.random()*40) + 'vh');
+        shoot.classList.remove('go'); void shoot.offsetWidth; shoot.classList.add('go');
+        fire();
+      }, 3500 + Math.random()*6000);
+    })();
+  }
+})();
+</script>
+</body>
+</html>

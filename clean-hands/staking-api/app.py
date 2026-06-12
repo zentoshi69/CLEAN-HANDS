@@ -72,6 +72,37 @@ _docs = dict(docs_url=None, redoc_url=None, openapi_url=None) if config.is_prod(
 app = FastAPI(title="CLEAN soft-staking API", **_docs)
 
 
+# --------------------------------------------------------------------------- #
+#  SECURITY HEADERS                                                            #
+# --------------------------------------------------------------------------- #
+# CSP: no inline scripts anywhere in the webapp, so script-src is a strict
+# allowlist (self + Telegram SDK + the pinned wallet/swap CDNs). connect-src
+# stays https:/wss: because the swap RPC is operator-configurable and the
+# WalletConnect relay is wss. frame-ancestors lets Telegram Web embed the app.
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' https://telegram.org https://unpkg.com https://esm.sh "
+    "https://esm.run https://cdn.jsdelivr.net https://plugin.jup.ag; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src https://fonts.gstatic.com; "
+    "img-src 'self' data: https:; "
+    "connect-src 'self' https: wss:; "
+    "frame-src https:; "
+    "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org; "
+    "base-uri 'self'; form-action 'self'"
+)
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers.setdefault("Content-Security-Policy", _CSP)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    return resp
+
+
 @app.middleware("http")
 async def _guard(request: Request, call_next):
     cl = request.headers.get("content-length")
@@ -220,6 +251,11 @@ class Tok(BaseModel):
     token: str
 
 
+class StakeBody(Tok):
+    # stake only part of the bag: 1..100 (default 100 = everything)
+    percent: int | None = None
+
+
 class BurnBody(BaseModel):
     token: str
     signature: str
@@ -312,7 +348,7 @@ async def _complete_login(wallet: str, tg_id, ref, username):
 #  STAKING                                                                     #
 # --------------------------------------------------------------------------- #
 @app.post("/api/stake")
-async def api_stake(body: Tok, request: Request):
+async def api_stake(body: StakeBody, request: Request):
     wallet = _require(body.token)["w"]
     ratelimit.hit(request, "write", extra_key=wallet)
     now = int(time.time())
@@ -324,13 +360,19 @@ async def api_stake(body: Tok, request: Request):
         bal = await _refresh_balance(conn, db.get_staker(conn, wallet))
         if bal <= 0:
             raise HTTPException(400, "no $CLEAN in wallet to stake")
+        pct = 100 if body.percent is None else int(body.percent)
+        if not 1 <= pct <= 100:
+            raise HTTPException(400, "percent must be between 1 and 100")
+        stake_amt = bal * pct // 100  # integer base units, floor — never over-stake
+        if stake_amt <= 0:
+            raise HTTPException(400, "stake amount rounds to zero — raise the percent")
         start = row["stake_start_ts"] or now  # keep loyalty clock if already staking
         conn.execute(
             "UPDATE stakers SET recorded_staked=?, stake_start_ts=?, last_accrual_ts=? WHERE wallet=?",
-            (bal, start, now, wallet),
+            (stake_amt, start, now, wallet),
         )
         conn.commit()
-        db.record(conn, wallet, "stake", bal)
+        db.record(conn, wallet, "stake", stake_amt)
         return _profile(conn, wallet)
 
 
@@ -517,14 +559,21 @@ async def api_burn(body: BurnBody, request: Request):
 # --------------------------------------------------------------------------- #
 @app.post("/api/profile")
 async def api_profile(body: Tok):
-    wallet = _require(body.token)["w"]
+    payload = _require(body.token)
+    wallet = payload["w"]
     with db.db() as conn:
         row = db.get_staker(conn, wallet)
         if not row:
             raise HTTPException(404, "unknown wallet")
         await _refresh_balance(conn, row)
         _accrue(conn, wallet)
-        return _profile(conn, wallet)
+        out = _profile(conn, wallet)
+        # sliding session: hand the client a fresh token once the current one
+        # has aged past the refresh threshold (active users never re-login)
+        fresh = auth.maybe_refresh(payload)
+        if fresh:
+            out["refreshed_token"] = fresh
+        return out
 
 
 @app.post("/api/leaderboard")
@@ -636,6 +685,10 @@ def api_economics():
             "swapRpc": os.environ.get("MINIAPP_SWAP_RPC", ""),
             "decimals": db.DECIMALS,
             "mint": market.MINT,
+            # WalletConnect relay (QR — works with ANY wallet app; the escape
+            # hatch when Telegram users don't have Phantom/Solflare installed).
+            # OFF unless the operator sets the project id; never a secret.
+            "wcProjectId": os.environ.get("WALLETCONNECT_PROJECT_ID", "").strip(),
             # In-app burn (signs a real burn tx in the wallet). OFF by default —
             # burn is irreversible; enable only after on-device QA.
             "inAppBurn": os.environ.get("MINIAPP_INAPP_BURN", "").strip() in ("1", "true", "yes"),

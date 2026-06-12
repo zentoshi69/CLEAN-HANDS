@@ -1,0 +1,14 @@
+d41d8cd98f00b204e9800998ecf8427e  ./MANIFEST.md5
+dc2e6a8865de39bb46423c71b64123d9  ./README-SYNC.md
+319506c0f6c4b845f94d345e0ab91a1c  ./assets/glove.png
+ecdb820ba950fff2bdf365792535e5f0  ./deploy/install-everything.sh
+c3c67685ec0641ac4c41a64a839c8265  ./deploy/nginx-root.conf
+3fd8b0f02f16dd562ac44b0d0a26ff66  ./deploy/redeploy.sh
+c3581310de2f3af05cca12f77253cd42  ./deploy/site-index.html
+351f4c376fb0a2f2298a64ccfc76dd1c  ./staking-api/app.py
+429fd5aaff3c7b5226ca6c1b77295f47  ./staking-api/auth.py
+69b79be2ca6faabb3713b85fda5e8212  ./staking-api/test_staking.py
+abec3cc253495caa3e86976b4d15d50b  ./staking-api/webapp/app.js
+4ab95c78a6865535a4b2647fc7d7e088  ./staking-api/webapp/index.html
+648b9fab69b06dd1a79516d131aa3c97  ./staking-api/webapp/wallet.js
+e26a938280479f8211f849fd12c168e0  ./staking-api/webapp/whitepaper.html

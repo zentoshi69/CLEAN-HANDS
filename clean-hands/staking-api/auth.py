@@ -29,7 +29,11 @@ from nacl.exceptions import BadSignatureError
 
 SERVER_SECRET = os.environ.get("STAKE_SERVER_SECRET", "").encode() or secrets.token_bytes(32)
 BOT_TOKEN = os.environ.get("TG_COMMUNITY_TOKEN", "")
-SESSION_TTL = int(os.environ.get("STAKE_SESSION_TTL", "3600"))
+# Sliding sessions: 48h hard TTL, silently re-minted on activity (see
+# maybe_refresh). Active users never see a login screen; a stolen token dies
+# within 48h instead of a week.
+SESSION_TTL = int(os.environ.get("STAKE_SESSION_TTL", "172800"))
+SESSION_REFRESH_AFTER = int(os.environ.get("STAKE_SESSION_REFRESH_AFTER", "21600"))  # 6h
 INITDATA_TTL = int(os.environ.get("STAKE_INITDATA_TTL", "86400"))
 LOGIN_PREFIX = "CLEAN soft-staking login"
 
@@ -115,6 +119,18 @@ def create_session(wallet: str, tg_id: int | None = None) -> str:
     body = _b64e(json.dumps(payload, separators=(",", ":")).encode())
     sig = _b64e(hmac.new(SERVER_SECRET, body.encode(), hashlib.sha256).digest())
     return f"{body}.{sig}"
+
+
+def maybe_refresh(payload: dict) -> str | None:
+    """Sliding renewal: if the token has aged past SESSION_REFRESH_AFTER, mint a
+    fresh one (same wallet/tg). Returned alongside profile data; clients swap it
+    in silently. None = current token is still young."""
+    import time as _t
+
+    age = SESSION_TTL - (payload.get("exp", 0) - int(_t.time()))
+    if age >= SESSION_REFRESH_AFTER:
+        return create_session(payload["w"], payload.get("t"))
+    return None
 
 
 def verify_session(token: str) -> dict | None:

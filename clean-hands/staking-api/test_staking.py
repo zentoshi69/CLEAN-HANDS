@@ -15,6 +15,24 @@ import economics as econ
 import auth
 from nacl.signing import SigningKey
 
+# Under pytest, every test runs in one process and shares the in-memory
+# rate-limit store. Without a reset, cumulative /api/nonce calls trip the
+# 30/min limit and later tests get a 429 instead of a nonce. Clear the window
+# before each test so the suite is deterministic regardless of order or clock.
+try:
+    import pytest as _pytest
+
+    @_pytest.fixture(autouse=True)
+    def _reset_rate_limits():
+        try:
+            import store
+            store.get_store()._counts.clear()
+        except Exception:
+            pass
+        yield
+except ImportError:
+    pass
+
 
 def approx(a, b, eps=1e-9):
     return abs(a - b) < eps
@@ -302,21 +320,33 @@ def test_reconcile():
 
 
 def test_rate_limit():
-    # Tight nonce limit, then confirm the (N+1)th request is 429.
-    os.environ["RL_NONCE"] = "3"
+    # Tight nonce limit, then confirm the (N+1)th request is 429. Restore the
+    # limit afterwards so this test can't poison later tests under pytest's
+    # definition order (where this runs before the other nonce users).
     import importlib
     import ratelimit
-    importlib.reload(ratelimit)  # pick up the new limit
     import app, store
+
+    prev = os.environ.get("RL_NONCE")
+    os.environ["RL_NONCE"] = "3"
+    importlib.reload(ratelimit)  # pick up the new limit
     store.get_store()._counts.clear()  # reset counters from earlier tests (same IP)
     from fastapi.testclient import TestClient
 
-    c = TestClient(app.app)
-    w = base58.b58encode(bytes(SigningKey.generate().verify_key)).decode()
-    codes = [c.get("/api/nonce", params={"wallet": w}).status_code for _ in range(5)]
-    assert codes[:3] == [200, 200, 200], codes
-    assert 429 in codes[3:], codes
-    print("rate limit -> 429 ✓")
+    try:
+        c = TestClient(app.app)
+        w = base58.b58encode(bytes(SigningKey.generate().verify_key)).decode()
+        codes = [c.get("/api/nonce", params={"wallet": w}).status_code for _ in range(5)]
+        assert codes[:3] == [200, 200, 200], codes
+        assert 429 in codes[3:], codes
+        print("rate limit -> 429 ✓")
+    finally:
+        if prev is None:
+            os.environ.pop("RL_NONCE", None)
+        else:
+            os.environ["RL_NONCE"] = prev
+        importlib.reload(ratelimit)  # restore default limits for later tests
+        store.get_store()._counts.clear()
 
 
 def test_relay():
@@ -656,11 +686,65 @@ def test_payout_and_fee():
     print("payout setup window + $5 claim fee ✓")
 
 
+def test_partial_stake():
+    """Stake only a percent of the bag: floor math, bounds, re-stake updates."""
+    import app, db as _db
+    from fastapi.testclient import TestClient
+
+    c = TestClient(app.app)
+    sk = SigningKey.generate()
+    wallet = base58.b58encode(bytes(sk.verify_key)).decode()
+    nonce = c.get("/api/nonce", params={"wallet": wallet}).json()["nonce"]
+    sig = base58.b58encode(sk.sign(auth.login_message(wallet, nonce).encode()).signature).decode()
+    token = c.post("/api/login", json={"wallet": wallet, "signature": sig, "nonce": nonce}).json()["token"]
+
+    # fake balance comes from the suite-wide solana monkeypatch (2,000,000)
+    half = c.post("/api/stake", json={"token": token, "percent": 50}).json()
+    assert half["staked"] == 1_000_000, half
+    # bounds rejected
+    assert c.post("/api/stake", json={"token": token, "percent": 0}).status_code == 400
+    assert c.post("/api/stake", json={"token": token, "percent": 101}).status_code == 400
+    # default = everything (back-compat: old clients send no percent)
+    full = c.post("/api/stake", json={"token": token}).json()
+    assert full["staked"] == 2_000_000, full
+    # ledger recorded the partial amount, not the full bag
+    with _db.db() as conn:
+        amts = [r["amount"] for r in conn.execute(
+            "SELECT amount FROM ledger WHERE wallet=? AND action='stake' ORDER BY id", (wallet,)
+        ).fetchall()]
+    assert amts[0] == 1_000_000 * _db.BASE and amts[1] == 2_000_000 * _db.BASE, amts
+    print("partial stake ✓")
+
+
+def test_sliding_sessions_and_headers():
+    """48h sessions silently re-mint after 6h of age; security headers on every response."""
+    import time as _t
+    import app, auth as _auth
+    from fastapi.testclient import TestClient
+
+    c = TestClient(app.app)
+    # young token -> no refresh offered
+    t_young = _auth.create_session("WALLETX", None)
+    assert _auth.maybe_refresh(_auth.verify_session(t_young)) is None
+    # aged token (simulate by back-dating exp) -> refresh minted and verifies
+    payload = _auth.verify_session(t_young)
+    payload["exp"] = int(_t.time()) + _auth.SESSION_TTL - _auth.SESSION_REFRESH_AFTER - 1
+    fresh = _auth.maybe_refresh(payload)
+    assert fresh and _auth.verify_session(fresh)["w"] == "WALLETX"
+    # headers present on a plain API response
+    r = c.get("/api/economics")
+    assert "Content-Security-Policy" in r.headers and "script-src" in r.headers["Content-Security-Policy"]
+    assert r.headers.get("X-Content-Type-Options") == "nosniff"
+    print("sliding sessions + security headers \u2713")
+
+
 if __name__ == "__main__":
     test_economics()
     test_auth_signature()
     test_sessions_and_nonce()
     test_api_flow()
+    test_partial_stake()
+    test_sliding_sessions_and_headers()
     test_tg_collision()
     test_integer_migration()
     test_pg_translation()

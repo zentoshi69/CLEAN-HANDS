@@ -1,23 +1,16 @@
 /*
- * wallet.js — Solana wallet connect + signMessage for the CLEAN app.
+ * wallet.js — Solana wallet connect + signMessage for a Telegram Mini App,
+ * using the encrypted universal-link ("deeplink") protocol that Phantom defines
+ * and Solflare / Backpack implement compatibly.
  *
- * Three transports, picked automatically:
- *   1. Injected extension provider (desktop: Phantom / Solflare / Backpack)
- *      — direct async calls, no page reload.
- *   2. Encrypted universal-link deeplinks (mobile browser) — the wallet
- *      round-trips through the OS; each step completes on the NEXT page load.
- *   3. Deeplink + RELAY (inside Telegram) — the wallet's callback cannot
- *      reach the Telegram webview, so it lands on /wallet-return in the
- *      external browser, which posts the ENCRYPTED payload to
- *      /api/relay/<one-time-id>. This webview polls that id and decrypts
- *      locally — the x25519 key never leaves the webview.
+ * Flow (mobile): we generate an ephemeral x25519 keypair, open the wallet's UL,
+ * the wallet returns to our redirect_link with an encrypted payload, and we
+ * decrypt it with a shared secret. connect() yields the pubkey + session;
+ * signMessage() yields a base58 signature. Because the wallet round-trips through
+ * the OS, each step completes on the *next* page load — we persist state in
+ * sessionStorage and resolve pending steps in init().
  *
- * Handshake state lives in localStorage, NOT sessionStorage: wallets
- * routinely deliver callbacks in a brand-new tab, and sessionStorage does
- * not survive that hop (the old behaviour caused "decrypt failed").
- * Nothing stored is a long-term secret; everything clears on disconnect.
- *
- * Requires global `nacl` (tweetnacl, served same-origin as /nacl.min.js).
+ * Requires global `nacl` (tweetnacl, loaded in index.html). base58 is inlined.
  */
 (function (global) {
   'use strict';
@@ -50,7 +43,7 @@
     return s;
   }
   function b58decode(str) {
-    if (!str || !str.length) return new Uint8Array(0);
+    if (!str.length) return new Uint8Array(0);
     const bytes = [0];
     for (let i = 0; i < str.length; i++) {
       const value = MAP[str[i]];
@@ -70,109 +63,80 @@
     return new Uint8Array(bytes.reverse());
   }
 
-  // ---- wallet registry --------------------------------------------------- //
+  // ---- wallet registry -------------------------------------------------- //
+  // `browse` opens THIS app inside the wallet's own in-app browser, where the
+  // wallet injects its provider — so connect/sign happen with no deeplink
+  // round-trip (the round-trip can't return into a Telegram Mini App webview).
   const WALLETS = {
-    phantom: { name: 'Phantom', base: 'https://phantom.app/ul/v1' },
-    solflare: { name: 'Solflare', base: 'https://solflare.com/ul/v1' },
-    backpack: { name: 'Backpack', base: 'https://backpack.app/ul/v1' },
+    phantom: {
+      name: 'Phantom',
+      base: 'https://phantom.app/ul/v1',
+      browse: (u) =>
+        `https://phantom.app/ul/browse/${encodeURIComponent(u)}?ref=${encodeURIComponent(u)}`,
+    },
+    solflare: {
+      name: 'Solflare',
+      base: 'https://solflare.com/ul/v1',
+      browse: (u) =>
+        `https://solflare.com/ul/v1/browse/${encodeURIComponent(u)}?ref=${encodeURIComponent(u)}`,
+    },
+    backpack: {
+      name: 'Backpack',
+      base: 'https://backpack.app/ul/v1',
+      browse: (u) =>
+        `https://backpack.app/ul/browse/${encodeURIComponent(u)}?ref=${encodeURIComponent(u)}`,
+    },
   };
 
-  const LS = global.localStorage;
+  // localStorage (NOT sessionStorage): the wallet deeplink round-trip often
+  // returns to a fresh webview/tab on mobile, which would wipe sessionStorage and
+  // lose dapp_sk/shared/sign_ctx → decrypt fails → login impossible. localStorage
+  // survives that (same origin). We still clear it in clearStep()/disconnect().
+  const SS = window.localStorage;
   const enc = new TextEncoder();
   const dec = new TextDecoder();
-  let HANDLERS = {};
-  let _pollT = null;
 
   function save(k, v) {
-    LS.setItem('clw_' + k, v);
+    SS.setItem('clw_' + k, v);
   }
   function load(k) {
-    return LS.getItem('clw_' + k);
+    return SS.getItem('clw_' + k);
   }
   function clearStep() {
-    ['pending', 'sign_msg', 'sign_ctx', 'hid'].forEach((k) => LS.removeItem('clw_' + k));
+    ['pending', 'sign_msg', 'sign_ctx', 'state'].forEach((k) => SS.removeItem('clw_' + k));
   }
 
-  function tgApp() {
-    return global.Telegram && global.Telegram.WebApp;
+  // Per-step CSRF token. We append it to the redirect_link we hand the wallet and
+  // require the callback to echo it back — so a crafted ?clw= deep link opened in
+  // the Mini App webview (hostile-group threat model) can't drive a connect/sign.
+  function freshState() {
+    const s = b58encode(nacl.randomBytes(16));
+    save('state', s);
+    return s;
   }
-  function inTelegram() {
-    const tg = tgApp();
-    return !!(tg && tg.initData);
+  function stateOk(url) {
+    const got = url.searchParams.get('state');
+    const want = load('state');
+    // FAIL CLOSED. A callback is only honored if it echoes the exact per-step
+    // state we issued (and that we're still waiting on). An attacker who drops or
+    // guesses `state` is rejected. This is what makes a crafted `?clw=connect…`
+    // deep link (hostile-group threat model) unable to drive a connect/sign and
+    // inject an attacker-chosen pubkey/session.
+    return !!(want && got && got === want);
   }
 
   function redirectBase() {
+    // strip any existing query so callbacks are clean
     return location.origin + location.pathname;
   }
 
   function openLink(url) {
-    const tg = tgApp();
+    const tg = global.Telegram && global.Telegram.WebApp;
     if (tg && tg.openLink) tg.openLink(url, { try_instant_view: false });
     else window.location.href = url;
   }
 
-  function fail(e) {
-    stopPoll();
-    clearStep();
-    HANDLERS.onError && HANDLERS.onError(e instanceof Error ? e : new Error(String(e)));
-  }
-
-  // ---- Wallet Standard: auto-detect EVERY modern Solana wallet ------------ //
-  // Wallets announce themselves via the wallet-standard event protocol; we
-  // collect any wallet that supports Solana connect+signMessage and surface
-  // it in the picker with its own name and icon. Zero config, zero SDKs.
-  const STD = {}; // id -> wallet (live page only; sessions persist via token)
-  const STD_ACCT = {}; // id -> authorized account
-  function _stdRegister(w) {
-    try {
-      const f = (w && w.features) || {};
-      if (!f['standard:connect'] || !f['solana:signMessage']) return;
-      const chains = w.chains || [];
-      if (!chains.some((c) => String(c).indexOf('solana:') === 0)) return;
-      STD['ws:' + w.name] = w;
-    } catch (e) {}
-  }
-  try {
-    if (global.addEventListener && global.dispatchEvent) {
-      global.addEventListener('wallet-standard:register-wallet', (ev) => {
-        try {
-          ev.detail && ev.detail({ register: _stdRegister });
-        } catch (e) {}
-      });
-      global.dispatchEvent(
-        new CustomEvent('wallet-standard:app-ready', { detail: { register: _stdRegister } }),
-      );
-    }
-  } catch (e) {}
-
-  function stdWallet(walletId) {
-    return STD[walletId] || null;
-  }
-  function stdAccount(walletId) {
-    const w = STD[walletId];
-    return STD_ACCT[walletId] || (w && w.accounts && w.accounts[0]) || null;
-  }
-
-  // ---- injected extension providers (desktop) ----------------------------- //
-  function extProvider(walletId) {
-    try {
-      if (walletId === 'phantom') {
-        const p = (global.phantom && global.phantom.solana) || global.solana;
-        if (p && p.isPhantom) return p;
-      }
-      if (walletId === 'solflare' && global.solflare && global.solflare.isSolflare)
-        return global.solflare;
-      if (walletId === 'backpack' && global.backpack) return global.backpack;
-    } catch (e) {}
-    return null;
-  }
-  function normSig(res) {
-    const s = res && res.signature !== undefined ? res.signature : res;
-    if (typeof s === 'string') return s; // already base58
-    return b58encode(s instanceof Uint8Array ? s : new Uint8Array(s));
-  }
-
-  // ---- key management ------------------------------------------------------ //
+  // ---- key management --------------------------------------------------- //
   function dappKeypair() {
     let sk = load('dapp_sk');
     if (sk) {
@@ -195,290 +159,35 @@
     return JSON.parse(dec.decode(out));
   }
 
-  // ---- Telegram relay (callback can't reach this webview directly) -------- //
-  function relayRedirect(step) {
-    const hid = b58encode(nacl.randomBytes(16)); // one-time unguessable id
-    save('hid', hid);
-    return location.origin + '/wallet-return?clw=' + step + '&hid=' + hid;
-  }
-  function stopPoll() {
-    if (_pollT) {
-      clearTimeout(_pollT);
-      _pollT = null;
-    }
-  }
-  function startPoll(step) {
-    stopPoll();
-    const hid = load('hid');
-    if (!hid) return;
-    const interval = global.CLW_POLL_MS || 2000;
-    const deadline = Date.now() + 3 * 60 * 1000;
-    const tick = () => {
-      _pollT = null;
-      if (load('hid') !== hid) return; // superseded or finished
-      if (Date.now() > deadline) return fail(new Error('Wallet took too long — try again.'));
-      fetch('/api/relay/' + hid)
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null)
-        .then((j) => {
-          if (j && j.params) {
-            const p = j.params;
-            const ok = handleParams(step, (k) => (p[k] !== undefined ? p[k] : null));
-            // ack so the backend can drop the payload (TTL is the backstop);
-            // peek-then-ack lets a relaunched webview still find it mid-flow
-            if (ok) fetch('/api/relay/' + hid, { method: 'DELETE' }).catch(() => {});
-          } else {
-            _pollT = setTimeout(tick, interval);
-          }
-        });
-    };
-    // first check immediately — the user usually returns AFTER the wallet
-    // already delivered the callback, so completion should feel instant
-    _pollT = setTimeout(tick, 50);
-  }
-  function resumePendingPoll() {
-    const pending = load('pending');
-    if (pending && load('hid') && inTelegram()) {
-      startPoll(pending);
-      return true;
-    }
-    return false;
-  }
-
-  // ---- Telegram server-side handshake ------------------------------------- //
-  // The server holds the ephemeral key and lands Phantom's callbacks; this
-  // webview only polls by its verified Telegram identity, so the login
-  // completes no matter how many times Telegram relaunches the webview.
-  function tgInitData() {
-    const t = tgApp();
-    return (t && t.initData) || '';
-  }
-  function tgConnect(walletId) {
-    const w = WALLETS[walletId];
-    if (!w) throw new Error('unknown wallet');
-    save('wallet', walletId);
-    save('mode', 'tg');
-    fetch('/api/tg/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ initData: tgInitData(), wallet: walletId }),
-    })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('could not start sign-in'))))
-      .then((j) => {
-        save('tg_sid', j.sid);
-        const params = new URLSearchParams({
-          dapp_encryption_public_key: j.dapp_pub,
-          cluster: 'mainnet-beta',
-          app_url: location.origin,
-          redirect_link: location.origin + '/api/tg/connect/' + j.sid,
-        });
-        openLink(`${w.base}/connect?${params.toString()}`);
-        startTgPoll(j.sid);
-      })
-      .catch(fail);
-    return 'tg';
-  }
-  function startTgPoll(sid) {
-    stopPoll();
-    sid = sid || load('tg_sid');
-    const interval = global.CLW_POLL_MS || 1500;
-    const deadline = Date.now() + 5 * 60 * 1000;
-    const tick = () => {
-      _pollT = null;
-      if (load('mode') !== 'tg') return;
-      if (Date.now() > deadline) return fail(new Error('Wallet sign-in timed out — try again.'));
-      fetch('/api/tg/poll', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ initData: tgInitData(), sid: sid || null }),
-      })
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null)
-        .then((j) => {
-          if (j && j.status === 'done') {
-            LS.removeItem('clw_tg_sid');
-            if (j.profile && j.profile.wallet) save('pubkey', j.profile.wallet);
-            HANDLERS.onSession && HANDLERS.onSession(j.token, j.profile);
-          } else if (j && j.status === 'error') {
-            LS.removeItem('clw_tg_sid');
-            fail(new Error(j.detail || 'sign-in failed'));
-          } else {
-            _pollT = setTimeout(tick, interval);
-          }
-        });
-    };
-    _pollT = setTimeout(tick, 800);
-  }
-  function resumeTgPoll() {
-    if (load('mode') === 'tg' && inTelegram() && (load('tg_sid') || tgInitData())) {
-      startTgPoll(load('tg_sid'));
-      return true;
-    }
-    return false;
-  }
-  // One-shot recovery: after a COLD webview relaunch (storage wiped mid-
-  // handshake) the server still knows this Telegram user's finished login via
-  // its per-user pointer — a single sid-less poll picks the session up.
-  function checkTgSession() {
-    if (!inTelegram()) return Promise.resolve(false);
-    return fetch('/api/tg/poll', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ initData: tgInitData(), sid: load('tg_sid') || null }),
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .catch(() => null)
-      .then((j) => {
-        if (j && j.status === 'done') {
-          if (j.profile && j.profile.wallet) save('pubkey', j.profile.wallet);
-          HANDLERS.onSession && HANDLERS.onSession(j.token, j.profile);
-          return true;
-        }
-        return false;
-      });
-  }
-
-  if (typeof document !== 'undefined' && document.addEventListener) {
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        resumePendingPoll();
-        resumeTgPoll();
-      }
-    });
-  }
-
-  // ---- shared callback processing (URL params or relayed params) ---------- //
-  function handleParams(cb, get) {
-    try {
-      const errCode = get('errorCode');
-      if (errCode) throw new Error(get('errorMessage') || 'wallet error ' + errCode);
-
-      if (cb === 'connect') {
-        if (!load('dapp_sk'))
-          throw new Error('Connect started in another app — tap Connect once more to finish here.');
-        const theirPub = get('phantom_encryption_public_key');
-        const data = get('data');
-        const nonce = get('nonce');
-        if (!theirPub || !data || !nonce) throw new Error('incomplete wallet callback');
-        const shared = sharedSecret(theirPub);
-        save('shared', b58encode(shared));
-        const info = decryptPayload(data, nonce, shared);
-        save('session', info.session);
-        save('pubkey', info.public_key);
-        stopPoll();
-        clearStep();
-        HANDLERS.onConnect && HANDLERS.onConnect(info.public_key);
-        return 'connect';
-      }
-      if (cb === 'sign' || cb === 'tx') {
-        if (!load('shared'))
-          throw new Error(
-            'Signature finished in another app — tap Connect once more to finish here.',
-          );
-        const data = get('data');
-        const nonce = get('nonce');
-        if (!data || !nonce) throw new Error('incomplete wallet callback');
-        const shared = b58decode(load('shared'));
-        const info = decryptPayload(data, nonce, shared);
-        const ctx = JSON.parse(load('sign_ctx') || '{}');
-        stopPoll();
-        clearStep();
-        if (cb === 'sign') HANDLERS.onSign && HANDLERS.onSign(info.signature, ctx);
-        else HANDLERS.onTx && HANDLERS.onTx(info.signature, ctx);
-        return cb;
-      }
-    } catch (e) {
-      fail(e);
-      return null; // signal failure to the relay poller (no ack -> TTL cleans up)
-    }
-    return cb;
-  }
-
-  // ---- public API ------------------------------------------------------------ //
+  // ---- public API ------------------------------------------------------- //
+  // connect(wallet): kicks off the UL; resolves after the callback on reload.
   function connect(walletId) {
-    // Wallet Standard wallet picked from the live registry
-    const std = stdWallet(walletId);
-    if (std) {
-      save('wallet', walletId);
-      save('mode', 'std');
-      Promise.resolve(std.features['standard:connect'].connect())
-        .then((res) => {
-          const acct =
-            (res && res.accounts && res.accounts[0]) || (std.accounts && std.accounts[0]);
-          if (!acct || !acct.address) throw new Error('no account authorized');
-          STD_ACCT[walletId] = acct;
-          save('pubkey', acct.address);
-          HANDLERS.onConnect && HANDLERS.onConnect(acct.address);
-        })
-        .catch(fail);
-      return 'std';
-    }
     const w = WALLETS[walletId];
     if (!w) throw new Error('unknown wallet');
-    const ext = extProvider(walletId);
-    if (ext) {
-      save('wallet', walletId);
-      save('mode', 'ext');
-      Promise.resolve(ext.connect())
-        .then((res) => {
-          const pk = (res && res.publicKey ? res.publicKey : ext.publicKey).toString();
-          save('pubkey', pk);
-          HANDLERS.onConnect && HANDLERS.onConnect(pk);
-        })
-        .catch(fail);
-      return 'ext';
-    }
-    // Inside Telegram: server-side handshake (robust across webview relaunches).
-    if (inTelegram()) return tgConnect(walletId);
-    // Mobile browser: encrypted deeplink, handshake key in localStorage.
     save('wallet', walletId);
-    save('mode', 'link');
     save('pending', 'connect');
-    const relay = inTelegram();
-    const kp = dappKeypair();
+    // Fresh ephemeral x25519 keypair for EACH connect attempt — never reuse a key
+    // persisted from a previous session (limits exposure if localStorage was read).
+    const kp = nacl.box.keyPair();
+    save('dapp_sk', b58encode(kp.secretKey));
     const params = new URLSearchParams({
       dapp_encryption_public_key: b58encode(kp.publicKey),
       cluster: 'mainnet-beta',
       app_url: location.origin,
-      redirect_link: relay ? relayRedirect('connect') : redirectBase() + '?clw=connect',
+      redirect_link: redirectBase() + '?clw=connect&state=' + freshState(),
     });
     openLink(`${w.base}/connect?${params.toString()}`);
-    if (relay) startPoll('connect');
-    return 'link';
   }
 
+  // signMessage(message): encrypts payload, opens UL; resolves on reload.
   function signMessage(message, ctx) {
     const walletId = load('wallet');
-    if (load('mode') === 'std') {
-      const w = stdWallet(walletId);
-      const acct = stdAccount(walletId);
-      if (!w || !acct) return fail(new Error('wallet not available — tap Connect again'));
-      Promise.resolve(
-        w.features['solana:signMessage'].signMessage({ account: acct, message: enc.encode(message) }),
-      )
-        .then((out) => {
-          const r = Array.isArray(out) ? out[0] : out;
-          if (!r || !r.signature) throw new Error('wallet returned no signature');
-          HANDLERS.onSign && HANDLERS.onSign(b58encode(new Uint8Array(r.signature)), ctx || {});
-        })
-        .catch(fail);
-      return;
-    }
-    if (load('mode') === 'ext') {
-      const ext = extProvider(walletId);
-      if (!ext) return fail(new Error('wallet extension not available'));
-      Promise.resolve(ext.signMessage(enc.encode(message), 'utf8'))
-        .then((res) => HANDLERS.onSign && HANDLERS.onSign(normSig(res), ctx || {}))
-        .catch(fail);
-      return;
-    }
     const w = WALLETS[walletId];
     const session = load('session');
     const sharedB58 = load('shared');
     if (!w || !session || !sharedB58) throw new Error('not connected');
     save('pending', 'sign');
     save('sign_ctx', ctx ? JSON.stringify(ctx) : '{}');
-    const relay = inTelegram();
     const shared = b58decode(sharedB58);
     const payload = { message: b58encode(enc.encode(message)), session };
     const nonce = nacl.randomBytes(24);
@@ -486,55 +195,22 @@
     const params = new URLSearchParams({
       dapp_encryption_public_key: b58encode(dappKeypair().publicKey),
       nonce: b58encode(nonce),
-      redirect_link: relay ? relayRedirect('sign') : redirectBase() + '?clw=sign',
+      redirect_link: redirectBase() + '?clw=sign&state=' + freshState(),
       payload: b58encode(box),
     });
     openLink(`${w.base}/signMessage?${params.toString()}`);
-    if (relay) startPoll('sign');
   }
 
-  // signAndSendTransaction(txBase58, ctx, txObj): wallet signs AND broadcasts.
-  // txObj (a @solana/web3.js Transaction) is used by the extension path;
-  // the deeplink path uses the base58 serialization.
-  function signAndSendTransaction(txBase58, ctx, txObj) {
+  // signAndSendTransaction(txBase58): wallet signs AND broadcasts a serialized
+  // (legacy) transaction; resolves with the on-chain signature on reload.
+  function signAndSendTransaction(txBase58, ctx) {
     const walletId = load('wallet');
-    if (load('mode') === 'std') {
-      const w = stdWallet(walletId);
-      const acct = stdAccount(walletId);
-      const feat = w && w.features && w.features['solana:signAndSendTransaction'];
-      if (!w || !acct) return fail(new Error('wallet not available — tap Connect again'));
-      if (!feat) return fail(new Error('this wallet cannot send transactions here'));
-      Promise.resolve(
-        feat.signAndSendTransaction({
-          account: acct,
-          transaction: b58decode(txBase58),
-          chain: 'solana:mainnet',
-        }),
-      )
-        .then((out) => {
-          const r = Array.isArray(out) ? out[0] : out;
-          if (!r || !r.signature) throw new Error('wallet returned no signature');
-          HANDLERS.onTx && HANDLERS.onTx(b58encode(new Uint8Array(r.signature)), ctx || {});
-        })
-        .catch(fail);
-      return;
-    }
-    if (load('mode') === 'ext') {
-      const ext = extProvider(walletId);
-      if (!ext) return fail(new Error('wallet extension not available'));
-      if (!txObj) return fail(new Error('missing transaction object'));
-      Promise.resolve(ext.signAndSendTransaction(txObj))
-        .then((res) => HANDLERS.onTx && HANDLERS.onTx(normSig(res), ctx || {}))
-        .catch(fail);
-      return;
-    }
     const w = WALLETS[walletId];
     const session = load('session');
     const sharedB58 = load('shared');
     if (!w || !session || !sharedB58) throw new Error('not connected');
     save('pending', 'tx');
     save('sign_ctx', ctx ? JSON.stringify(ctx) : '{}');
-    const relay = inTelegram();
     const shared = b58decode(sharedB58);
     const payload = { transaction: txBase58, session };
     const nonce = nacl.randomBytes(24);
@@ -542,65 +218,497 @@
     const params = new URLSearchParams({
       dapp_encryption_public_key: b58encode(dappKeypair().publicKey),
       nonce: b58encode(nonce),
-      redirect_link: relay ? relayRedirect('tx') : redirectBase() + '?clw=tx',
+      redirect_link: redirectBase() + '?clw=tx&state=' + freshState(),
       payload: b58encode(box),
     });
     openLink(`${w.base}/signAndSendTransaction?${params.toString()}`);
-    if (relay) startPoll('tx');
   }
 
   function disconnect() {
-    stopPoll();
-    const w = stdWallet(load('wallet'));
-    try {
-      const d = w && w.features && w.features['standard:disconnect'];
-      if (d) Promise.resolve(d.disconnect()).catch(() => {});
-    } catch (e) {}
-    Object.keys(STD_ACCT).forEach((k) => delete STD_ACCT[k]);
-    ['wallet', 'mode', 'session', 'shared', 'pubkey', 'pending', 'sign_ctx', 'dapp_sk', 'hid', 'tg_sid'].forEach(
-      (k) => LS.removeItem('clw_' + k),
+    // Wipe the ephemeral secret key (dapp_sk) and shared secret too, so a stale
+    // long-lived key never lingers in localStorage after logout.
+    ['wallet', 'session', 'shared', 'pubkey', 'pending', 'sign_ctx', 'state', 'dapp_sk'].forEach(
+      (k) => SS.removeItem('clw_' + k),
     );
+    wcDisconnect(); // also tear down any live WalletConnect relay session
   }
 
   function currentPubkey() {
     return load('pubkey');
   }
-  function pendingStep() {
-    return load('pending');
-  }
   function isConnected() {
-    const mode = load('mode');
-    return !!(load('pubkey') && (load('session') || mode === 'ext' || mode === 'std'));
+    return !!(load('pubkey') && load('session'));
   }
   function listWallets() {
-    // Detected Wallet-Standard wallets first (the user demonstrably has them),
-    // then the deeplink trio for anything not installed — deduped by name.
-    const out = Object.entries(STD).map(([id, w]) => ({
-      id,
-      name: w.name,
-      icon: typeof w.icon === 'string' && w.icon.indexOf('data:image/') === 0 ? w.icon : null,
-    }));
-    const have = {};
-    out.forEach((w) => (have[w.name.toLowerCase()] = 1));
-    Object.entries(WALLETS).forEach(([id, w]) => {
-      if (!have[w.name.toLowerCase()]) out.push({ id, name: w.name, icon: null });
+    return Object.entries(WALLETS).map(([id, w]) => ({ id, name: w.name }));
+  }
+
+  // Re-open this app inside the chosen wallet's in-app browser (where its provider
+  // is injected). This is the reliable path from a Telegram Mini App / mobile.
+  function openInWallet(walletId) {
+    const w = WALLETS[walletId];
+    if (!w || !w.browse) throw new Error('unknown wallet');
+    openLink(w.browse(location.origin + location.pathname));
+  }
+
+  // init(): call on boot. If we returned from a wallet callback, finish the step
+  // and invoke the matching handler. Returns the detected step name or null.
+  function init({ onConnect, onSign, onTx, onError }) {
+    const url = new URL(location.href);
+    const cb = url.searchParams.get('clw');
+    if (!cb) return null;
+
+    // clean the URL so a refresh doesn't reprocess
+    history.replaceState(null, '', redirectBase());
+
+    const walletId = load('wallet');
+    try {
+      // Every callback must echo the per-step state we issued AND match the step
+      // we're actually waiting on. Reject forged/unsolicited callbacks outright.
+      if (!stateOk(url) || load('pending') !== cb) throw new Error('unexpected wallet response');
+      const errCode = url.searchParams.get('errorCode');
+      // Never surface attacker-controlled errorMessage text (social-engineering
+      // vector in a hostile group) — show a fixed string keyed off the code only.
+      if (errCode) throw new Error('wallet returned an error (' + errCode + ')');
+
+      if (cb === 'connect') {
+        const theirPub = url.searchParams.get('phantom_encryption_public_key');
+        const data = url.searchParams.get('data');
+        const nonce = url.searchParams.get('nonce');
+        const shared = sharedSecret(theirPub);
+        save('shared', b58encode(shared));
+        const info = decryptPayload(data, nonce, shared);
+        save('session', info.session);
+        save('pubkey', info.public_key);
+        clearStep();
+        onConnect && onConnect(info.public_key);
+        return 'connect';
+      }
+      if (cb === 'sign') {
+        const data = url.searchParams.get('data');
+        const nonce = url.searchParams.get('nonce');
+        const shared = b58decode(load('shared'));
+        const info = decryptPayload(data, nonce, shared);
+        const ctx = JSON.parse(load('sign_ctx') || '{}');
+        clearStep();
+        onSign && onSign(info.signature, ctx); // signature is base58
+        return 'sign';
+      }
+      if (cb === 'tx') {
+        const data = url.searchParams.get('data');
+        const nonce = url.searchParams.get('nonce');
+        const shared = b58decode(load('shared'));
+        const info = decryptPayload(data, nonce, shared);
+        const ctx = JSON.parse(load('sign_ctx') || '{}');
+        clearStep();
+        onTx && onTx(info.signature, ctx); // on-chain tx signature (base58)
+        return 'tx';
+      }
+    } catch (e) {
+      clearStep();
+      onError && onError(e);
+    }
+    return cb;
+  }
+
+  // ---- injected wallets (desktop extensions + in-wallet browsers) -------- //
+  // Support EVERY Solana wallet, two ways:
+  //   (1) Solana WALLET STANDARD — every modern wallet (Phantom, Solflare,
+  //       Backpack, Glow, OKX, Coinbase, Trust, Exodus, Magic Eden, Brave, Nightly,
+  //       Coin98…) announces itself to the page via standard events. We don't need
+  //       to know them ahead of time.
+  //   (2) LEGACY window.* injection for older builds.
+  // Detection is LIVE: extensions inject *asynchronously*, so we re-scan on an
+  // interval and on the standard events and tell the UI — instead of deciding once
+  // at page load (that one-shot check was the desktop "nothing happens" bug).
+  const _std = new Map(); // name -> Wallet Standard object
+  const _detectCbs = [];
+  let _chosen = null; // { id, name, kind, obj, account? }
+
+  function onDetect(cb) {
+    _detectCbs.push(cb);
+  }
+  function _fireDetect() {
+    const list = detected();
+    _detectCbs.forEach((cb) => {
+      try {
+        cb(list);
+      } catch (e) {}
+    });
+  }
+
+  // ---- account-change subscription -------------------------------------- //
+  // When the user switches the active account INSIDE their wallet, the provider
+  // fires an event. We surface a single normalized callback to the app: the new
+  // base58 address, or null if they disconnected. The app uses it to drop the old
+  // session and re-auth as the new wallet.
+  const _acctCbs = [];
+  // Track which providers we've already wired WITHOUT writing to them — wallet
+  // extensions (Phantom/Core/MetaMask) freeze their injected provider object, so
+  // adding a marker property throws "object is not extensible" and would abort
+  // the entire connect. A WeakSet records the object identity externally.
+  const _hooked = new WeakSet();
+  function onAccountChange(cb) {
+    _acctCbs.push(cb);
+  }
+  function _fireAccount(addr) {
+    _acctCbs.forEach((cb) => {
+      try {
+        cb(addr);
+      } catch (e) {}
+    });
+  }
+  function _hookAccountChange(entry) {
+    const o = entry.obj;
+    if (!o || _hooked.has(o)) return;
+    _hooked.add(o);
+    try {
+      if (entry.kind === 'standard') {
+        const ev = o.features && o.features['standard:events'];
+        if (ev && ev.on) {
+          ev.on('change', (props) => {
+            if (!props || !('accounts' in props)) return;
+            const acct = (o.accounts && o.accounts[0]) || (props.accounts && props.accounts[0]);
+            if (acct && acct.address) {
+              if (_chosen && _chosen.obj === o) _chosen.account = acct;
+              save('pubkey', acct.address);
+              _fireAccount(acct.address);
+            } else {
+              _fireAccount(null); // wallet locked / all accounts revoked
+            }
+          });
+        }
+      } else if (o.on) {
+        o.on('accountChanged', (pk) => {
+          if (pk) {
+            const a = pk.toBase58 ? pk.toBase58() : pk.toString();
+            save('pubkey', a);
+            _fireAccount(a);
+          } else {
+            _fireAccount(null); // disconnected from inside the wallet
+          }
+        });
+        o.on('disconnect', () => _fireAccount(null));
+      }
+    } catch (e) {}
+  }
+  function _isSolStd(wal) {
+    try {
+      const f = wal.features || {};
+      const solChain = (wal.chains || []).some((c) => String(c).indexOf('solana:') === 0);
+      return !!(f['solana:signMessage'] || (solChain && f['standard:connect']));
+    } catch (e) {
+      return false;
+    }
+  }
+  function _registerStd(wal) {
+    if (wal && wal.name && _isSolStd(wal) && !_std.has(wal.name)) {
+      _std.set(wal.name, wal);
+      _fireDetect();
+    }
+  }
+  // Wallet Standard handshake — works whether the wallet loaded before or after us.
+  try {
+    const api = {
+      register: (...ws) => {
+        ws.forEach(_registerStd);
+        return () => {};
+      },
+    };
+    global.addEventListener('wallet-standard:register-wallet', (e) => {
+      try {
+        e.detail(api);
+      } catch (x) {}
+    });
+    global.dispatchEvent(new CustomEvent('wallet-standard:app-ready', { detail: api }));
+  } catch (e) {}
+
+  // Legacy window.* probes (older wallet builds without the standard).
+  const LEGACY = [
+    ['phantom', 'Phantom', (w) => w.phantom && w.phantom.solana && w.phantom.solana],
+    ['solflare', 'Solflare', (w) => w.solflare && w.solflare.isSolflare && w.solflare],
+    ['backpack', 'Backpack', (w) => w.backpack && w.backpack.isBackpack && w.backpack],
+    ['glow', 'Glow', (w) => w.glowSolana || (w.glow && w.glow.solana)],
+    ['exodus', 'Exodus', (w) => w.exodus && w.exodus.solana],
+    ['okx', 'OKX Wallet', (w) => w.okxwallet && w.okxwallet.solana],
+    ['coinbase', 'Coinbase Wallet', (w) => w.coinbaseSolana],
+    [
+      'trust',
+      'Trust',
+      (w) => (w.trustwallet && w.trustwallet.solana) || (w.trustWallet && w.trustWallet.solana),
+    ],
+    ['brave', 'Brave Wallet', (w) => w.braveSolana],
+    ['magiceden', 'Magic Eden', (w) => w.magicEden && w.magicEden.solana],
+    ['nightly', 'Nightly', (w) => w.nightly && w.nightly.solana],
+    ['coin98', 'Coin98', (w) => w.coin98 && w.coin98.sol],
+    ['solana', 'Browser Wallet', (w) => w.solana],
+  ];
+  function _legacy() {
+    const out = [];
+    const seen = new Set();
+    LEGACY.forEach(([id, name, get]) => {
+      let p;
+      try {
+        p = get(global);
+      } catch (e) {}
+      if (p && !seen.has(p)) {
+        seen.add(p);
+        out.push({ id, name, kind: 'legacy', obj: p });
+      }
     });
     return out;
   }
 
-  // init(): call on boot. Finishes a URL callback if present, or resumes a
-  // pending relay poll (Telegram). Returns the step being handled, or null.
-  function init(handlers) {
-    HANDLERS = handlers || {};
-    const url = new URL(location.href);
-    const cb = url.searchParams.get('clw');
-    if (!cb) {
-      const resumed = resumePendingPoll() || resumeTgPoll();
-      return resumed ? 'resume' : null;
+  // The merged, de-duped list of wallets usable right now.
+  function detected() {
+    const out = [];
+    const names = new Set();
+    _std.forEach((wal, name) => {
+      out.push({ id: 'std:' + name, name, kind: 'standard', obj: wal });
+      names.add(name.toLowerCase());
+    });
+    _legacy().forEach((w) => {
+      if (!names.has(w.name.toLowerCase())) out.push(w);
+    });
+    return out;
+  }
+  function hasInjected() {
+    return detected().length > 0;
+  }
+
+  // Keep re-scanning for ~10s — desktop extensions inject after our script runs.
+  let _scans = 0;
+  let _lastCount = 0;
+  const _iv = setInterval(() => {
+    const n = detected().length;
+    if (n !== _lastCount) {
+      _lastCount = n;
+      _fireDetect();
     }
-    // clean the URL so a refresh doesn't reprocess
-    history.replaceState(null, '', redirectBase());
-    return handleParams(cb, (k) => url.searchParams.get(k));
+    if (++_scans > 40) clearInterval(_iv);
+  }, 250);
+  global.addEventListener('load', () => setTimeout(_fireDetect, 300));
+
+  function _pick(id) {
+    const list = detected();
+    if (id) {
+      const m = list.find((w) => w.id === id || w.name === id);
+      if (m) return m;
+    }
+    return list[0] || null;
+  }
+
+  async function _activate(entry) {
+    if (!entry) throw new Error('no wallet found — install or open a Solana wallet');
+    if (entry.kind === 'standard') {
+      const wal = entry.obj;
+      const cres = await wal.features['standard:connect'].connect();
+      const acct = (cres && cres.accounts && cres.accounts[0]) || (wal.accounts && wal.accounts[0]);
+      if (!acct) throw new Error('wallet did not return an account');
+      _chosen = { id: entry.id, name: entry.name, kind: 'standard', obj: wal, account: acct };
+      _hookAccountChange(entry);
+      return acct.address;
+    }
+    const p = entry.obj;
+    const resp = await p.connect();
+    const pk = p.publicKey || (resp && resp.publicKey);
+    if (!pk) throw new Error('wallet did not return a public key');
+    _chosen = { id: entry.id, name: entry.name, kind: 'legacy', obj: p };
+    _hookAccountChange(entry);
+    return pk.toBase58 ? pk.toBase58() : pk.toString();
+  }
+
+  async function connectInjected(id) {
+    const entry = _pick(id);
+    const addr = await _activate(entry);
+    save('wallet', 'injected');
+    save('inj_id', entry.id);
+    save('pubkey', addr);
+    return addr;
+  }
+
+  async function signInjected(message) {
+    if (!_chosen) await _activate(_pick(load('inj_id'))); // re-activate after a reload
+    if (_chosen.kind === 'standard') {
+      const out = await _chosen.obj.features['solana:signMessage'].signMessage({
+        account: _chosen.account,
+        message: enc.encode(message),
+      });
+      const sig = out && out[0] && out[0].signature;
+      if (!sig) throw new Error('wallet did not return a signature');
+      return b58encode(sig instanceof Uint8Array ? sig : new Uint8Array(sig));
+    }
+    const p = _chosen.obj;
+    const res = await p.signMessage(enc.encode(message), 'utf8');
+    const sig = res && (res.signature !== undefined ? res.signature : res);
+    if (!sig) throw new Error('wallet did not return a signature');
+    if (typeof sig === 'string') return sig; // some wallets already return base58
+    return b58encode(sig instanceof Uint8Array ? sig : new Uint8Array(sig));
+  }
+
+  // ---- WalletConnect (the relay protocol — ANY wallet, any device) ------- //
+  // Desktop with no extension / Telegram Desktop: we show the official
+  // WalletConnect modal (QR + wallet directory). The user scans with whatever
+  // wallet app they own; connect + signMessage happen over the encrypted relay.
+  // SDKs are lazy-loaded from esm.sh ONLY when the user taps the button, and the
+  // whole path is OFF unless the operator sets WALLETCONNECT_PROJECT_ID.
+  const WC_CHAIN = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp'; // Solana mainnet (CAIP-2)
+  let _wc = null; // { provider, pubkey }
+
+  // Two loading strategies, because webviews differ:
+  //  1) dynamic import() of ESM bundles (modern browsers) — fastest;
+  //  2) classic <script> UMD builds (Telegram Desktop/iOS webviews BLOCK
+  //     module imports — "Importing a module script failed").
+  const _timeout = (p, ms) =>
+    Promise.race([
+      p,
+      new Promise((_, rej) => setTimeout(() => rej(new Error('module load failed (timeout)')), ms)),
+    ]);
+  const _imp = async (urls) => {
+    let lastErr;
+    for (const u of urls) {
+      try {
+        return await import(/* webpackIgnore: true */ u);
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr || new Error('module load failed');
+  };
+  const _script = (urls) =>
+    new Promise((resolve, reject) => {
+      const tryOne = (i) => {
+        if (i >= urls.length) return reject(new Error('script load failed'));
+        const s = document.createElement('script');
+        s.src = urls[i];
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => {
+          s.remove();
+          tryOne(i + 1);
+        };
+        document.head.appendChild(s);
+      };
+      tryOne(0);
+    });
+  const _wcMeta = () => ({
+    name: '$CLEAN Staking',
+    description: 'CLEAN soft staking — clean hands, dirty money',
+    url: location.origin,
+    icons: [location.origin + '/glove.png'],
+  });
+  const _wcAccount = (session) => {
+    const accounts = (session && session.namespaces.solana.accounts) || [];
+    if (!accounts.length) throw new Error('wallet did not return an account');
+    return accounts[0].split(':')[2]; // 'solana:<chain>:<pubkey>'
+  };
+
+  async function _wcViaEsm(projectId) {
+    const [up, wm] = await Promise.all([
+      _imp([
+        'https://esm.sh/@walletconnect/universal-provider@2.17.2?bundle',
+        'https://esm.run/@walletconnect/universal-provider@2.17.2',
+      ]),
+      _imp([
+        'https://esm.sh/@walletconnect/modal@2.7.0?bundle',
+        'https://esm.run/@walletconnect/modal@2.7.0',
+      ]),
+    ]);
+    const UniversalProvider = up.default || up.UniversalProvider;
+    const WalletConnectModal = wm.WalletConnectModal || wm.default;
+    const provider = await UniversalProvider.init({ projectId, metadata: _wcMeta() });
+    const modal = new WalletConnectModal({ projectId, chains: [WC_CHAIN] });
+    provider.on('display_uri', (uri) => modal.openModal({ uri }));
+    try {
+      await provider.connect({
+        namespaces: {
+          solana: { methods: ['solana_signMessage'], chains: [WC_CHAIN], events: [] },
+        },
+      });
+    } finally {
+      modal.closeModal();
+    }
+    const pubkey = _wcAccount(provider.session);
+    return { provider, pubkey };
+  }
+
+  async function _wcViaUmd(projectId) {
+    await Promise.all([
+      window.SignClient
+        ? 0
+        : _script([
+            'https://unpkg.com/@walletconnect/sign-client@2.17.2/dist/index.umd.js',
+            'https://cdn.jsdelivr.net/npm/@walletconnect/sign-client@2.17.2/dist/index.umd.js',
+          ]),
+      window.WalletConnectModal
+        ? 0
+        : _script([
+            'https://unpkg.com/@walletconnect/modal@2.7.0/dist/index.umd.js',
+            'https://cdn.jsdelivr.net/npm/@walletconnect/modal@2.7.0/dist/index.umd.js',
+          ]),
+    ]);
+    const SC = window.SignClient && (window.SignClient.SignClient || window.SignClient);
+    const M = window.WalletConnectModal;
+    const ModalCtor = M && (M.WalletConnectModal || M.default || M);
+    if (!SC || !ModalCtor) throw new Error('WalletConnect UMD globals missing');
+    const client = await (SC.init ? SC.init : SC)({ projectId, metadata: _wcMeta() });
+    const modal = new ModalCtor({ projectId, chains: [WC_CHAIN] });
+    const { uri, approval } = await client.connect({
+      requiredNamespaces: {
+        solana: { methods: ['solana_signMessage'], chains: [WC_CHAIN], events: [] },
+      },
+    });
+    let session;
+    try {
+      if (uri) modal.openModal({ uri });
+      session = await approval();
+    } finally {
+      modal.closeModal();
+    }
+    const pubkey = _wcAccount(session);
+    // thin adapter so wcSign/wcDisconnect work identically on both paths
+    const provider = {
+      request: (args, chainId) => client.request({ topic: session.topic, chainId, request: args }),
+      disconnect: () =>
+        client.disconnect({ topic: session.topic, reason: { code: 6000, message: 'user' } }),
+    };
+    return { provider, pubkey };
+  }
+
+  async function wcConnect(projectId) {
+    if (!projectId) throw new Error('WalletConnect is not configured');
+    let got;
+    try {
+      got = await _timeout(_wcViaEsm(projectId), 30000);
+    } catch (e) {
+      // webview blocked module imports (or both ESM CDNs down) — UMD scripts
+      got = await _wcViaUmd(projectId);
+    }
+    _wc = got;
+    save('wallet', 'walletconnect');
+    save('pubkey', got.pubkey);
+    return got.pubkey;
+  }
+
+  async function wcSign(message) {
+    if (!_wc) throw new Error('not connected — tap WalletConnect again');
+    const res = await _wc.provider.request(
+      {
+        method: 'solana_signMessage',
+        params: { pubkey: _wc.pubkey, message: b58encode(enc.encode(message)) },
+      },
+      WC_CHAIN,
+    );
+    const sig = res && (res.signature !== undefined ? res.signature : res);
+    if (!sig) throw new Error('wallet did not return a signature');
+    return typeof sig === 'string' ? sig : b58encode(new Uint8Array(sig));
+  }
+
+  function wcDisconnect() {
+    try {
+      _wc && _wc.provider && _wc.provider.disconnect();
+    } catch (e) {}
+    _wc = null;
   }
 
   global.CleanWallet = {
@@ -611,10 +719,18 @@
     init,
     isConnected,
     currentPubkey,
-    pendingStep,
-    checkTgSession,
     listWallets,
+    openInWallet,
+    hasInjected,
+    detected,
+    onDetect,
+    onAccountChange,
+    connectInjected,
+    signInjected,
+    wcConnect,
+    wcSign,
+    wcDisconnect,
     b58encode,
     b58decode,
   };
-})(typeof window !== 'undefined' ? window : globalThis);
+})(window);
