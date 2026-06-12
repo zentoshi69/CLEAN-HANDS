@@ -1023,7 +1023,12 @@
     }
   }
 
-  // ---- bridge / swap (provider iframe, reskinned) ------------------------ //
+  // ---- No Stains Bridge (reskinned exchange) ----------------------------- //
+  // Exchange homepages refuse to be iframed (X-Frame-Options), and iframes are
+  // flaky inside the Telegram webview anyway — so by default we render a branded
+  // LAUNCH card that opens the ref URL externally (referral preserved). Inline
+  // embedding only kicks in when the operator points bridgeUrl at a real
+  // embeddable widget AND sets bridgeEmbed.
   let _bridgeLoaded = false;
   function loadBridge() {
     if (_bridgeLoaded) return;
@@ -1031,27 +1036,47 @@
     const note = $('bridge-note');
     if (!host) return;
     const url = (CONFIG && CONFIG.bridgeUrl) || '';
-    if (url && /^https:\/\//.test(url)) {
+    const ok = url && /^https:\/\//.test(url);
+
+    if (ok && CONFIG.bridgeEmbed) {
       const f = document.createElement('iframe');
       f.src = url;
-      f.title = 'Bridge & Swap';
+      f.title = 'No Stains Bridge';
       f.loading = 'lazy';
-      // allow the widget to run its wallet/redirect flows but nothing ambient
       f.setAttribute('allow', 'clipboard-write; payment');
       f.setAttribute('referrerpolicy', 'no-referrer');
       host.innerHTML = '';
       host.appendChild(f);
-      if (note) note.textContent = 'Quotes and routing are provided by the exchange. Always confirm the destination address in your wallet.';
+      if (note)
+        note.textContent =
+          'Quotes and routing come from the exchange. Always confirm the destination address in your wallet.';
       _bridgeLoaded = true;
-    } else {
+      return;
+    }
+
+    if (ok) {
       host.innerHTML =
         '<div class="bridge-empty">' +
         '<img class="glove" src="/glove.png" alt="">' +
-        '<div class="t">Bridge is warming up</div>' +
-        '<div class="d">The cross-chain swap widget isn\'t switched on yet. Set MINIAPP_BRIDGE_URL to your reskinned EasyBit widget and it appears right here.</div>' +
+        '<div class="t">No Stains Bridge</div>' +
+        '<div class="d">Swap and bridge across chains — wallet-to-wallet, never through us. Opens the spotless EasyBit exchange in a new tab.</div>' +
+        '<button class="btn btn-solid" id="bridge-go" style="margin-top:6px;min-width:200px">🧤 Open No Stains Bridge ↗</button>' +
+        '<div class="d" style="font-size:.78rem">Powered by EasyBit · your funds stay in your wallet</div>' +
         '</div>';
+      const go = $('bridge-go');
+      if (go) go.onclick = () => openExt(url);
       if (note) note.textContent = '';
+      _bridgeLoaded = true;
+      return;
     }
+
+    host.innerHTML =
+      '<div class="bridge-empty">' +
+      '<img class="glove" src="/glove.png" alt="">' +
+      '<div class="t">Bridge is warming up</div>' +
+      '<div class="d">Set MINIAPP_BRIDGE_URL to your EasyBit ref or widget URL and it appears right here.</div>' +
+      '</div>';
+    if (note) note.textContent = '';
   }
   global.App = {
     show,
