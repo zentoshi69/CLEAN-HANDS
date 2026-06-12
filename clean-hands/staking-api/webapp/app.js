@@ -130,7 +130,7 @@
     renderWallets();
   }
   function show(v) {
-    ['stake', 'trade', 'boost', 'meme', 'board', 'invite'].forEach((n) => {
+    ['stake', 'trade', 'boost', 'meme', 'board', 'invite', 'folio'].forEach((n) => {
       const el = $('view-' + n);
       if (el) el.hidden = n !== v;
     });
@@ -618,6 +618,9 @@
   // signature, since the server only mints a session after verifying ownership.
   let _switching = false;
   async function onWalletSwitch(newAddr) {
+    // a portfolio link flow connects a SECOND wallet on purpose — that is
+    // not an account switch; don't tear the session down mid-link
+    if (LINKING) return;
     if (!newAddr) {
       // Wallets emit 'disconnect' on every page reload — that is NOT the user
       // logging out. Keep the server session; the wallet re-attaches lazily the
@@ -712,6 +715,14 @@
   }
   async function afterSign(signatureB58, ctx) {
     try {
+      if (ctx && ctx.mode === 'link') {
+        const r = await api('/api/link', authedBody({ wallet: ctx.wallet, signature: signatureB58, nonce: ctx.nonce }));
+        showApp();
+        show('folio');
+        renderFolio(r);
+        toast('🧤 Wallet linked');
+        return;
+      }
       const r = await api('/api/login', {
         wallet: ctx.wallet,
         signature: signatureB58,
@@ -862,6 +873,88 @@
     showConnect();
   }
 
+
+  // ---- portfolio: all linked wallets, one dashboard ---------------------- //
+  let LINKING = false;
+  function renderFolio(r) {
+    const t = r.totals || {};
+    $('f-holdings').textContent = fmt(t.holdings || 0);
+    $('f-usd').textContent = PRICE && PRICE.available ? usd(t.holdings || 0) : '';
+    $('f-bal').textContent = fmt(t.balance || 0);
+    $('f-staked').textContent = fmt(t.staked || 0);
+    $('f-pend').textContent = fmt(t.pending_rewards || 0);
+    const box = $('folio-rows');
+    box.innerHTML = (r.wallets || [])
+      .map(
+        (w) => `<div class="card" style="display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap">
+        <div style="min-width:0">
+          <div style="font-weight:700;color:var(--ink-deep,#0F3E73)">${esc(w.wallet.slice(0, 4) + '…' + w.wallet.slice(-4))}
+            ${w.anchor ? '<span class="lbl"> · anchor</span>' : ''}${w.me ? '<span class="lbl"> · this session</span>' : ''}</div>
+          <div class="lbl">bal ${fmt(w.balance)} · staked ${fmt(w.staked)} · pending ${fmt(w.pending_rewards)} · ${w.apr_pct}% APR</div>
+        </div>
+        ${w.anchor ? '' : `<button class="btn btn-ghost" data-unlink="${esc(w.wallet)}" style="padding:8px 12px">Unlink</button>`}
+      </div>`,
+      )
+      .join('');
+    box.querySelectorAll('[data-unlink]').forEach((b) => {
+      b.onclick = () => unlinkWallet(b.dataset.unlink);
+    });
+  }
+  async function loadFolio() {
+    try {
+      renderFolio(await api('/api/portfolio', authedBody()));
+    } catch (e) {
+      toast('Portfolio: ' + (e.message || e));
+    }
+  }
+  function portfolio() {
+    hideWalletMenu();
+    show('folio');
+    loadFolio();
+  }
+  async function _finishLink(pk, sign) {
+    if (PROFILE && pk === PROFILE.wallet) throw new Error('that is already your signed-in wallet');
+    const { nonce, message } = await getNonce(pk);
+    const sig = await sign(message);
+    const r = await api('/api/link', authedBody({ wallet: pk, signature: sig, nonce: nonce }));
+    renderFolio(r);
+    toast('🧤 Wallet linked');
+  }
+  async function linkWallet(id) {
+    if (LINKING) return;
+    LINKING = true;
+    try {
+      toast('Approve in the wallet you want to add…');
+      const pk = await CleanWallet.connectInjected(id);
+      await _finishLink(pk, (m) => CleanWallet.signInjected(m));
+    } catch (e) {
+      toast('Link failed: ' + (e.message || e));
+    } finally {
+      LINKING = false;
+    }
+  }
+  async function linkWalletWC() {
+    if (LINKING) return;
+    if (!CONFIG.wcProjectId) return toast('WalletConnect is not configured');
+    LINKING = true;
+    try {
+      const pk = await CleanWallet.wcConnect(CONFIG.wcProjectId);
+      await _finishLink(pk, (m) => CleanWallet.wcSign(m));
+    } catch (e) {
+      toast('Link failed: ' + (e.message || e));
+    } finally {
+      LINKING = false;
+    }
+  }
+  async function unlinkWallet(w) {
+    try {
+      renderFolio(await api('/api/unlink', authedBody({ wallet: w })));
+      toast('Unlinked ' + w.slice(0, 4) + '…');
+    } catch (e) {
+      toast('Unlink failed: ' + (e.message || e));
+    }
+  }
+
   global.App = {
     show,
     stake,
@@ -873,6 +966,9 @@
     copyCA,
     logout,
     walletMenu,
+    portfolio,
+    linkWallet,
+    linkWalletWC,
     copyAddr,
     changeWallet,
     refresh,

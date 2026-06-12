@@ -126,6 +126,9 @@ CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(status);
 CREATE TABLE IF NOT EXISTS notifs (
     wallet TEXT NOT NULL, kind TEXT NOT NULL, last_ts BIGINT NOT NULL,
     PRIMARY KEY (wallet, kind));
+CREATE TABLE IF NOT EXISTS wallet_links (
+    wallet TEXT PRIMARY KEY, owner TEXT NOT NULL, ts BIGINT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_links_owner ON wallet_links(owner);
 """
 
 
@@ -193,6 +196,15 @@ def init_db():
                 last_ts INTEGER NOT NULL,
                 PRIMARY KEY (wallet, kind)
             );
+            -- Multi-wallet portfolio: a wallet may be LINKED under one owner
+            -- (the cluster's anchor). Ownership of BOTH sides is proven by
+            -- wallet signature before a row lands here (see /api/link).
+            CREATE TABLE IF NOT EXISTS wallet_links (
+                wallet TEXT PRIMARY KEY,        -- linked wallet: one cluster max
+                owner  TEXT NOT NULL,           -- the anchor wallet
+                ts     INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_links_owner ON wallet_links(owner);
             """
         )
         conn.commit()
@@ -393,3 +405,51 @@ def mark_claim_paid(conn, claim_id: int, tx_sig: str) -> int:
     )
     conn.commit()
     return cur.rowcount
+
+
+# ---- multi-wallet portfolio links ----------------------------------------- #
+def link_owner(conn, wallet: str) -> str:
+    """The cluster anchor for any wallet (itself when unlinked)."""
+    row = conn.execute("SELECT owner FROM wallet_links WHERE wallet=?", (wallet,)).fetchone()
+    return row["owner"] if row else wallet
+
+
+def cluster_wallets(conn, wallet: str) -> list[str]:
+    """Anchor first, then linked wallets in link order."""
+    o = link_owner(conn, wallet)
+    rows = conn.execute("SELECT wallet FROM wallet_links WHERE owner=? ORDER BY ts, wallet", (o,)).fetchall()
+    return [o] + [r["wallet"] for r in rows]
+
+
+def link_wallet(conn, sess_wallet: str, new_wallet: str, limit: int = 10) -> str | None:
+    """Attach new_wallet to sess_wallet's cluster. Returns an error string for
+    the user, or None on success. Caller has already verified ownership of BOTH
+    wallets (session for sess_wallet, fresh signature for new_wallet)."""
+    o = link_owner(conn, sess_wallet)
+    if new_wallet in cluster_wallets(conn, o):
+        return "that wallet is already in your portfolio"
+    if conn.execute("SELECT 1 FROM wallet_links WHERE wallet=?", (new_wallet,)).fetchone():
+        return "that wallet is already linked to another portfolio"
+    if conn.execute("SELECT 1 FROM wallet_links WHERE owner=?", (new_wallet,)).fetchone():
+        return "that wallet anchors its own portfolio — unlink its wallets there first"
+    if len(cluster_wallets(conn, o)) >= limit:
+        return f"portfolio limit reached ({limit} wallets)"
+    conn.execute(
+        "INSERT INTO wallet_links (wallet, owner, ts) VALUES (?,?,?)",
+        (new_wallet, o, int(time.time())),
+    )
+    conn.commit()
+    return None
+
+
+def unlink_wallet(conn, sess_wallet: str, wallet: str) -> str | None:
+    """Detach `wallet` from the caller's cluster. Any cluster member's session
+    may unlink; the anchor itself cannot be unlinked (it IS the cluster)."""
+    o = link_owner(conn, sess_wallet)
+    if wallet == o:
+        return "the anchor wallet can't be unlinked"
+    cur = conn.execute("DELETE FROM wallet_links WHERE wallet=? AND owner=?", (wallet, o))
+    conn.commit()
+    if cur.rowcount != 1:
+        return "that wallet is not in your portfolio"
+    return None

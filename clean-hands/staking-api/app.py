@@ -618,6 +618,102 @@ def api_referrals(body: Tok):
 
 
 # --------------------------------------------------------------------------- #
+#  PORTFOLIO — link several wallets under one dashboard. Ownership of EVERY    #
+#  linked wallet is proven the same way as login: a fresh ed25519 signature    #
+#  over a single-use server nonce. No signature, no link — you can't claim a   #
+#  whale wallet you don't control.                                             #
+# --------------------------------------------------------------------------- #
+PORTFOLIO_LIMIT = int(os.environ.get("STAKE_PORTFOLIO_LIMIT", "10"))
+
+
+class LinkBody(BaseModel):
+    token: str
+    wallet: str
+    signature: str
+    nonce: str
+
+
+class UnlinkBody(BaseModel):
+    token: str
+    wallet: str
+
+
+async def _portfolio(conn, sess_wallet: str) -> dict:
+    """Live snapshot of every wallet in the caller's cluster + aggregates.
+    Balances go through the same cached on-chain refresh as /api/profile."""
+    anchor = db.link_owner(conn, sess_wallet)
+    wallets, totals = [], {"balance": 0.0, "staked": 0.0, "pending_rewards": 0.0, "total_burned": 0.0}
+    for w in db.cluster_wallets(conn, sess_wallet):
+        row = db.get_staker(conn, w)
+        if not row:
+            continue
+        await _refresh_balance(conn, row)
+        _accrue(conn, w)
+        row = db.get_staker(conn, w)
+        eff_base, _secs, _refs, apr = _apr_for(conn, w, row)
+        item = {
+            "wallet": w,
+            "anchor": w == anchor,
+            "me": w == sess_wallet,
+            "balance": db.to_ui(row["cached_balance"]),
+            "staked": db.to_ui(row["recorded_staked"]),
+            "staked_effective": db.to_ui(eff_base),
+            "pending_rewards": db.to_ui(row["accrued"]),
+            "total_burned": db.to_ui(row["total_burned"]),
+            "apr_pct": round(apr.effective_apr * 100, 2),
+        }
+        for k in totals:
+            totals[k] += item[k]
+        wallets.append(item)
+    totals = {k: round(v, 6) for k, v in totals.items()}
+    totals["holdings"] = round(totals["balance"] + totals["pending_rewards"], 6)
+    return {"wallets": wallets, "totals": totals, "count": len(wallets), "limit": PORTFOLIO_LIMIT}
+
+
+@app.post("/api/portfolio")
+async def api_portfolio(body: Tok):
+    sess_wallet = _require(body.token)["w"]
+    with db.db() as conn:
+        if not db.get_staker(conn, sess_wallet):
+            raise HTTPException(404, "unknown wallet")
+        return await _portfolio(conn, sess_wallet)
+
+
+@app.post("/api/link")
+async def api_link(body: LinkBody, request: Request):
+    sess_wallet = _require(body.token)["w"]
+    ratelimit.hit(request, "write", extra_key=sess_wallet)
+    w = body.wallet.strip()
+    if not auth.is_valid_wallet(w):
+        raise HTTPException(400, "invalid Solana wallet address")
+    if not auth.consume_nonce(w, body.nonce):
+        raise HTTPException(401, "bad or expired nonce — request a new one")
+    if not auth.verify_wallet_signature(w, auth.login_message(w, body.nonce), body.signature):
+        raise HTTPException(401, "bad wallet signature")
+    with db.db() as conn:
+        if not db.get_staker(conn, sess_wallet):
+            raise HTTPException(404, "unknown wallet")
+        db.upsert_staker(conn, w)
+        err = db.link_wallet(conn, sess_wallet, w, PORTFOLIO_LIMIT)
+        if err:
+            raise HTTPException(409, err)
+        db.record(conn, sess_wallet, "link", 0, detail=w)
+        return await _portfolio(conn, sess_wallet)
+
+
+@app.post("/api/unlink")
+async def api_unlink(body: UnlinkBody, request: Request):
+    sess_wallet = _require(body.token)["w"]
+    ratelimit.hit(request, "write", extra_key=sess_wallet)
+    with db.db() as conn:
+        err = db.unlink_wallet(conn, sess_wallet, body.wallet.strip())
+        if err:
+            raise HTTPException(400, err)
+        db.record(conn, sess_wallet, "unlink", 0, detail=body.wallet.strip())
+        return await _portfolio(conn, sess_wallet)
+
+
+# --------------------------------------------------------------------------- #
 #  ADMIN — manual payout workflow (treasury/cron). Gate with STAKE_ADMIN_TOKEN. #
 # --------------------------------------------------------------------------- #
 ADMIN_TOKEN = os.environ.get("STAKE_ADMIN_TOKEN", "")
