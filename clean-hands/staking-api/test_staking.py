@@ -738,6 +738,36 @@ def test_sliding_sessions_and_headers():
     print("sliding sessions + security headers \u2713")
 
 
+def test_csp_permits_the_webapps_inline_handlers():
+    """Regression for the 2026-06-12 dead-buttons incident: index.html wires its
+    buttons with inline onclick="App.*" attributes, and attribute handlers are
+    governed by CSP script-src. If anyone re-tightens script-src (drops
+    'unsafe-inline') while ANY inline handler still exists in the served HTML,
+    every button in the Mini App silently dies. This test fails loudly instead.
+    The day index.html is fully converted to addEventListener wiring, flip the
+    assertion: inline == 0 should then REQUIRE 'unsafe-inline' to be gone."""
+    import os as _os
+    import re as _re
+    import app
+    from fastapi.testclient import TestClient
+
+    c = TestClient(app.app)
+    html = open(_os.path.join(_os.path.dirname(_os.path.abspath(app.__file__)), "webapp", "index.html")).read()
+    inline = len(_re.findall(r'on(?:click|change|input|submit|keyup|keydown)\s*=\s*"', html))
+    csp = c.get("/").headers["Content-Security-Policy"]
+    script_src = _re.search(r"script-src ([^;]*)", csp).group(1)
+    if inline:
+        assert "'unsafe-inline'" in script_src, (
+            f"index.html has {inline} inline event handlers but script-src lacks "
+            "'unsafe-inline' \u2014 every Mini App button would be dead in production"
+        )
+    else:
+        assert "'unsafe-inline'" not in script_src, (
+            "no inline handlers remain \u2014 tighten the CSP back (drop 'unsafe-inline')"
+        )
+    print(f"CSP vs inline handlers ({inline}) \u2713")
+
+
 if __name__ == "__main__":
     test_economics()
     test_auth_signature()
@@ -745,6 +775,7 @@ if __name__ == "__main__":
     test_api_flow()
     test_partial_stake()
     test_sliding_sessions_and_headers()
+    test_csp_permits_the_webapps_inline_handlers()
     test_tg_collision()
     test_integer_migration()
     test_pg_translation()

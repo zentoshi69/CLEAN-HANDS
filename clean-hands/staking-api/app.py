@@ -75,14 +75,19 @@ app = FastAPI(title="CLEAN soft-staking API", **_docs)
 # --------------------------------------------------------------------------- #
 #  SECURITY HEADERS                                                            #
 # --------------------------------------------------------------------------- #
-# CSP: no inline scripts anywhere in the webapp, so script-src is a strict
-# allowlist (self + Telegram SDK + the pinned wallet/swap CDNs). connect-src
-# stays https:/wss: because the swap RPC is operator-configurable and the
-# WalletConnect relay is wss. frame-ancestors lets Telegram Web embed the app.
+# CSP: the webapp has no inline <script> BLOCKS, but index.html wires its
+# buttons through inline onclick="App.*" ATTRIBUTES (27 of them) — and
+# attribute handlers are governed by script-src too, so 'unsafe-inline' is
+# REQUIRED here until those are converted to addEventListener wiring.
+# (Shipping without it turned the CSP on and silently killed every button
+# in the Mini App — the 2026-06-12 incident.) We deliberately use
+# 'unsafe-inline' in script-src rather than script-src-attr because older
+# iOS webviews ignore script-src-attr and fall back to script-src.
+# script-src still pins remote code to self + the wallet/swap CDNs.
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self' https://telegram.org https://unpkg.com https://esm.sh "
-    "https://esm.run https://cdn.jsdelivr.net https://plugin.jup.ag; "
+    "script-src 'self' 'unsafe-inline' https://telegram.org https://unpkg.com "
+    "https://esm.sh https://esm.run https://cdn.jsdelivr.net https://plugin.jup.ag; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src https://fonts.gstatic.com; "
     "img-src 'self' data: https:; "
