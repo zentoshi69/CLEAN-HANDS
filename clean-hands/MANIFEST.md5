@@ -4,7 +4,7 @@ dc2e6a8865de39bb46423c71b64123d9  ./README-SYNC.md
 ecdb820ba950fff2bdf365792535e5f0  ./deploy/install-everything.sh
 c3c67685ec0641ac4c41a64a839c8265  ./deploy/nginx-root.conf
 3de9b72caa664877e11dffa285c4e4ae  ./deploy/redeploy.sh
-acc2b8f4692d68de26993f0406d4cbd1  ./deploy/site-index.html
+26333892a90bdb42bd35471568647bc2  ./deploy/site-index.html
 c91119703b21cf03e12ff48be36e0db7  ./staking-api/app.py
 429fd5aaff3c7b5226ca6c1b77295f47  ./staking-api/auth.py
 69b79be2ca6faabb3713b85fda5e8212  ./staking-api/test_staking.py
@@ -13,3 +13,10 @@ abec3cc253495caa3e86976b4d15d50b  ./staking-api/webapp/app.js
 3a45ebe00a3e1f39a840380817fb7c46  ./staking-api/webapp/wallet.js
 7d78de057f29b088510b5b8cb830d6db  ./staking-api/webapp/whitepaper.js
 75d3ef5c2dbdb9044a2e870f3aac2572  ./staking-api/webapp/whitepaper.html
+0eb5d9f98e8cd3a6feb84a244406e0f2  ./deploy/shop/gloves-box.jpg
+2144c6c0f42e25a19d7c20195140c32c  ./deploy/shop/gloves-sachets.jpg
+89744e8dcf7155cc1c305ee9b62776ef  ./deploy/shop/hoodie-wash-flat.jpg
+718a19abd44471848c354c57fd1630da  ./deploy/shop/hoodie-wash-pack.jpg
+ab89845ff1b4c6688ae88d770e47ebd4  ./deploy/shop/tee-money-flat.jpg
+8c1aeffbc8ca1b44f7c4b4e9053ccbe8  ./deploy/shop/tee-money-pack.jpg
+55f2b89bcd6d38df107f02f69e9487df  ./deploy/shop/trunks-money-flat.jpg
