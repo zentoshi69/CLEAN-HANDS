@@ -623,7 +623,7 @@ def api_referrals(body: Tok):
 #  over a single-use server nonce. No signature, no link — you can't claim a   #
 #  whale wallet you don't control.                                             #
 # --------------------------------------------------------------------------- #
-PORTFOLIO_LIMIT = int(os.environ.get("STAKE_PORTFOLIO_LIMIT", "10"))
+PORTFOLIO_LIMIT = int(os.environ.get("STAKE_PORTFOLIO_LIMIT", "20"))
 
 
 class LinkBody(BaseModel):

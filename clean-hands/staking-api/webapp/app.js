@@ -884,18 +884,26 @@
     $('f-staked').textContent = fmt(t.staked || 0);
     $('f-pend').textContent = fmt(t.pending_rewards || 0);
     const box = $('folio-rows');
-    box.innerHTML = (r.wallets || [])
-      .map(
-        (w) => `<div class="card" style="display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap">
-        <div style="min-width:0">
-          <div style="font-weight:700;color:var(--ink-deep,#0F3E73)">${esc(w.wallet.slice(0, 4) + '…' + w.wallet.slice(-4))}
-            ${w.anchor ? '<span class="lbl"> · anchor</span>' : ''}${w.me ? '<span class="lbl"> · this session</span>' : ''}</div>
-          <div class="lbl">bal ${fmt(w.balance)} · staked ${fmt(w.staked)} · pending ${fmt(w.pending_rewards)} · ${w.apr_pct}% APR</div>
+    box.innerHTML =
+      `<div class="lbl folio-count">${r.count || 0} of ${r.limit || 20} wallets — linked forever until you remove them</div>` +
+      (r.wallets || [])
+        .map(
+          (w) => `<div class="card fwal">
+        <div class="fwal-top">
+          <code class="fwal-addr">${esc(w.wallet.slice(0, 4) + '…' + w.wallet.slice(-4))}</code>
+          ${w.anchor ? '<span class="fpill">⚓ anchor</span>' : ''}
+          ${w.me ? '<span class="fpill on">this session</span>' : ''}
+          ${w.anchor ? '' : `<button class="funlink" data-unlink="${esc(w.wallet)}">✕ Remove</button>`}
         </div>
-        ${w.anchor ? '' : `<button class="btn btn-ghost" data-unlink="${esc(w.wallet)}" style="padding:8px 12px">Unlink</button>`}
+        <div class="fwal-stats">
+          <div><span class="fv">${fmt(w.balance)}</span><span class="fk">Balance</span></div>
+          <div><span class="fv">${fmt(w.staked)}</span><span class="fk">Staked</span></div>
+          <div><span class="fv">${fmt(w.pending_rewards)}</span><span class="fk">Pending</span></div>
+          <div><span class="fv">${w.apr_pct}%</span><span class="fk">APR</span></div>
+        </div>
       </div>`,
-      )
-      .join('');
+        )
+        .join('');
     box.querySelectorAll('[data-unlink]').forEach((b) => {
       b.onclick = () => unlinkWallet(b.dataset.unlink);
     });
