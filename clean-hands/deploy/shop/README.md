@@ -18,6 +18,8 @@ falls back to the drawn SVG mockup for that product — the page never breaks.
 | `hoodie-wash-flat.jpg` | Heavy Wash Hoodie | front/back flat lay (crest + sparkle back) |
 | `hoodie-wash-pack.jpg` | Heavy Wash Hoodie | folded in poly bag with hang tag |
 | `trunks-money-flat.jpg` | Money Laundering Trunks | front/back flat lay |
+| `gloves-box.jpg` | CLEAN Nitrile Gloves | 100ct retail box |
+| `gloves-sachets.jpg` | CLEAN Nitrile Gloves | single-use sachets |
 
-Save the photos under exactly these names (JPEG; ~1200px on the long edge and
-≤300KB each is plenty — the grid renders them at ~400px).
+All photos are committed here (JPEG, ≤1200px long edge, quality 82 — ~60-120KB
+each). To swap one, overwrite the file, keep the name, redeploy.
