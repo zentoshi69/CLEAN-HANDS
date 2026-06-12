@@ -479,6 +479,12 @@
     });
     return out;
   }
+  // Hook account-change events on every provider detected so far — restored
+  // sessions never call connect/_activate, which used to leave switches
+  // inside the extension invisible to the app. WeakSet dedupes re-hooks.
+  function watchAccounts() {
+    detected().forEach(_hookAccountChange);
+  }
   function hasInjected() {
     return detected().length > 0;
   }
@@ -732,6 +738,7 @@
     detected,
     onDetect,
     onAccountChange,
+    watchAccounts,
     connectInjected,
     signInjected,
     wcConnect,

@@ -633,12 +633,12 @@
     if (newAddr === (PROFILE && PROFILE.wallet)) return; // same account, no-op
     if (_switching) return;
     _switching = true;
-    // tear down the previous session right away
-    TOKEN = '';
-    SS.removeItem('clw_token');
-    PROFILE = null;
+    // keep the CURRENT session alive until the new wallet actually signs in —
+    // declining the signature must not log the user out of wallet A
+    const oldTok = TOKEN;
+    const oldProf = PROFILE;
     try {
-      toast('Wallet switched — signing you in…');
+      toast('Wallet switched — sign to continue as ' + newAddr.slice(0, 4) + '…');
       const { nonce, message } = await getNonce(newAddr);
       const sig = await CleanWallet.signInjected(message); // signs with the NEW account
       const r = await api('/api/login', {
@@ -655,8 +655,14 @@
       show('stake');
       toast('Switched to ' + newAddr.slice(0, 4) + '…' + newAddr.slice(-4));
     } catch (e) {
-      // signature declined / failed — fall back to the connect screen for the new wallet
-      showConnect('Wallet changed — reconnect to continue.');
+      TOKEN = oldTok;
+      PROFILE = oldProf;
+      if (TOKEN) {
+        SS.setItem('clw_token', TOKEN);
+        toast('Switch cancelled — still signed in as ' + (oldProf && oldProf.wallet ? oldProf.wallet.slice(0, 4) + '…' : 'before'));
+      } else {
+        showConnect('Wallet changed — reconnect to continue.');
+      }
     } finally {
       _switching = false;
     }
@@ -836,6 +842,10 @@
 
     // Re-auth automatically when the user switches accounts inside their wallet.
     CleanWallet.onAccountChange && CleanWallet.onAccountChange(onWalletSwitch);
+    if (CleanWallet.watchAccounts) {
+      CleanWallet.watchAccounts();
+      CleanWallet.onDetect && CleanWallet.onDetect(() => CleanWallet.watchAccounts());
+    }
 
     // Resolve any wallet callback first (we just came back from a wallet app).
     const step = CleanWallet.init({
@@ -928,6 +938,30 @@
     renderFolio(r);
     toast('🧤 Wallet linked');
   }
+  function linkPicker() {
+    const box = $('f-picker');
+    if (!box) return;
+    if (!box.classList.contains('hide')) {
+      box.classList.add('hide');
+      return;
+    }
+    const list = CleanWallet.detected();
+    box.innerHTML = list.length
+      ? '<div class="lbl" style="width:100%">Pick the wallet to add — approve in THAT extension:</div>' +
+        list
+          .map(
+            (w) => `<button class="btn btn-ghost" data-linkid="${esc(w.id)}" style="padding:9px 14px">${esc(w.name)}</button>`,
+          )
+          .join('')
+      : '<p class="lbl">No wallet extension detected here — use WalletConnect, or open the app inside the wallet\'s own browser.</p>';
+    box.querySelectorAll('[data-linkid]').forEach((b) => {
+      b.onclick = () => {
+        box.classList.add('hide');
+        linkWallet(b.dataset.linkid);
+      };
+    });
+    box.classList.remove('hide');
+  }
   async function linkWallet(id) {
     if (LINKING) return;
     LINKING = true;
@@ -975,6 +1009,7 @@
     logout,
     walletMenu,
     portfolio,
+    linkPicker,
     linkWallet,
     linkWalletWC,
     copyAddr,
