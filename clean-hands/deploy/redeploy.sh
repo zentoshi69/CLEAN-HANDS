@@ -12,6 +12,12 @@ echo "== website (cleanhands.fun landing) =="
 mkdir -p /var/www/clean-site
 cp "$APP/deploy/site-index.html" /var/www/clean-site/index.html
 
+echo "== shop product photos =="
+mkdir -p /var/www/clean-site/shop
+# photos are optional — products without one fall back to the SVG mockup
+find "$APP/deploy/shop" -maxdepth 1 \( -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.webp' \) \
+  -exec cp {} /var/www/clean-site/shop/ \; 2>/dev/null || true
+
 echo "== root-domain nginx vhost (static site + same-origin API proxy) =="
 CERT=$(ls -d /etc/letsencrypt/live/cleanhands.fun* 2>/dev/null | head -1)
 if [ -n "$CERT" ]; then

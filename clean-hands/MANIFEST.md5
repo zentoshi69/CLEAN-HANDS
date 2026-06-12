@@ -3,8 +3,8 @@ dc2e6a8865de39bb46423c71b64123d9  ./README-SYNC.md
 319506c0f6c4b845f94d345e0ab91a1c  ./assets/glove.png
 ecdb820ba950fff2bdf365792535e5f0  ./deploy/install-everything.sh
 c3c67685ec0641ac4c41a64a839c8265  ./deploy/nginx-root.conf
-3fd8b0f02f16dd562ac44b0d0a26ff66  ./deploy/redeploy.sh
-c3581310de2f3af05cca12f77253cd42  ./deploy/site-index.html
+3de9b72caa664877e11dffa285c4e4ae  ./deploy/redeploy.sh
+acc2b8f4692d68de26993f0406d4cbd1  ./deploy/site-index.html
 c91119703b21cf03e12ff48be36e0db7  ./staking-api/app.py
 429fd5aaff3c7b5226ca6c1b77295f47  ./staking-api/auth.py
 69b79be2ca6faabb3713b85fda5e8212  ./staking-api/test_staking.py

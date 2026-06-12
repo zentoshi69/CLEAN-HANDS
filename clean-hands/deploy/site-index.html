@@ -221,6 +221,16 @@ footer{padding:60px 0 40px;border-top:1.5px solid var(--line);margin-top:60px}
 .qv-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}
 .qv-ph{aspect-ratio:1;background:linear-gradient(160deg,var(--glove),#fff);border-radius:18px;display:grid;place-items:center;border:1.5px solid var(--line)}
 .qv-ph svg{width:82%;height:82%;filter:drop-shadow(0 22px 30px rgba(27,93,166,.18))}
+/* real product photos (shop/*.jpg) — SVG mockups stay as the fallback */
+.product .ph img.pimg{width:100%;height:100%;object-fit:cover;transition:.4s cubic-bezier(.2,.8,.2,1)}
+.product:hover .ph img.pimg{transform:scale(1.05)}
+.qv-ph{overflow:hidden}
+.qv-ph img.pimg{width:100%;height:100%;object-fit:cover}
+.qv-thumbs{display:none;gap:8px;margin-top:10px}
+.qv-thumbs .qvt{width:64px;height:64px;border-radius:12px;border:1.5px solid var(--line);background:linear-gradient(160deg,var(--glove),#fff);overflow:hidden;cursor:pointer;padding:0}
+.qv-thumbs .qvt img{width:100%;height:100%;object-fit:cover;display:block}
+.qv-thumbs .qvt.on{border-color:var(--ink-2)}
+.cart-line .thumb img.pimg{width:100%;height:100%;object-fit:cover;border-radius:10px}
 @media(max-width:680px){.qv-grid{grid-template-columns:1fr}}
 .sizes{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
 .size{min-width:48px;text-align:center;padding:11px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;font-weight:700;color:var(--ink-deep);transition:.2s}
@@ -497,7 +507,7 @@ footer{padding:60px 0 40px;border-top:1.5px solid var(--line);margin-top:60px}
 <div class="modal" id="shopModal"><div class="box wide">
   <button class="x" id="closeShop">✕</button>
   <div class="qv-grid">
-    <div class="qv-ph" id="qvPh"></div>
+    <div><div class="qv-ph" id="qvPh"></div><div class="qv-thumbs" id="qvThumbs"></div></div>
     <div>
       <div class="kicker" id="qvCat">Tee</div>
       <h3 id="qvName" style="font-family:'Fraunces',serif;font-size:1.9rem;color:var(--ink-deep);margin:4px 0 6px;font-weight:600"></h3>
@@ -801,16 +811,41 @@ function wipesSVG(p){const b=p.body,id=p.id+(p._k||'');
   <rect x="104" y="122" width="92" height="78" rx="8" fill="#fff" opacity=".72"/>
   <text x="150" y="160" text-anchor="middle" font-family="Fraunces,serif" font-weight="700" font-size="16" fill="#1B5DA6">DIRTY</text>
   <text x="150" y="184" text-anchor="middle" font-family="Caveat,cursive" font-weight="700" font-size="22" fill="#2E74C0">money wipes</text></svg>`;}
-function svgFor(p){return p.type==='tee'?teeSVG(p):p.type==='hoodie'?hoodieSVG(p):p.type==='gloves'?glovesSVG(p):wipesSVG(p);}
+function shortsSVG(p){const b=p.body,ink=p.ink||contrastInk(b),id=p.id+(p._k||'');
+  return `<svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="s${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${shade(b,1.05)}"/><stop offset="1" stop-color="${shade(b,.88)}"/></linearGradient></defs>
+  <path d="M72,92 L228,92 L256,236 L168,246 L150,162 L132,246 L44,236 Z" fill="url(#s${id})" stroke="${shade(b,.76)}" stroke-width="2"/>
+  <rect x="72" y="72" width="156" height="28" rx="11" fill="${shade(b,.95)}" stroke="${shade(b,.76)}" stroke-width="2"/>
+  <path d="M140,100 C144,116 148,116 150,104 M160,100 C156,116 152,116 150,104" fill="none" stroke="${shade(b,.62)}" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="204" cy="198" r="23" fill="none" stroke="${ink}" stroke-width="2.5"/>
+  <text x="204" y="195" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="0.5" fill="${ink}">CLEAN</text>
+  <text x="204" y="207" text-anchor="middle" font-size="9.5" font-weight="700" letter-spacing="0.5" fill="${ink}">HANDS</text></svg>`;}
+function svgFor(p){return p.type==='tee'?teeSVG(p):p.type==='hoodie'?hoodieSVG(p):p.type==='shorts'?shortsSVG(p):p.type==='gloves'?glovesSVG(p):wipesSVG(p);}
+
+/* Real product photography. Add `imgs:['shop/<file>.jpg', …]` to any product:
+   the grid shows the first shot, quick view gets a thumbnail gallery, and the
+   cart uses it too. Files live in deploy/shop/ in the repo (redeploy.sh copies
+   them to /var/www/clean-site/shop/). If a photo is missing or 404s, the drawn
+   SVG mockup above takes over automatically — the shop never breaks. */
+function mediaInto(el,p,i){
+  if(p.imgs&&p.imgs.length){
+    el.innerHTML='';
+    const img=document.createElement('img');
+    img.className='pimg';img.alt=p.name;img.loading='lazy';
+    img.onerror=()=>{el.innerHTML=svgFor(p);};
+    img.src=p.imgs[i||0];
+    el.appendChild(img);
+  } else el.innerHTML=svgFor(p);
+}
 
 const PRODUCTS=[
  {id:'teeclean',type:'tee',cat:'T-Shirt',name:'Clean Hands Tee',print:'CLEAN HANDS',price:38,body:'#FFFFFF',ink:'#1B5DA6',colors:['#FFFFFF','#86BFF8','#0F3E73'],sizes:['S','M','L','XL'],desc:'Heavyweight combed-cotton tee with the serif lockup across the chest. Gloves sold separately.',tag:'New'},
- {id:'teedirty',type:'tee',cat:'T-Shirt',name:'Dirty Money Tee',print:'DIRTY MONEY',price:38,body:'#86BFF8',ink:'#0F3E73',colors:['#86BFF8','#FFFFFF'],sizes:['S','M','L','XL'],desc:'Sky-blue tee with the brush-script hit. Soft enough to launder daily.'},
+ {id:'teedirty',type:'tee',cat:'T-Shirt',name:'Dirty Money Tee',print:'DIRTY MONEY',price:38,body:'#86BFF8',ink:'#0F3E73',colors:['#86BFF8'],sizes:['S','M','L','XL'],desc:'Sky-blue heavyweight tee — embroidered CLEAN HANDS crest with the falling-hundreds print front and back. Ships bagged with the hang tag.',imgs:['shop/tee-money-flat.jpg','shop/tee-money-pack.jpg']},
  {id:'teeok',type:'tee',cat:'T-Shirt',name:'OK. Tee',print:'OK.',price:36,body:'#0F3E73',ink:'#A9D3FB',colors:['#0F3E73','#1B5DA6'],sizes:['S','M','L','XL'],desc:'Deep-navy tee with the OK-glove crest. Understated flex.'},
  {id:'teespin',type:'tee',cat:'T-Shirt',name:'Spin Cycle Tee',print:'SPIN CYCLE',price:40,body:'#D6EAFD',ink:'#1B5DA6',colors:['#D6EAFD','#FFFFFF'],sizes:['S','M','L','XL'],desc:'Washed-blue tee that gets softer every cycle.'},
- {id:'hoodfund',type:'hoodie',cat:'Hoodie',name:'Heavy Wash Hoodie',print:'HEAVY WASH',price:74,body:'#86BFF8',ink:'#0F3E73',colors:['#86BFF8','#FFFFFF','#0F3E73'],sizes:['S','M','L','XL'],desc:'400gsm fleece, kangaroo pocket, ribbed cuffs — the everyday flagship.',tag:'Best seller'},
+ {id:'hoodfund',type:'hoodie',cat:'Hoodie',name:'Heavy Wash Hoodie',print:'HEAVY WASH',price:74,body:'#86BFF8',ink:'#0F3E73',colors:['#86BFF8'],sizes:['S','M','L','XL'],desc:'Sky-blue 400gsm fleece — tonal crest and falling bills up front, sparkle constellation across the back. Kangaroo pocket, ribbed cuffs.',tag:'Best seller',imgs:['shop/hoodie-wash-flat.jpg','shop/hoodie-wash-pack.jpg']},
  {id:'hoodgloves',type:'hoodie',cat:'Hoodie',name:'Gloves On Hoodie',print:'GLOVES ON',price:72,body:'#FFFFFF',ink:'#1B5DA6',colors:['#FFFFFF','#86BFF8'],sizes:['S','M','L','XL'],desc:'Off-white heavyweight hoodie with tonal sparkle embroidery.'},
  {id:'hoodlaundry',type:'hoodie',cat:'Hoodie',name:'Money Laundry Hoodie',print:'MONEY LAUNDRY',price:78,body:'#0F3E73',ink:'#A9D3FB',colors:['#0F3E73'],sizes:['S','M','L','XL'],desc:'The flagship. Premium navy fleece, tonal front print, gloved-hand back graphic.',tag:'Flagship'},
+ {id:'trunks',type:'shorts',cat:'Swimwear',name:'Money Laundering Trunks',print:'',price:46,body:'#A9D3FB',ink:'#1B5DA6',colors:['#A9D3FB'],sizes:['S','M','L','XL'],desc:'Quick-dry swim trunks in the all-over falling-hundreds print — the only legal way to launder money. Mesh lined, zip back pocket.',tag:'New',imgs:['shop/trunks-money-flat.jpg']},
  {id:'gloves',type:'gloves',cat:'The Real Thing',name:'CLEAN Nitrile Gloves · 100ct',print:'',price:24,body:'#86BFF8',colors:['#86BFF8'],sizes:['S','M','L'],desc:'Powder-free nitrile exam gloves, box of 100. The actual product the whole joke is about.'},
  {id:'wipes',type:'wipes',cat:'The Real Thing',name:'Dirty Money Wipes',print:'',price:12,body:'#D6EAFD',colors:['#D6EAFD'],sizes:null,desc:'80-count antibacterial wipes — for when your money is, you know, a little dirty.'},
 ];
@@ -819,9 +854,12 @@ function renderShop(){
   const g=$('shopGrid'); if(!g)return; g.innerHTML='';
   PRODUCTS.forEach(p=>{
     const c=document.createElement('div'); c.className='product rv';
-    c.innerHTML=`<div class="ph">${p.tag?`<span class="badge2">${p.tag}</span>`:''}${svgFor(p)}</div>
+    c.innerHTML=`<div class="ph"></div>
       <div class="info"><span class="cat">${p.cat}</span><h3>${p.name}</h3>
       <div class="row"><span class="price">$${p.price}</span><button class="add-mini" type="button">Add +</button></div></div>`;
+    const ph=c.querySelector('.ph');
+    mediaInto(ph,p);
+    if(p.tag){const bd=document.createElement('span');bd.className='badge2';bd.textContent=p.tag;ph.appendChild(bd);}
     const open=()=>openQV(p.id);
     c.querySelector('.ph').onclick=open; c.querySelector('h3').onclick=open;
     c.querySelector('.add-mini').onclick=e=>{e.stopPropagation(); p.sizes?openQV(p.id):addToCart(p.id,null,1,p.colors[0]);};
@@ -832,13 +870,14 @@ function renderShop(){
 /* quick view */
 let QV=null;
 function openQV(id){const p=PRODUCTS.find(x=>x.id===id);
-  QV={p,color:p.colors[0],size:p.sizes?(p.sizes[1]||p.sizes[0]):null,qty:1};
+  QV={p,color:p.colors[0],size:p.sizes?(p.sizes[1]||p.sizes[0]):null,qty:1,img:0};
   paintQV();
   $('qvCat').textContent=p.cat;$('qvName').textContent=p.name;$('qvPrice').textContent='$'+p.price;$('qvDesc').textContent=p.desc;
   const sw=$('qvSwatches');sw.innerHTML='';
   p.colors.forEach((col,i)=>{const s=document.createElement('div');s.className='swatch'+(i===0?' on':'');s.style.background=col;s.title=col;
     s.onclick=()=>{[...sw.children].forEach(x=>x.classList.remove('on'));s.classList.add('on');QV.color=col;paintQV();};sw.appendChild(s);});
-  $('qvColorWrap').style.display=p.colors.length>1?'block':'none';
+  // photo products are one fixed colorway — recoloring only works on the SVG mockups
+  $('qvColorWrap').style.display=(!p.imgs&&p.colors.length>1)?'block':'none';
   const sz=$('qvSizes');
   if(p.sizes){$('qvSizeWrap').style.display='block';sz.innerHTML='';
     p.sizes.forEach(s=>{const e=document.createElement('div');e.className='size'+(s===QV.size?' on':'');e.textContent=s;
@@ -847,7 +886,22 @@ function openQV(id){const p=PRODUCTS.find(x=>x.id===id);
   $('qvQ').textContent='1';
   $('shopModal').classList.add('open');
 }
-function paintQV(){const p={...QV.p,body:QV.color,ink:contrastInk(QV.color),_k:'qv'};$('qvPh').innerHTML=svgFor(p);}
+function paintQV(idx){
+  const t=$('qvThumbs');
+  if(QV.p.imgs&&QV.p.imgs.length){
+    if(idx!=null)QV.img=idx;
+    mediaInto($('qvPh'),QV.p,QV.img);
+    if(QV.p.imgs.length>1){
+      t.style.display='flex';t.innerHTML='';
+      QV.p.imgs.forEach((src,j)=>{const b=document.createElement('button');b.type='button';b.className='qvt'+(j===QV.img?' on':'');
+        const im=document.createElement('img');im.src=src;im.alt='';im.loading='lazy';b.appendChild(im);
+        b.onclick=()=>paintQV(j);t.appendChild(b);});
+    } else {t.style.display='none';t.innerHTML='';}
+    return;
+  }
+  t.style.display='none';t.innerHTML='';
+  const p={...QV.p,body:QV.color,ink:contrastInk(QV.color),_k:'qv'};$('qvPh').innerHTML=svgFor(p);
+}
 $('qvQty').querySelectorAll('button').forEach(b=>b.onclick=()=>{QV.qty=Math.max(1,QV.qty+(+b.dataset.q));$('qvQ').textContent=QV.qty;});
 $('qvAdd').onclick=()=>{addToCart(QV.p.id,QV.size,QV.qty,QV.color);$('shopModal').classList.remove('open');openCart();};
 $('closeShop').onclick=()=>$('shopModal').classList.remove('open');
@@ -868,8 +922,10 @@ function renderCart(){
   badge.textContent=n; badge.classList.toggle('show',n>0);
   if(!CART.length){body.innerHTML='<div class="cart-empty">✦<br>Your bag is empty<br><span>Add some clean merch.</span></div>';}
   else{body.innerHTML=CART.map(c=>{const p=PRODUCTS.find(x=>x.id===c.id);const np={...p,body:c.color,ink:contrastInk(c.color),_k:'cart'};
-    return `<div class="cart-line"><div class="thumb">${svgFor(np)}</div><div style="flex:1"><div class="nm">${p.name}</div><div class="vr">${c.size?'Size '+c.size+' · ':''}$${p.price}</div>
+    const media=p.imgs&&p.imgs.length?`<img class="pimg" src="${p.imgs[0]}" alt="" data-pid="${p.id}">`:svgFor(np);
+    return `<div class="cart-line"><div class="thumb">${media}</div><div style="flex:1"><div class="nm">${p.name}</div><div class="vr">${c.size?'Size '+c.size+' · ':''}$${p.price}</div>
     <span class="qty"><button data-dec="${c.k}">−</button><span>${c.qty}</span><button data-inc="${c.k}">+</button></span></div><span class="rm" data-rm="${c.k}">Remove</span></div>`;}).join('');
+    body.querySelectorAll('.thumb img.pimg').forEach(im=>{im.onerror=()=>{const p=PRODUCTS.find(x=>x.id===im.dataset.pid);if(p)im.parentElement.innerHTML=svgFor({...p,_k:'cart'});};});
     body.querySelectorAll('[data-inc]').forEach(b=>b.onclick=()=>changeQty(b.dataset.inc,1));
     body.querySelectorAll('[data-dec]').forEach(b=>b.onclick=()=>changeQty(b.dataset.dec,-1));
     body.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>removeLine(b.dataset.rm));}
