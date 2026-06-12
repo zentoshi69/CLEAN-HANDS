@@ -5,9 +5,9 @@ ecdb820ba950fff2bdf365792535e5f0  ./deploy/install-everything.sh
 c3c67685ec0641ac4c41a64a839c8265  ./deploy/nginx-root.conf
 3de9b72caa664877e11dffa285c4e4ae  ./deploy/redeploy.sh
 26333892a90bdb42bd35471568647bc2  ./deploy/site-index.html
-c91119703b21cf03e12ff48be36e0db7  ./staking-api/app.py
+222533db403d0f9ed9851e36f8f519b4  ./staking-api/app.py
 429fd5aaff3c7b5226ca6c1b77295f47  ./staking-api/auth.py
-69b79be2ca6faabb3713b85fda5e8212  ./staking-api/test_staking.py
+a270c212e75a3d99833d77630a71f061  ./staking-api/test_staking.py
 abec3cc253495caa3e86976b4d15d50b  ./staking-api/webapp/app.js
 4ab95c78a6865535a4b2647fc7d7e088  ./staking-api/webapp/index.html
 3a45ebe00a3e1f39a840380817fb7c46  ./staking-api/webapp/wallet.js
