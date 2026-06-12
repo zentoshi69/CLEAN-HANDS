@@ -784,11 +784,17 @@ def api_economics():
             # Browser-safe RPC for the in-app swap widget. NEVER expose the paid
             # SOLANA_RPC_URL here; operators set a separate public-ish endpoint.
             "swapRpc": os.environ.get("MINIAPP_SWAP_RPC", ""),
-            # Bridge/Swap tab: full https iframe URL of your reskinned exchange
-            # widget (EasyBit/ChangeNOW/etc, with your affiliate id + theme params
-            # baked in). Empty = the tab shows a themed "coming soon" placeholder.
-            # Never a secret — it's a public widget URL.
-            "bridgeUrl": os.environ.get("MINIAPP_BRIDGE_URL", "").strip(),
+            # No Stains Bridge tab: the exchange URL (your public affiliate/ref
+            # link, or a reskinned widget URL). Defaults to the CLEAN EasyBit ref
+            # so it works out of the box; override per-deploy with MINIAPP_BRIDGE_URL.
+            "bridgeUrl": os.environ.get(
+                "MINIAPP_BRIDGE_URL", "https://easybit.com/?ref_id=d4RqwQRDBs"
+            ).strip(),
+            # Most exchange HOMEPAGES refuse to be iframed (X-Frame-Options), so by
+            # default the tab is a branded launch card that opens the URL externally.
+            # Set MINIAPP_BRIDGE_EMBED=1 ONLY when bridgeUrl is a real embeddable
+            # widget URL (one that allows framing) to render it inline.
+            "bridgeEmbed": os.environ.get("MINIAPP_BRIDGE_EMBED", "").strip() in ("1", "true", "yes"),
             "decimals": db.DECIMALS,
             "mint": market.MINT,
             # WalletConnect relay (QR — works with ANY wallet app; the escape
