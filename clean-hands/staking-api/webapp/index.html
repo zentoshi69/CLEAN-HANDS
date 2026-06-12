@@ -856,6 +856,48 @@
         color: var(--muted);
         margin-top: 2px;
       }
+      /* bridge / swap widget host — branded frame around the provider iframe */
+      .bridge-host {
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1.5px solid rgba(27, 93, 166, 0.16);
+        background: linear-gradient(160deg, var(--glove), #fff);
+        min-height: 480px;
+        margin-top: 8px;
+      }
+      .bridge-host iframe {
+        width: 100%;
+        height: 560px;
+        border: 0;
+        display: block;
+      }
+      .bridge-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        text-align: center;
+        padding: 40px 24px;
+        min-height: 480px;
+      }
+      .bridge-empty .glove {
+        width: 60px;
+        height: 60px;
+        opacity: 0.85;
+      }
+      .bridge-empty .t {
+        font-family: 'Fraunces', serif;
+        font-weight: 600;
+        color: var(--ink-deep);
+        font-size: 1.15rem;
+      }
+      .bridge-empty .d {
+        color: var(--muted);
+        font-size: 0.9rem;
+        max-width: 280px;
+        line-height: 1.5;
+      }
     </style>
   </head>
   <body>
@@ -1060,6 +1102,19 @@
           </div>
         </section>
 
+        <!-- NO STAINS BRIDGE — EasyBit (or any provider) reskinned in CLEAN -->
+        <section class="tab" id="view-bridge" hidden>
+          <div class="card panel">
+            <h3>🧤 No Stains Bridge</h3>
+            <p class="desc">
+              Move money between chains and swap any coin — spotless, powered by EasyBit.
+              Non-custodial: funds go wallet-to-wallet, the app never holds them.
+            </p>
+            <div id="bridge-host" class="bridge-host"></div>
+            <p class="lbl" id="bridge-note" style="margin-top:10px"></p>
+          </div>
+        </section>
+
         <!-- TRADE -->
         <section class="tab" id="view-trade" hidden>
           <div class="card panel">
@@ -1240,6 +1295,13 @@
         <button class="tabbtn" data-tab="trade" onclick="App.show('trade')">
           <svg viewBox="0 0 24 24"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5" /></svg>
           Trade
+        </button>
+        <button class="tabbtn" data-tab="bridge" onclick="App.show('bridge')">
+          <svg viewBox="0 0 24 24">
+            <path d="M3 16c3 0 3-4 6-4s3 4 6 4 3-4 6-4" />
+            <path d="M3 11V9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2" />
+          </svg>
+          No Stains
         </button>
         <button class="tabbtn" data-tab="boost" onclick="App.show('boost')">
           <svg viewBox="0 0 24 24">

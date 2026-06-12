@@ -130,7 +130,7 @@
     renderWallets();
   }
   function show(v) {
-    ['stake', 'trade', 'boost', 'meme', 'board', 'invite', 'folio'].forEach((n) => {
+    ['stake', 'trade', 'bridge', 'boost', 'meme', 'board', 'invite', 'folio'].forEach((n) => {
       const el = $('view-' + n);
       if (el) el.hidden = n !== v;
     });
@@ -147,6 +147,7 @@
         sc.scrollTop = 0;
       }
     }
+    if (v === 'bridge') loadBridge();
     haptic();
     if (v === 'board') loadBoard();
     if (v === 'trade') loadPrice();
@@ -1022,6 +1023,36 @@
     }
   }
 
+  // ---- bridge / swap (provider iframe, reskinned) ------------------------ //
+  let _bridgeLoaded = false;
+  function loadBridge() {
+    if (_bridgeLoaded) return;
+    const host = $('bridge-host');
+    const note = $('bridge-note');
+    if (!host) return;
+    const url = (CONFIG && CONFIG.bridgeUrl) || '';
+    if (url && /^https:\/\//.test(url)) {
+      const f = document.createElement('iframe');
+      f.src = url;
+      f.title = 'Bridge & Swap';
+      f.loading = 'lazy';
+      // allow the widget to run its wallet/redirect flows but nothing ambient
+      f.setAttribute('allow', 'clipboard-write; payment');
+      f.setAttribute('referrerpolicy', 'no-referrer');
+      host.innerHTML = '';
+      host.appendChild(f);
+      if (note) note.textContent = 'Quotes and routing are provided by the exchange. Always confirm the destination address in your wallet.';
+      _bridgeLoaded = true;
+    } else {
+      host.innerHTML =
+        '<div class="bridge-empty">' +
+        '<img class="glove" src="/glove.png" alt="">' +
+        '<div class="t">Bridge is warming up</div>' +
+        '<div class="d">The cross-chain swap widget isn\'t switched on yet. Set MINIAPP_BRIDGE_URL to your reskinned EasyBit widget and it appears right here.</div>' +
+        '</div>';
+      if (note) note.textContent = '';
+    }
+  }
   global.App = {
     show,
     stake,
