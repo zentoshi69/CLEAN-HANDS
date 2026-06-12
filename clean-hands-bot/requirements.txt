@@ -1,0 +1,17 @@
+# Telegram bot
+aiogram>=3.4,<4
+
+# Image pipeline
+pillow>=10.0
+opencv-python-headless>=4.9
+mediapipe>=0.10
+numpy>=1.26,<2  # mediapipe requires numpy 1.x
+
+# Providers
+requests>=2.31
+
+# Config
+python-dotenv>=1.0
+
+# Tests
+pytest>=8.0

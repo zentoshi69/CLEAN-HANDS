@@ -1,0 +1,11 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - glove-tmp:/tmp/clean-hands-bot
+    # Long-polling bot: no inbound ports required.
+
+volumes:
+  glove-tmp:
