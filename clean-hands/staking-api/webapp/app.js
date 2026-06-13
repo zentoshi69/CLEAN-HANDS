@@ -1144,7 +1144,6 @@
       _bridgeLoaded = true;
       return;
     }
-<<<<<<< HEAD
 
     // Not configured yet (awaiting the EasyBit ref/widget URL): show a clean,
     // branded "coming soon" to users — never the operator's env-var hint.
@@ -1156,13 +1155,6 @@
       '<div class="d">Cross-chain swaps and bridging — wallet-to-wallet, never through us. ' +
       'We’re plumbing in the cleanest route; it lands right here shortly.</div>' +
       '<button class="btn btn-ghost" id="bridge-buy" style="margin-top:4px;min-width:180px">Get $CLEAN meanwhile →</button>' +
-=======
-    host.innerHTML =
-      '<div class="bridge-empty">' +
-      '<img class="glove" src="/glove.png" alt="">' +
-      '<div class="t">Bridge is warming up</div>' +
-      '<div class="d">Set EASYBIT_API_KEY for the in-app bridge, or MINIAPP_BRIDGE_URL for a launch card.</div>' +
->>>>>>> origin/main
       '</div>';
     const buy = $('bridge-buy');
     if (buy) buy.onclick = () => show('trade');
