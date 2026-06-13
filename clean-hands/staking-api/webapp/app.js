@@ -1127,12 +1127,19 @@
       return;
     }
 
+    // Not configured yet (awaiting the EasyBit ref/widget URL): show a clean,
+    // branded "coming soon" to users — never the operator's env-var hint.
     host.innerHTML =
       '<div class="bridge-empty">' +
       '<img class="glove" src="/glove.png" alt="">' +
-      '<div class="t">Bridge is warming up</div>' +
-      '<div class="d">Set MINIAPP_BRIDGE_URL to your EasyBit ref or widget URL and it appears right here.</div>' +
+      '<span class="bridge-soon"><i></i>Coming soon</span>' +
+      '<div class="t">No Stains Bridge</div>' +
+      '<div class="d">Cross-chain swaps and bridging — wallet-to-wallet, never through us. ' +
+      'We’re plumbing in the cleanest route; it lands right here shortly.</div>' +
+      '<button class="btn btn-ghost" id="bridge-buy" style="margin-top:4px;min-width:180px">Get $CLEAN meanwhile →</button>' +
       '</div>';
+    const buy = $('bridge-buy');
+    if (buy) buy.onclick = () => show('trade');
     if (note) note.textContent = '';
   }
   global.App = {
