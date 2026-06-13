@@ -618,6 +618,21 @@
         font-size: 0.86rem;
         line-height: 1.5;
       }
+      /* small caption / helper text. Was previously only defined as `.apr .lbl`
+         (the hero), so every other `.lbl` fell back to full 16px body copy and
+         read like a broken paragraph. This is the global, intentionally-small
+         caption; `.apr .lbl` still overrides it inside the hero cards. */
+      .lbl {
+        font-size: 0.74rem;
+        line-height: 1.55;
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        color: var(--muted);
+      }
+      .lbl b {
+        color: var(--ink-deep);
+        font-weight: 700;
+      }
       .meme-img {
         width: 100%;
         border-radius: 16px;
@@ -1180,13 +1195,12 @@
               <button class="btn btn-ghost" id="f-wc" onclick="App.linkWalletWC()">🔗 WalletConnect</button>
             </div>
             <div id="f-picker" class="hide btn-row" style="flex-wrap:wrap;margin-top:8px"></div>
-            <p class="lbl" style="margin-top:10px">
-              Each wallet signs once to prove it's yours — then it's saved to your
-              portfolio <b>forever</b>, until you remove it with ✕. Up to 20 wallets.
-              <b>Several accounts in one extension?</b> Keep this screen open and switch
-              accounts inside the wallet — each one links automatically with a single
-              signature. On a phone, open this app inside that wallet's own browser
-              and tap Link there.
+            <p class="lbl" style="margin-top:12px">
+              One signature proves a wallet is yours — it then stays in your portfolio
+              until you remove it with ✕ (up to 20 wallets).
+              <b>Several accounts in one extension?</b> Switch accounts here and each
+              links automatically. <b>On a phone?</b> Open this app in your wallet's own
+              browser, then tap Link.
             </p>
           </div>
         </section>
