@@ -319,6 +319,28 @@ footer{padding:60px 0 40px;border-top:1.5px solid var(--line);margin-top:60px}
 .glow-next::before{content:"";position:absolute;inset:-12px;border-radius:22px;z-index:-1;background:radial-gradient(closest-side,#BFE0FF,rgba(191,224,255,0) 75%);filter:blur(10px);opacity:.6;animation:nextGlow 2.6s ease-in-out infinite}
 .glow-next:hover{transform:translateY(-1px)}
 #helpBtn{font-family:'Fraunces',serif;font-weight:700}
+/* ===== $CLEAN checkout (pay modal) ===== */
+.pay-amt{font-family:'Fraunces',serif;font-weight:700;color:var(--ink-deep);font-size:2.5rem;line-height:1;text-align:center;margin-top:8px}
+.pay-usd{text-align:center;color:var(--muted);font-weight:600;margin-top:5px;font-size:.9rem}
+.pay-qr{display:grid;place-items:center;margin:16px auto 4px;width:188px;height:188px;border:1.5px solid var(--line);border-radius:16px;background:#fff;overflow:hidden}
+.pay-qr canvas,.pay-qr img{width:172px;height:172px}
+.pay-qr .qrfall{font-size:.74rem;color:var(--muted);text-align:center;padding:16px}
+.pay-row{display:flex;align-items:center;gap:10px;border:1.5px solid var(--line);border-radius:13px;padding:10px 12px;margin-top:9px;background:var(--glove)}
+.pay-row .k{font-size:.64rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);flex-shrink:0}
+.pay-row code{font-family:ui-monospace,Menlo,monospace;font-size:.8rem;color:var(--ink-deep);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;text-align:right}
+.pay-copy{border:1.5px solid var(--line-2);background:#fff;color:var(--ink-2);border-radius:9px;padding:6px 10px;font-size:.7rem;font-weight:700;cursor:pointer;font-family:inherit;flex-shrink:0}
+.pay-copy:active{transform:scale(.94)}
+.pay-note{font-size:.74rem;color:var(--muted);line-height:1.55;margin-top:14px}
+.pay-note b{color:var(--ink-deep)}
+.pay-soon{text-align:center;padding:10px 6px}
+.pay-soon .em{font-size:2.6rem}
+/* ===== shining stars FX ===== */
+.starfield{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+.starfield .st{position:absolute;color:#fff;font-family:'Fraunces',serif;filter:drop-shadow(0 2px 7px rgba(46,116,192,.5));animation:twinkle var(--td,3s) ease-in-out infinite;opacity:0}
+@keyframes twinkle{0%,100%{opacity:0;transform:scale(.55) rotate(0)}50%{opacity:var(--to,.85);transform:scale(1) rotate(9deg)}}
+.burst{position:fixed;left:0;top:0;z-index:120;pointer-events:none;color:var(--ink-2);font-family:'Fraunces',serif;will-change:transform,opacity}
+@keyframes burstfly{0%{opacity:1;transform:translate(0,0) scale(.4) rotate(0)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1.15) rotate(var(--dr))}}
+@media(prefers-reduced-motion:reduce){.starfield .st{animation:none;opacity:.45}.burst{display:none}}
 </style>
 </head>
 <body>
@@ -471,11 +493,13 @@ footer{padding:60px 0 40px;border-top:1.5px solid var(--line);margin-top:60px}
 </div>
 
 <div class="page" id="page-shop">
-<section class="pad"><div class="wrap">
+<section class="pad" style="position:relative">
+  <div class="starfield" id="shopStars" aria-hidden="true"></div>
+  <div class="wrap">
   <div class="sec-head rv"><span class="kicker">Merch · Gloves on</span><h2 class="h2">The CLEAN Shop</h2>
     <p>Wear the joke. Heavyweight tees and fleece hoodies — plus the real thing: nitrile gloves and dirty-money wipes. <b style="color:var(--ink-2)">Free shipping over $75.</b></p></div>
   <div class="shop-grid" id="shopGrid"></div>
-  <p style="text-align:center;color:var(--muted);font-size:.82rem;margin-top:28px">Demo storefront — checkout is simulated. Pairs with Shopify or Crossmint for live fulfilment.</p>
+  <p style="text-align:center;color:var(--muted);font-size:.82rem;margin-top:28px">Pay in <b style="color:var(--ink-2)">$CLEAN</b> — funds go wallet-to-wallet to the CLEAN treasury, non-custodial. Add your shipping details in the order memo or DM after paying.</p>
 </div></section>
 </div>
 
@@ -524,6 +548,30 @@ footer{padding:60px 0 40px;border-top:1.5px solid var(--line);margin-top:60px}
       </div>
       <button class="btn btn-solid full" id="qvAdd" style="margin-top:8px">Add to cart</button>
     </div>
+  </div>
+</div></div>
+
+<div class="modal" id="payModal"><div class="box">
+  <button class="x" id="closePay" aria-label="Close">✕</button>
+  <div class="kicker">Checkout</div>
+  <h3 style="margin:4px 0 2px">Pay with <span class="scr">$CLEAN</span></h3>
+  <div id="payLive">
+    <div class="pay-amt" id="payAmt">—</div>
+    <div class="pay-usd" id="payUsd">—</div>
+    <div class="pay-qr" id="payQR"><div class="qrfall">Scan in your Solana wallet</div></div>
+    <div class="pay-row"><span class="k">To</span><code id="payAddr">—</code><button class="pay-copy" id="payCopyAddr">Copy</button></div>
+    <div class="pay-row"><span class="k">Amount</span><code id="payAmtCode">—</code><button class="pay-copy" id="payCopyAmt">Copy</button></div>
+    <div class="pay-row"><span class="k">Ref</span><code id="payRef">—</code><button class="pay-copy" id="payCopyRef">Copy</button></div>
+    <button class="btn btn-solid full" id="payOpenWallet" style="margin-top:14px">Open in wallet →</button>
+    <button class="btn btn-ghost full" id="payInApp" style="margin-top:10px">Pay in the CLEAN app</button>
+    <button class="btn btn-ghost full" id="payDone" style="margin-top:10px">I've sent it ✦</button>
+    <p class="pay-note">Send <b>exactly</b> the amount above in <b>$CLEAN</b> on Solana to the address shown, and include the <b>Ref</b> as the transfer memo so we can match your order. Non-custodial — funds go wallet-to-wallet, the treasury receives directly. Price locked for ~15 min.</p>
+  </div>
+  <div id="paySoon" class="pay-soon" style="display:none">
+    <div class="em">🧤✦</div>
+    <h3 style="font-size:1.3rem;margin:10px 0 6px">Crypto checkout — almost ready</h3>
+    <p style="color:var(--muted);font-size:.9rem">$CLEAN payment is being switched on. Grab $CLEAN and finish your order in the app in the meantime.</p>
+    <button class="btn btn-solid full" id="paySoonApp" style="margin-top:16px">Open the CLEAN app →</button>
   </div>
 </div></div>
 
@@ -598,6 +646,7 @@ const CONFIG={
   RPC:'https://api.mainnet-beta.solana.com',   // swap for a paid RPC (Helius/Triton)
   API_BASE:'/api',                             // backend base URL
   PRICE_USD:0.0412,                            // fallback; API.getPrice() overrides
+  CORP_WALLET:'',                              // OPERATOR: corporate $CLEAN receiving wallet (Solana base58). Empty/invalid => checkout shows "coming soon" (never sends to a bad address).
   FREE_SHIP_USD:75,
   BOOST_MAX:2.5,                               // max yield multiplier from burning
   BURN_FOR_MAX:200000,                         // CLEAN burned to reach BOOST_MAX
@@ -916,7 +965,8 @@ let CART=[];
 function addToCart(id,size,qty,color){const p=PRODUCTS.find(x=>x.id===id);color=color||p.colors[0];
   const k=id+'|'+(size||'')+'|'+color;const ex=CART.find(c=>c.k===k);
   if(ex)ex.qty+=qty||1; else CART.push({k,id,size,color,qty:qty||1});
-  say(`Added ${p.name}${size?' · '+size:''} ✦`); renderCart();}
+  say(`Added ${p.name}${size?' · '+size:''} ✦`); renderCart();
+  try{burstAt($('cartBtn'));}catch(_){}}
 function changeQty(k,d){const c=CART.find(x=>x.k===k);if(!c)return;c.qty+=d;if(c.qty<=0)CART=CART.filter(x=>x.k!==k);renderCart();}
 function removeLine(k){CART=CART.filter(x=>x.k!==k);renderCart();}
 function cartCount(){return CART.reduce((s,c)=>s+c.qty,0);}
@@ -942,15 +992,79 @@ function openCart(){$('cartDrawer').classList.add('open');$('scrim').classList.a
 function closeCart(){$('cartDrawer').classList.remove('open');$('scrim').classList.remove('open');}
 $('cartBtn').onclick=openCart; $('closeCart').onclick=closeCart;
 $('scrim').onclick=closeCart;
-$('checkoutBtn').onclick=async()=>{
+/* ===== $CLEAN checkout — pay the corporate treasury wallet ===== */
+let PAY=null;
+function isSolAddr(a){return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a||'');}
+let _qr=null;
+function loadQR(){return _qr||(_qr=new Promise((res,rej)=>{
+  if(window.QRCode)return res(window.QRCode);
+  const s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js';
+  s.onload=()=>res(window.QRCode);s.onerror=()=>rej(new Error('qr'));
+  document.head.appendChild(s);
+}));}
+async function renderQR(uri){const box=$('payQR');
+  try{const QR=await loadQR();box.innerHTML='';const c=document.createElement('canvas');box.appendChild(c);
+    await QR.toCanvas(c,uri,{width:172,margin:1,color:{dark:'#0F3E73',light:'#FFFFFF'}});}
+  catch(e){box.innerHTML='<div class="qrfall">Pay from any Solana wallet using the address &amp; amount below.</div>';}
+}
+function copyTo(text,msg){if(navigator.clipboard&&navigator.clipboard.writeText)
+  navigator.clipboard.writeText(text).then(()=>say(msg),()=>say('Copy failed'));else say(text);}
+function openPay(){
   if(!CART.length)return say('Your bag is empty');
-  const b=$('checkoutBtn'),sub=cartTotal(); b.disabled=true; b.textContent='Processing…';
-  try{ const r=await API.checkout(CART,sub);
-    if(r&&r.checkoutUrl){location.href=r.checkoutUrl;return;}
-    say(`Checkout — $${sub} (demo) ✦`);
-  }catch(e){say('Checkout failed — try again');}
-  b.disabled=false; b.textContent='Checkout';
+  const live=isSolAddr(CONFIG.CORP_WALLET);
+  $('payLive').style.display=live?'block':'none';
+  $('paySoon').style.display=live?'none':'block';
+  $('payModal').classList.add('open');
+  if(!live)return;
+  const sub=cartTotal(),px=+PRICE||CONFIG.PRICE_USD;
+  const clean=Math.ceil(sub/px*100)/100;            // round UP to 2dp — never underpay the merchant
+  const ref='CLEAN-'+Date.now().toString(36).toUpperCase()+'-'+Math.random().toString(36).slice(2,6).toUpperCase();
+  const uri='solana:'+CONFIG.CORP_WALLET+'?amount='+clean+'&spl-token='+CONFIG.CONTRACT
+    +'&label='+encodeURIComponent('CLEAN Shop')+'&message='+encodeURIComponent('Order '+ref)+'&memo='+encodeURIComponent(ref);
+  PAY={sub,clean,ref,uri};
+  $('payAmt').textContent=fmt(clean)+' $CLEAN';
+  $('payUsd').textContent='≈ $'+sub.toLocaleString('en-US')+' · '+cartCount()+' item'+(cartCount()>1?'s':'');
+  $('payAddr').textContent=CONFIG.CORP_WALLET;
+  $('payAmtCode').textContent=clean;
+  $('payRef').textContent=ref;
+  renderQR(uri);
+}
+$('checkoutBtn').onclick=()=>openPay();
+$('closePay').onclick=()=>$('payModal').classList.remove('open');
+$('payModal').addEventListener('click',e=>{if(e.target.id==='payModal')$('payModal').classList.remove('open');});
+$('payCopyAddr').onclick=()=>copyTo(CONFIG.CORP_WALLET,'Address copied ✦');
+$('payCopyAmt').onclick=()=>{if(PAY)copyTo(String(PAY.clean),'Amount copied ✦');};
+$('payCopyRef').onclick=()=>{if(PAY)copyTo(PAY.ref,'Ref copied ✦');};
+$('payOpenWallet').onclick=()=>{if(PAY)location.href=PAY.uri;};
+$('payInApp').onclick=()=>openApp();
+$('paySoonApp').onclick=()=>openApp();
+$('payDone').onclick=()=>{
+  $('payModal').classList.remove('open');
+  starBurst(innerWidth/2,innerHeight*0.4);
+  say('Thanks ✦ we’ll confirm your payment on-chain');
+  CART=[];renderCart();
 };
+
+/* ===== shining stars FX ===== */
+function buildStarfield(){const host=$('shopStars');if(!host||host._b)return;host._b=true;
+  for(let i=0;i<14;i++){const s=document.createElement('span');s.className='st';s.textContent='✦';
+    s.style.left=(Math.random()*100).toFixed(2)+'%';s.style.top=(Math.random()*100).toFixed(2)+'%';
+    s.style.fontSize=(0.6+Math.random()*1.5).toFixed(2)+'rem';
+    s.style.setProperty('--td',(2.4+Math.random()*3.2).toFixed(2)+'s');
+    s.style.setProperty('--to',(0.5+Math.random()*0.45).toFixed(2));
+    s.style.animationDelay=(-Math.random()*4).toFixed(2)+'s';host.appendChild(s);}}
+function starBurst(x,y){if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  for(let i=0;i<22;i++){const s=document.createElement('div');s.className='burst';s.textContent='✦';
+    const ang=Math.random()*Math.PI*2,dist=60+Math.random()*150;
+    s.style.left=x+'px';s.style.top=y+'px';s.style.fontSize=(0.7+Math.random()*1.4).toFixed(2)+'rem';
+    s.style.setProperty('--dx',(Math.cos(ang)*dist).toFixed(0)+'px');
+    s.style.setProperty('--dy',(Math.sin(ang)*dist).toFixed(0)+'px');
+    s.style.setProperty('--dr',(Math.random()*180-90).toFixed(0)+'deg');
+    s.style.animation='burstfly '+(0.7+Math.random()*0.5).toFixed(2)+'s cubic-bezier(.2,.7,.3,1) forwards';
+    document.body.appendChild(s);setTimeout(()=>s.remove(),1300);}}
+function burstAt(el){if(!el)return;const r=el.getBoundingClientRect();starBurst(r.left+r.width/2,r.top+r.height/2);}
+buildStarfield();
 
 /* footer links — no dead anchors */
 document.querySelectorAll('[data-soon]').forEach(a=>a.onclick=()=>say('Link coming soon ✦'));
