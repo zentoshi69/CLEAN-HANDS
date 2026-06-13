@@ -18,7 +18,7 @@ DB_PATH = os.environ.get("STAKE_DB", os.path.join(os.path.dirname(__file__), "st
 # --------------------------------------------------------------------------- #
 DECIMALS = int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
 BASE = 10**DECIMALS
-SCHEMA_VERSION = 5  # bumped by migrations
+SCHEMA_VERSION = 6  # bumped by migrations
 
 
 def to_base(ui_amount: float) -> int:
@@ -132,6 +132,14 @@ CREATE TABLE IF NOT EXISTS notifs (
 CREATE TABLE IF NOT EXISTS wallet_links (
     wallet TEXT PRIMARY KEY, owner TEXT NOT NULL, ts BIGINT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_links_owner ON wallet_links(owner);
+CREATE TABLE IF NOT EXISTS bridge_orders (
+    order_id TEXT PRIMARY KEY, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
+    send_coin TEXT NOT NULL, send_network TEXT, recv_coin TEXT NOT NULL, recv_network TEXT,
+    send_amount TEXT, recv_amount TEXT, recv_address TEXT, deposit_address TEXT,
+    fee_usd DOUBLE PRECISION NOT NULL DEFAULT 0, fee_pct DOUBLE PRECISION NOT NULL DEFAULT 0,
+    send_usd DOUBLE PRECISION, status TEXT, ip_hash TEXT);
+CREATE INDEX IF NOT EXISTS idx_bridge_created ON bridge_orders(created_at);
+CREATE INDEX IF NOT EXISTS idx_bridge_status ON bridge_orders(status);
 """
 
 
@@ -208,6 +216,31 @@ def init_db():
                 ts     INTEGER NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_links_owner ON wallet_links(owner);
+            -- No Stains Bridge order log: a forensic/reconciliation trail of every
+            -- EasyBit order opened through the app + the fee we charged. Amounts
+            -- are TEXT decimal strings (crypto precision; never floats). ip_hash
+            -- is a salted HMAC of the client IP — abuse forensics without storing
+            -- a raw IP. The swap itself is non-custodial; this is record-keeping.
+            CREATE TABLE IF NOT EXISTS bridge_orders (
+                order_id        TEXT PRIMARY KEY,   -- EasyBit order id (idempotent)
+                created_at      INTEGER NOT NULL,
+                updated_at      INTEGER NOT NULL,
+                send_coin       TEXT NOT NULL,
+                send_network    TEXT,
+                recv_coin       TEXT NOT NULL,
+                recv_network    TEXT,
+                send_amount     TEXT,
+                recv_amount     TEXT,
+                recv_address    TEXT,
+                deposit_address TEXT,
+                fee_usd         REAL NOT NULL DEFAULT 0,
+                fee_pct         REAL NOT NULL DEFAULT 0,
+                send_usd        REAL,
+                status          TEXT,
+                ip_hash         TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_bridge_created ON bridge_orders(created_at);
+            CREATE INDEX IF NOT EXISTS idx_bridge_status ON bridge_orders(status);
             """
         )
         conn.commit()
@@ -280,6 +313,24 @@ def _migrate(conn) -> None:
         conn.execute("ALTER TABLE stakers ADD COLUMN payout_wallet TEXT")
         conn.execute("ALTER TABLE stakers ADD COLUMN payout_confirmed_ts INTEGER NOT NULL DEFAULT 0")
         conn.execute("PRAGMA user_version = 5")
+        conn.commit()
+        ver = 5
+    if ver < 6:
+        # v6: No Stains Bridge order log (idempotent CREATE IF NOT EXISTS so it's
+        # safe whether or not init's executescript already made it).
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS bridge_orders (
+                order_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+                send_coin TEXT NOT NULL, send_network TEXT, recv_coin TEXT NOT NULL, recv_network TEXT,
+                send_amount TEXT, recv_amount TEXT, recv_address TEXT, deposit_address TEXT,
+                fee_usd REAL NOT NULL DEFAULT 0, fee_pct REAL NOT NULL DEFAULT 0, send_usd REAL,
+                status TEXT, ip_hash TEXT);
+            CREATE INDEX IF NOT EXISTS idx_bridge_created ON bridge_orders(created_at);
+            CREATE INDEX IF NOT EXISTS idx_bridge_status ON bridge_orders(status);
+            """
+        )
+        conn.execute("PRAGMA user_version = 6")
         conn.commit()
 
 

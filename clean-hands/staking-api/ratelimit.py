@@ -29,6 +29,9 @@ LIMITS = {
     "write": (_int("RL_WRITE", 60), 60),  # stake/unstake/claim
     "relay": (_int("RL_RELAY", 240), 60),  # wallet-callback handoff polling
     "tg": (_int("RL_TG", 240), 60),  # Telegram server-side handshake start/poll
+    "bridge": (_int("RL_BRIDGE", 90), 60),  # bridge quotes / currency list / validate
+    "bridge_order": (_int("RL_BRIDGE_ORDER", 12), 60),  # opening exchange orders (strict)
+    "bridge_status": (_int("RL_BRIDGE_STATUS", 240), 60),  # order-status polling
 }
 
 

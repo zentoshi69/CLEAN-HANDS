@@ -1075,6 +1075,164 @@
         max-width: 280px;
         line-height: 1.5;
       }
+      /* No Stains Bridge — in-app swap form (API mode) */
+      .bridge-form {
+        background: linear-gradient(160deg, var(--glove), #fff);
+        border: 1.5px solid rgba(27, 93, 166, 0.16);
+        border-radius: 16px;
+        padding: 16px;
+        margin-top: 8px;
+      }
+      .bridge-leg {
+        background: #fff;
+        border: 1.5px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 14px;
+      }
+      .bridge-leg .top-l {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.78rem;
+        color: var(--muted);
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+      .bridge-leg .lrow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .bridge-leg input.amt {
+        flex: 1;
+        border: none;
+        outline: none;
+        font-family: 'Fraunces', serif;
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--ink-deep);
+        background: none;
+        min-width: 0;
+      }
+      .bridge-leg input.amt:disabled {
+        color: var(--ink-2);
+      }
+      .bridge-leg input.amt::placeholder {
+        color: var(--muted);
+        opacity: 0.7;
+      }
+      select.coinsel,
+      select.netsel {
+        font-family: inherit;
+        font-weight: 700;
+        color: var(--ink-deep);
+        background: var(--glove);
+        border: 1.5px solid var(--line);
+        border-radius: 10px;
+        padding: 9px 8px;
+        cursor: pointer;
+        max-width: 46%;
+      }
+      select.netsel {
+        font-weight: 600;
+        font-size: 0.82rem;
+        color: var(--ink-2);
+      }
+      .bridge-net {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 8px;
+      }
+      .bridge-swap {
+        display: flex;
+        justify-content: center;
+        margin: 8px 0;
+      }
+      .bridge-swap button {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        border: 1.5px solid var(--line-2);
+        background: #fff;
+        color: var(--ink-2);
+        font-size: 1.1rem;
+        cursor: pointer;
+        line-height: 1;
+      }
+      .bridge-sum {
+        margin: 12px 2px;
+        font-size: 0.86rem;
+      }
+      .bridge-sum .row {
+        display: flex;
+        justify-content: space-between;
+        padding: 5px 0;
+        border-bottom: 1px dashed rgba(27, 93, 166, 0.12);
+      }
+      .bridge-sum .row:last-child {
+        border-bottom: none;
+      }
+      .bridge-sum .row .name {
+        color: var(--muted);
+      }
+      .bridge-sum .row .v {
+        font-weight: 700;
+        color: var(--ink-deep);
+      }
+      .bridge-msg {
+        font-size: 0.84rem;
+        color: var(--muted);
+        margin: 8px 2px;
+        line-height: 1.45;
+      }
+      .bridge-msg.err {
+        color: #b3261e;
+      }
+      .deposit-box {
+        background: #fff;
+        border: 1.5px solid var(--line);
+        border-radius: 14px;
+        padding: 14px;
+        margin-top: 10px;
+      }
+      .deposit-box .addr {
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: var(--ink-deep);
+        word-break: break-all;
+        background: var(--glove);
+        border: 1.5px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin: 6px 0;
+      }
+      .statusbadge {
+        display: inline-block;
+        font-weight: 700;
+        font-size: 0.8rem;
+        border-radius: 999px;
+        padding: 5px 12px;
+        background: var(--glove);
+        color: var(--ink-2);
+        border: 1.5px solid var(--line);
+      }
+      .statusbadge.done {
+        background: #e6f6ec;
+        color: #1c7a3f;
+        border-color: #bfe6cc;
+      }
+      .statusbadge.failed,
+      .statusbadge.refund {
+        background: #fdeceb;
+        color: #b3261e;
+        border-color: #f3c9c6;
+      }
+      .bridge-warn {
+        font-size: 0.78rem;
+        color: var(--muted);
+        line-height: 1.45;
+        margin-top: 8px;
+      }
     </style>
   </head>
   <body>
@@ -1307,8 +1465,8 @@
           <div class="card panel">
             <h3>🧤 No Stains Bridge</h3>
             <p class="desc">
-              Move money between chains and swap any coin — spotless, powered by EasyBit.
-              Non-custodial: funds go wallet-to-wallet, the app never holds them.
+              Move money between chains and swap any coin — spotless and
+              non-custodial. Funds go wallet-to-wallet; the app never holds them.
             </p>
             <div id="bridge-host" class="bridge-host"></div>
             <p class="lbl" id="bridge-note" style="margin-top:10px"></p>
