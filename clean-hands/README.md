@@ -50,6 +50,10 @@ accrues yield (base APR × amount/loyalty/referral boosts + burn-to-boost), all 
 integer base units, with an append-only ledger + daily reconciliation. Payout is
 **manual** — no private key on the server. See `staking-api/README.md`.
 
+**Boosters & burn:** full user + dev guide in [`BOOSTERS.md`](BOOSTERS.md) — how the
+additive APR stack works, the on-chain burn mechanic, the liquidity booster, and the
+API hooks to plug it in.
+
 ## Security
 
 Wallet-signature login (ed25519) + Telegram `initData` HMAC; CORS allow-list; rate

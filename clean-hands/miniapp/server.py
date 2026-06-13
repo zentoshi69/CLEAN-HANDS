@@ -399,4 +399,6 @@ if __name__ == "__main__":
 
     if not BOT_TOKEN:
         print("WARNING: TG_COMMUNITY_TOKEN not set — initData verification will fail.")
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    # Bind localhost by default — this process sits behind nginx/Caddy. Set
+    # MINIAPP_HOST=0.0.0.0 only when deliberately exposing it directly.
+    uvicorn.run(app, host=os.environ.get("MINIAPP_HOST", "127.0.0.1"), port=PORT)

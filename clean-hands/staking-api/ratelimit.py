@@ -35,12 +35,25 @@ LIMITS = {
 }
 
 
+# Reverse proxies we trust to set X-Forwarded-For. The API binds localhost in
+# prod (see app.py / STAKE_HOST), so the only legitimate caller is the local
+# nginx/Caddy edge. We honour XFF ONLY when the request actually arrived from a
+# trusted peer — a direct client therefore can't spoof the header to land in
+# another IP's bucket; we fall back to its real connecting address.
+_TRUSTED_PROXIES = {
+    p.strip()
+    for p in os.environ.get("RL_TRUSTED_PROXIES", "127.0.0.1,::1").split(",")
+    if p.strip()
+}
+
+
 def client_ip(request: Request) -> str:
-    # Trust the edge proxy's X-Forwarded-For (left-most = original client).
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    peer = request.client.host if request.client else "unknown"
+    if peer in _TRUSTED_PROXIES:
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            return xff.split(",")[0].strip()  # left-most = original client
+    return peer
 
 
 def hit(request: Request, bucket: str, *, extra_key: str | None = None) -> None:

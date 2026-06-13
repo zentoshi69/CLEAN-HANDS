@@ -10,7 +10,9 @@
     <link rel="icon" href="/glove.png" />
     <link rel="apple-touch-icon" href="/glove.png" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://unpkg.com/tweetnacl@1.0.3/nacl.min.js"></script>
+    <!-- ed25519 signing lib served same-origin (CSP script-src 'self'); the
+         vetted local copy avoids a no-SRI CDN dependency on the signing path. -->
+    <script src="/nacl.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -483,6 +485,13 @@
       .btn + .btn {
         margin-top: 10px;
       }
+      /* compact button — for secondary/utility actions (e.g. link a wallet)
+         so they don't read as heavy as the primary stake/claim CTAs. */
+      .btn-sm {
+        padding: 11px 12px;
+        font-size: 0.9rem;
+        border-radius: 12px;
+      }
 
       .field {
         margin-bottom: 12px;
@@ -933,9 +942,14 @@
         color: var(--muted);
         margin-top: 2px;
       }
-      /* aggregate header: let the 5 portfolio totals reflow instead of cramming */
+      /* aggregate header: let the portfolio totals reflow instead of cramming */
       .folio-stats {
         grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+      }
+      /* the link-a-wallet card: base .card has no padding, so give it its own
+         so the buttons + helper note aren't flush against the rounded edge. */
+      .folio-link {
+        padding: 16px;
       }
       .stat .u {
         font-size: 0.62rem;
@@ -1020,9 +1034,34 @@
         min-height: 480px;
       }
       .bridge-empty .glove {
-        width: 60px;
-        height: 60px;
-        opacity: 0.85;
+        width: 64px;
+        height: 64px;
+        opacity: 0.92;
+        border-radius: 50%;
+        border: 1.5px solid var(--line);
+        background: #fff;
+        object-fit: cover;
+      }
+      .bridge-soon {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 0.64rem;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--ink-2);
+        background: rgba(46, 116, 192, 0.1);
+        border: 1px solid rgba(27, 93, 166, 0.2);
+        border-radius: 100px;
+        padding: 5px 12px;
+      }
+      .bridge-soon i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #3fc77e;
+        box-shadow: 0 0 0 4px rgba(63, 199, 126, 0.18);
       }
       .bridge-empty .t {
         font-family: 'Fraunces', serif;
@@ -1384,11 +1423,6 @@
           </div>
           <div class="stats folio-stats">
             <div class="card stat">
-              <div class="k" id="f-bal">—</div>
-              <div class="l">In wallets</div>
-              <div class="u" id="f-bal-usd"></div>
-            </div>
-            <div class="card stat">
               <div class="k" id="f-staked">—</div>
               <div class="l">Staked</div>
               <div class="u" id="f-staked-usd"></div>
@@ -1410,13 +1444,13 @@
             </div>
           </div>
           <div id="folio-rows"></div>
-          <div class="card">
+          <div class="card folio-link">
             <div class="btn-row">
-              <button class="btn btn-solid" onclick="App.linkPicker()">➕ Link a wallet</button>
-              <button class="btn btn-ghost" id="f-wc" onclick="App.linkWalletWC()">🔗 WalletConnect</button>
+              <button class="btn btn-solid btn-sm" onclick="App.linkPicker()">＋ Link a wallet</button>
+              <button class="btn btn-ghost btn-sm" id="f-wc" onclick="App.linkWalletWC()">WalletConnect</button>
             </div>
             <div id="f-picker" class="hide btn-row" style="flex-wrap:wrap;margin-top:8px"></div>
-            <p class="lbl" style="margin-top:12px">
+            <p class="lbl" style="margin-top:10px">
               One signature proves a wallet is yours — it then stays in your portfolio
               until you remove it with ✕ (up to 20 wallets).
               <b>Several accounts in one extension?</b> Switch accounts here and each

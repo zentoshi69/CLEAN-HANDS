@@ -859,3 +859,56 @@ def test_portfolio_multi_wallet():
     assert c.post("/api/unlink", json={"token": tok_a, "wallet": wb}).json()["count"] == 1
     assert c.post("/api/unlink", json={"token": tok_a, "wallet": wa}).status_code == 400
     print("multi-wallet portfolio + reclaim ✓")
+
+
+def test_accrue_concurrent_no_double_credit():
+    """REGRESSION: concurrent accrual must credit a time window exactly ONCE.
+    Pre-fix, every money path opened its own connection and ran a read-modify-
+    write (accrued = accrued + reward) keyed only on wallet, so N concurrent
+    accruals each added the reward for the SAME [last_ts, now] window — minting
+    rewards. The fix conditions the UPDATE on `last_accrual_ts == prev` (CAS), so
+    only the first writer credits the interval. Here we hammer app._accrue from
+    8 threads and assert the result is one interval, not ~8x."""
+    import threading, time as _t, db as _db, app
+
+    def seed(w):
+        start = int(_t.time()) - 3600  # 1h of unsettled accrual
+        with _db.db() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO stakers (wallet, recorded_staked, cached_balance, "
+                "accrued, stake_start_ts, last_accrual_ts, created_at) VALUES (?,?,?,?,?,?,?)",
+                (w, 10_000_000_000, 10_000_000_000, 0, start, start, 0),
+            )
+            conn.commit()
+
+    # single-thread baseline: what ONE accrual credits for ~1h
+    seed("BaseW1111111111111111111111111111111111111")
+    with _db.db() as conn:
+        app._accrue(conn, "BaseW1111111111111111111111111111111111111")
+        base = conn.execute(
+            "SELECT accrued FROM stakers WHERE wallet='BaseW1111111111111111111111111111111111111'"
+        ).fetchone()["accrued"]
+    assert base > 0, "baseline accrual should be positive"
+
+    # concurrent: 8 threads release together against an identical fresh staker
+    seed("RaceW1111111111111111111111111111111111111")
+    barrier = threading.Barrier(8)
+
+    def worker():
+        barrier.wait()
+        with _db.db() as conn:
+            app._accrue(conn, "RaceW1111111111111111111111111111111111111")
+
+    ths = [threading.Thread(target=worker) for _ in range(8)]
+    for th in ths:
+        th.start()
+    for th in ths:
+        th.join()
+    with _db.db() as conn:
+        race = conn.execute(
+            "SELECT accrued FROM stakers WHERE wallet='RaceW1111111111111111111111111111111111111'"
+        ).fetchone()["accrued"]
+
+    # Credited once (allowing only sub-second timing drift), never multiplied.
+    assert race < 2 * base, f"double-credit regression: race={race} base={base}"
+    print("concurrent accrual: no double-credit ✓")

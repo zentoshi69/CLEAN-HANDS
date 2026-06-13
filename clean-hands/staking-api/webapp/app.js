@@ -485,8 +485,15 @@
     $('meme-out').classList.add('hide');
     try {
       const r = await api('/api/meme', authedBody({ idea }));
-      MEME_DATA = r.image;
-      $('meme-img').src = r.image;
+      // Only ever load a data:image or https: URL into the <img>. Assigning an
+      // unvalidated API string to .src is an injection foothold (e.g. an
+      // attacker-influenced javascript:/text payload) — coerce + allowlist.
+      const img = String(r.image || '');
+      if (!/^(data:image\/(png|jpe?g|gif|webp|svg\+xml);|https:\/\/)/i.test(img)) {
+        throw new Error('unexpected image format');
+      }
+      MEME_DATA = img;
+      $('meme-img').src = img;
       $('meme-out').classList.remove('hide');
       if (r.remaining != null) $('meme-left').textContent = r.remaining + ' left today';
     } catch (e) {
@@ -803,7 +810,10 @@
     if (!pk) return toast('Connect your wallet first');
     toast('Building burn…');
     try {
-      const web3 = await import('https://esm.sh/@solana/web3.js@1');
+      // Pinned to a minor line (not a bare major) to shrink the moving-target
+      // surface on this signing path. Durable fix: self-host these bundles —
+      // dynamic import() can't carry SRI. (Gated behind CONFIG.inAppBurn.)
+      const web3 = await import('https://esm.sh/@solana/web3.js@1.95');
       const splt = await import('https://esm.sh/@solana/spl-token@0.4');
       const conn = new web3.Connection(safeRpc());
       const owner = new web3.PublicKey(pk);
@@ -933,11 +943,9 @@
     };
     $('f-holdings').textContent = fmt(t.holdings || 0);
     $('f-usd').textContent = priced ? usd(t.holdings || 0) : '';
-    $('f-bal').textContent = fmt(t.balance || 0);
     $('f-staked').textContent = fmt(t.staked || 0);
     $('f-pend').textContent = fmt(t.pending_rewards || 0);
     $('f-burned').textContent = fmt(t.total_burned || 0);
-    setUsd('f-bal-usd', t.balance);
     setUsd('f-staked-usd', t.staked);
     setUsd('f-pend-usd', t.pending_rewards);
     setUsd('f-burned-usd', t.total_burned);
@@ -978,10 +986,9 @@
         <div class="fwal-share" title="${share}% of portfolio"><div class="fwal-share-bar" style="width:${Math.min(100, Math.max(share, 2))}%"></div></div>
         <div class="fwal-share-lbl">${share}% of portfolio · ${fmt(hold)} $CLEAN holdings</div>
         <div class="fwal-stats">
-          <div><span class="fv">${fmt(w.balance)}</span><span class="fk">Balance</span></div>
           <div><span class="fv">${fmt(w.staked)}</span><span class="fk">Staked</span></div>
           <div><span class="fv">${fmt(w.pending_rewards)}</span><span class="fk">Pending</span></div>
-          <div><span class="fv">${w.apr_pct}%</span><span class="fk">APR</span></div>
+          <div><span class="fv">${Number(w.apr_pct) || 0}%</span><span class="fk">APR</span></div>
           <div><span class="fv">${fmt(w.total_burned)}</span><span class="fk">Burned</span></div>
           ${boosted ? `<div><span class="fv">${fmt(w.staked_effective)}</span><span class="fk">Effective</span></div>` : ''}
         </div>
@@ -1137,12 +1144,20 @@
       _bridgeLoaded = true;
       return;
     }
+
+    // Not configured yet (awaiting the EasyBit ref/widget URL): show a clean,
+    // branded "coming soon" to users — never the operator's env-var hint.
     host.innerHTML =
       '<div class="bridge-empty">' +
       '<img class="glove" src="/glove.png" alt="">' +
-      '<div class="t">Bridge is warming up</div>' +
-      '<div class="d">Set EASYBIT_API_KEY for the in-app bridge, or MINIAPP_BRIDGE_URL for a launch card.</div>' +
+      '<span class="bridge-soon"><i></i>Coming soon</span>' +
+      '<div class="t">No Stains Bridge</div>' +
+      '<div class="d">Cross-chain swaps and bridging — wallet-to-wallet, never through us. ' +
+      'We’re plumbing in the cleanest route; it lands right here shortly.</div>' +
+      '<button class="btn btn-ghost" id="bridge-buy" style="margin-top:4px;min-width:180px">Get $CLEAN meanwhile →</button>' +
       '</div>';
+    const buy = $('bridge-buy');
+    if (buy) buy.onclick = () => show('trade');
     if (note) note.textContent = '';
   }
 
