@@ -77,3 +77,23 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  glove-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Syntax-check every glove-bot file
+        run: find clean-hands-bot -name '*.py' -print0 | xargs -0 -n1 python -m py_compile
+
+      - name: Image-pipeline unit tests
+        working-directory: clean-hands-bot
+        run: |
+          # The mask/prompt/quality tests need only numpy/opencv/Pillow — not the
+          # heavy mediapipe + aiogram runtime — so keep this install lean and fast.
+          pip install "numpy<2" opencv-python-headless pillow pytest
+          python -m pytest tests/ -q
