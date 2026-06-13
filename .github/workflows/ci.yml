@@ -10,6 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # gitleaks (below) scans {firstPRCommit}^..HEAD; a shallow clone can't
+          # resolve that parent → "unknown revision". Full history fixes it.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
