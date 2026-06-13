@@ -256,6 +256,7 @@
 
   // ---- render profile --------------------------------------------------- //
   function paint(p) {
+    const _prevBurn = PROFILE && PROFILE.apr ? Number(PROFILE.apr.burn_bonus_apr) || 0 : null;
     PROFILE = p;
     // sliding sessions: the server hands us a fresh token as the old one ages —
     // store it silently so active users never see a login screen again
@@ -296,6 +297,7 @@
     $('boost-now').textContent = pct(a.burn_bonus_apr);
     const cap = Number((CONFIG && CONFIG.burn_cap_apr) || 2.0) || 2.0;
     $('boost-bar').style.width = Math.min(100, ((Number(a.burn_bonus_apr) || 0) / cap) * 100) + '%';
+    paintBoostLab(a, _prevBurn);
     const pk = CleanWallet.currentPubkey() || p.wallet || '';
     const chipAddr = $('wallet-chip-addr');
     if (chipAddr) chipAddr.textContent = pk ? pk.slice(0, 4) + '…' + pk.slice(-4) : '—';
@@ -856,6 +858,102 @@
     });
   }
 
+  // ---- Boost Lab -------------------------------------------------------- //
+  // Drives the booster dial + milestones from REAL profile data. Boosters are
+  // additive: multiplier = 1 + amount + loyalty + referral + liquidity. Burn is
+  // a flat APR bonus on top (shown separately).
+  function paintBoostLab(a, prevBurn) {
+    const add =
+      (Number(a.amount_boost) || 0) +
+      (Number(a.loyalty_boost) || 0) +
+      (Number(a.referral_boost) || 0) +
+      (Number(a.liquidity_boost) || 0);
+    const mult = 1 + add;
+    const set = (id, v) => {
+      const e = $(id);
+      if (e) e.textContent = v;
+    };
+    set('bl-mult', mult.toFixed(2) + '×');
+    const dial = $('bl-dial');
+    if (dial) dial.style.setProperty('--blp', Math.max(0, Math.min(100, ((mult - 1) / 2) * 100)));
+    set(
+      'bl-apr',
+      (a.effective_apr_pct != null
+        ? a.effective_apr_pct
+        : Math.round((a.effective_apr || 0) * 100)) + '%',
+    );
+    set('bl-amount', pct(a.amount_boost));
+    set('bl-loyalty', pct(a.loyalty_boost));
+    set('bl-ref', pct(a.referral_boost));
+    set('bl-lp', a.liquidity_boost ? pct(a.liquidity_boost) : 'soon');
+    set('bl-burn', pct(a.burn_bonus_apr));
+    [
+      ['bl-amount', a.amount_boost],
+      ['bl-loyalty', a.loyalty_boost],
+      ['bl-ref', a.referral_boost],
+      ['bl-lp', a.liquidity_boost],
+      ['bl-burn', a.burn_bonus_apr],
+    ].forEach(([id, v]) => {
+      const e = $(id);
+      if (e) e.classList.toggle('zero', !Number(v));
+    });
+    document.querySelectorAll('#bl-miles .bl-mile').forEach((el) => {
+      el.classList.toggle('lit', mult >= parseFloat(el.getAttribute('data-m')) - 1e-9);
+    });
+    // Fire the wash-cycle celebration whenever a real burn just credited.
+    if (prevBurn != null && (Number(a.burn_bonus_apr) || 0) > prevBurn + 1e-9) celebrateBoost();
+  }
+
+  function celebrateBoost() {
+    const box = $('bl-burst');
+    if (box) {
+      for (let i = 0; i < 24; i++) {
+        const s = document.createElement('span');
+        s.className = 'bl-spark';
+        s.textContent = '✦';
+        s.style.left = 20 + Math.random() * 60 + '%';
+        s.style.top = 18 + Math.random() * 50 + '%';
+        s.style.fontSize = 10 + Math.random() * 20 + 'px';
+        const ang = Math.random() * 6.283;
+        const d = 50 + Math.random() * 90;
+        s.style.setProperty('--dx', (Math.cos(ang) * d).toFixed(0) + 'px');
+        s.style.setProperty('--dy', (Math.sin(ang) * d).toFixed(0) + 'px');
+        box.appendChild(s);
+        setTimeout(() => s.parentNode && s.parentNode.removeChild(s), 950);
+      }
+    }
+    const dial = $('bl-dial');
+    if (dial) {
+      dial.classList.remove('bl-pop');
+      void dial.offsetWidth;
+      dial.classList.add('bl-pop');
+    }
+    haptic();
+  }
+
+  function initBoostLab() {
+    const box = $('bl-bubbles');
+    if (!box || box.childElementCount) return;
+    for (let i = 0; i < 9; i++) {
+      const b = document.createElement('i');
+      const sz = 7 + Math.random() * 22;
+      b.style.width = b.style.height = sz + 'px';
+      b.style.left = Math.random() * 100 + '%';
+      b.style.animationDuration = 6 + Math.random() * 7 + 's';
+      b.style.animationDelay = -Math.random() * 10 + 's';
+      box.appendChild(b);
+    }
+  }
+
+  // Liquidity (market-maker) booster. The real CLEAN+SOL deposit + on-chain
+  // position verification is wired server-side; until that lands this is the
+  // documented hook the dev replaces (mirror the burn flow: submit, then credit).
+  async function addLiquidity() {
+    // DEV: build the CLEAN+SOL pool deposit, submit it, then POST the position
+    // to your liquidity-verify endpoint so the server credits the additive boost.
+    toast('💧 Liquidity booster — coming soon ✦');
+  }
+
   // ---- boot ------------------------------------------------------------- //
   async function boot() {
     try {
@@ -879,6 +977,7 @@
     }
     wireBurnChips();
     wirePctRow();
+    initBoostLab();
 
     // Live wallet detection: extensions inject asynchronously on desktop, so
     // re-render the connect screen whenever a new wallet announces itself.
@@ -1613,6 +1712,7 @@
     whitepaper,
     loadSwap,
     burnInApp,
+    addLiquidity,
     genMeme,
     shareMeme,
     downloadMeme,

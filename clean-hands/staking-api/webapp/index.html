@@ -581,6 +581,184 @@
         transition: width 0.5s;
       }
 
+      /* ===== Boost Lab ===== */
+      @property --blp {
+        syntax: '<number>';
+        inherits: false;
+        initial-value: 0;
+      }
+      #view-boost .bl-hero {
+        padding: 22px 18px 20px;
+      }
+      #view-boost .bl-bubbles,
+      #view-boost .bl-burst {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        overflow: hidden;
+      }
+      #view-boost .bl-burst {
+        z-index: 4;
+      }
+      #view-boost .bl-bubbles i {
+        position: absolute;
+        bottom: -40px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 32% 28%,
+          rgba(255, 255, 255, 0.9),
+          rgba(169, 211, 251, 0.4) 62%,
+          rgba(134, 191, 248, 0.12)
+        );
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        animation: blRise linear infinite;
+      }
+      @keyframes blRise {
+        0% { transform: translateY(0) scale(0.7); opacity: 0; }
+        14% { opacity: 0.55; }
+        86% { opacity: 0.35; }
+        100% { transform: translateY(-340px) scale(1.1); opacity: 0; }
+      }
+      #view-boost .bl-dialwrap {
+        position: relative;
+        display: flex;
+        justify-content: center;
+        margin: 4px 0 10px;
+      }
+      #view-boost .bl-dial {
+        --blp: 0;
+        width: 150px;
+        height: 150px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        position: relative;
+        background: conic-gradient(
+          from -90deg,
+          var(--sky),
+          var(--ink-2) calc(var(--blp) * 1%),
+          var(--glove) calc(var(--blp) * 1%)
+        );
+        transition: --blp 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+        box-shadow: 0 16px 36px -20px rgba(27, 93, 166, 0.5);
+      }
+      #view-boost .bl-dial::before {
+        content: '';
+        position: absolute;
+        inset: 13px;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: inset 0 2px 12px rgba(27, 93, 166, 0.14);
+      }
+      #view-boost .bl-mult {
+        position: relative;
+        font-family: 'Fraunces', serif;
+        font-weight: 700;
+        font-size: 2.2rem;
+        color: var(--ink-deep);
+        line-height: 1;
+      }
+      #view-boost .bl-dial em {
+        position: relative;
+        display: block;
+        font-style: normal;
+        text-align: center;
+        font-size: 0.58rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 700;
+        margin-top: 2px;
+      }
+      #view-boost .bl-dial.bl-pop {
+        animation: blPop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1);
+      }
+      @keyframes blPop {
+        0% { transform: scale(1); }
+        40% { transform: scale(1.08); }
+        100% { transform: scale(1); }
+      }
+      #view-boost .bl-apr {
+        position: relative;
+        text-align: center;
+        font-size: 0.82rem;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      #view-boost .bl-apr b {
+        font-family: 'Fraunces', serif;
+        color: var(--ink-deep);
+        font-size: 1.05rem;
+      }
+      #view-boost .bl-miles {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-top: 14px;
+      }
+      #view-boost .bl-mile {
+        border: 1.5px solid var(--line);
+        border-radius: 14px;
+        padding: 8px 4px;
+        text-align: center;
+        background: #fff;
+        color: var(--muted);
+        transition: 0.3s;
+        position: relative;
+        overflow: hidden;
+      }
+      #view-boost .bl-mile b {
+        display: block;
+        font-family: 'Fraunces', serif;
+        font-size: 1.1rem;
+        color: var(--ink-deep);
+      }
+      #view-boost .bl-mile small {
+        font-size: 0.58rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        font-weight: 700;
+      }
+      #view-boost .bl-mile.lit {
+        border-color: var(--ink-2);
+        color: var(--ink-2);
+        box-shadow: var(--shadow-sm);
+        transform: translateY(-2px);
+      }
+      #view-boost .bl-mile.lit::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -60%;
+        width: 46%;
+        height: 100%;
+        background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+        animation: blSweep 2.6s ease-in-out infinite;
+      }
+      @keyframes blSweep {
+        0% { left: -60%; }
+        55%, 100% { left: 130%; }
+      }
+      #view-boost .bl-spark {
+        position: absolute;
+        font-family: 'Fraunces', serif;
+        color: var(--ink-2);
+        filter: drop-shadow(0 2px 6px rgba(46, 116, 192, 0.5));
+        animation: blPopSpark 0.9s ease-out forwards;
+      }
+      @keyframes blPopSpark {
+        0% { transform: translate(0, 0) scale(0.2) rotate(0); opacity: 0; }
+        20% { opacity: 1; }
+        100% { transform: translate(var(--dx), var(--dy)) scale(1.1) rotate(140deg); opacity: 0; }
+      }
+      #view-boost .bl-soon {
+        font-size: 0.74rem;
+        color: var(--muted);
+        margin-top: 10px;
+        text-align: center;
+      }
+
       /* leaderboard */
       .lb {
         display: flex;
@@ -1518,6 +1696,43 @@
 
         <!-- BOOST -->
         <section class="tab" id="view-boost" hidden>
+          <div class="card apr bl-hero">
+            <div class="bl-bubbles" id="bl-bubbles" aria-hidden="true"></div>
+            <div class="bl-burst" id="bl-burst" aria-hidden="true"></div>
+            <div class="bl-dialwrap">
+              <div class="bl-dial" id="bl-dial">
+                <span class="bl-mult" id="bl-mult">1.00×</span><em>booster</em>
+              </div>
+            </div>
+            <div class="bl-apr"><b id="bl-apr">40%</b> &nbsp;effective APR · accruing live</div>
+            <div class="bl-miles" id="bl-miles">
+              <div class="bl-mile" data-m="1.5"><b>1.5×</b><small>Warm</small></div>
+              <div class="bl-mile" data-m="2"><b>2×</b><small>Clean</small></div>
+              <div class="bl-mile" data-m="3"><b>3×</b><small>Spotless</small></div>
+            </div>
+          </div>
+          <div class="card panel">
+            <h3>✦ Your booster stack</h3>
+            <p class="desc">
+              Tiers <b>add up</b> — stack them for up to <b>3×</b>. Burn adds bonus APR on top, and
+              tokens never leave your wallet.
+            </p>
+            <div class="row">
+              <span class="name">🪣 Holdings</span><span class="v zero" id="bl-amount">—</span>
+            </div>
+            <div class="row">
+              <span class="name">⏳ Loyalty</span><span class="v zero" id="bl-loyalty">—</span>
+            </div>
+            <div class="row">
+              <span class="name">🤝 Referrals</span><span class="v zero" id="bl-ref">—</span>
+            </div>
+            <div class="row">
+              <span class="name">💧 Liquidity (MM)</span><span class="v zero" id="bl-lp">—</span>
+            </div>
+            <div class="row">
+              <span class="name">🔥 Burn bonus</span><span class="v zero" id="bl-burn">—</span>
+            </div>
+          </div>
           <div class="card panel">
             <h3>🔥 Burn to boost</h3>
             <p class="desc">
@@ -1538,6 +1753,26 @@
               <button class="chip" data-burn="25000">🔥 25K</button>
               <button class="chip" data-burn="100000">🔥 100K</button>
             </div>
+          </div>
+          <div class="card panel">
+            <h3>💧 Market-maker liquidity</h3>
+            <p class="desc">
+              Add <b>$CLEAN + SOL</b> to the pool to earn up to <b>+0.70×</b> — the tier that tops
+              your stack to a clean 3×. Real liquidity, real swap fees.
+            </p>
+            <div class="field">
+              <div class="top-l"><span>You add</span><span>+ pair</span></div>
+              <div class="input">
+                <input id="bl-lp-clean" type="number" inputmode="decimal" placeholder="CLEAN amount" />
+              </div>
+            </div>
+            <div class="field">
+              <div class="input">
+                <input id="bl-lp-sol" type="number" inputmode="decimal" placeholder="SOL amount" />
+              </div>
+            </div>
+            <button class="btn btn-solid" onclick="App.addLiquidity()">💧 Add to MM pool</button>
+            <p class="bl-soon">Rolling out ✦ — boosters are additive; this tops your stack to 3×.</p>
           </div>
           <div class="card panel">
             <h3>Credit a burn</h3>
@@ -1696,6 +1931,6 @@
     <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <script src="/wallet.js?v=10"></script>
-    <script src="/app.js?v=10"></script>
+    <script src="/app.js?v=11"></script>
   </body>
 </html>
