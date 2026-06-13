@@ -15,6 +15,9 @@ APP=/home/clean/CLEAN-HANDS/clean-hands
 echo "== website (cleanhands.fun landing) =="
 mkdir -p /var/www/clean-site
 cp "$APP/deploy/site-index.html" /var/www/clean-site/index.html
+# standalone landing pages (pretty URLs /boost and /bridge via nginx try_files)
+cp "$APP/deploy/boost.html" /var/www/clean-site/boost.html
+cp "$APP/deploy/bridge.html" /var/www/clean-site/bridge.html
 
 echo "== shop product photos =="
 mkdir -p /var/www/clean-site/shop
