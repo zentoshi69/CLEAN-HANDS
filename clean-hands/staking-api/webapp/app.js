@@ -484,8 +484,15 @@
     $('meme-out').classList.add('hide');
     try {
       const r = await api('/api/meme', authedBody({ idea }));
-      MEME_DATA = r.image;
-      $('meme-img').src = r.image;
+      // Only ever load a data:image or https: URL into the <img>. Assigning an
+      // unvalidated API string to .src is an injection foothold (e.g. an
+      // attacker-influenced javascript:/text payload) — coerce + allowlist.
+      const img = String(r.image || '');
+      if (!/^(data:image\/(png|jpe?g|gif|webp|svg\+xml);|https:\/\/)/i.test(img)) {
+        throw new Error('unexpected image format');
+      }
+      MEME_DATA = img;
+      $('meme-img').src = img;
       $('meme-out').classList.remove('hide');
       if (r.remaining != null) $('meme-left').textContent = r.remaining + ' left today';
     } catch (e) {
@@ -802,7 +809,10 @@
     if (!pk) return toast('Connect your wallet first');
     toast('Building burn…');
     try {
-      const web3 = await import('https://esm.sh/@solana/web3.js@1');
+      // Pinned to a minor line (not a bare major) to shrink the moving-target
+      // surface on this signing path. Durable fix: self-host these bundles —
+      // dynamic import() can't carry SRI. (Gated behind CONFIG.inAppBurn.)
+      const web3 = await import('https://esm.sh/@solana/web3.js@1.95');
       const splt = await import('https://esm.sh/@solana/spl-token@0.4');
       const conn = new web3.Connection(safeRpc());
       const owner = new web3.PublicKey(pk);
@@ -977,7 +987,7 @@
         <div class="fwal-stats">
           <div><span class="fv">${fmt(w.staked)}</span><span class="fk">Staked</span></div>
           <div><span class="fv">${fmt(w.pending_rewards)}</span><span class="fk">Pending</span></div>
-          <div><span class="fv">${w.apr_pct}%</span><span class="fk">APR</span></div>
+          <div><span class="fv">${Number(w.apr_pct) || 0}%</span><span class="fk">APR</span></div>
           <div><span class="fv">${fmt(w.total_burned)}</span><span class="fk">Burned</span></div>
           ${boosted ? `<div><span class="fv">${fmt(w.staked_effective)}</span><span class="fk">Effective</span></div>` : ''}
         </div>

@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # ONE-COMMAND production deploy for CLEAN HANDS. Run as root on the VPS:
 #
-#   cd /home/clean/CLEAN-HANDS && sudo -u clean git checkout -- . && \
-#     sudo -u clean git pull && sudo bash clean-hands/deploy/redeploy.sh
+#   cd /home/clean/CLEAN-HANDS && sudo -u clean git stash --include-untracked && \
+#     sudo -u clean git pull --ff-only && sudo bash clean-hands/deploy/redeploy.sh
+#
+# NOTE: use `git stash` (recoverable), never `git checkout -- .` — the latter
+# silently discards any hotfix made on the box. `--ff-only` refuses to clobber a
+# diverged local history instead of force-merging.
 #
 # Idempotent. Never touches .env or the staker database.
 set -u

@@ -55,7 +55,21 @@ jobs:
         run: |
           find clean-hands -name '*.sh' -print0 | xargs -0 -n1 bash -n
 
-      - name: Dependency vulnerability audit
+      - name: Dependency vulnerability audit (all requirement sets)
         run: |
           pip install pip-audit
-          pip-audit -r clean-hands/staking-api/requirements.txt
+          # Audit every requirements file, not just the API's — the bots pull
+          # Pillow/python-telegram-bot too. Don't fail-fast across files.
+          rc=0
+          for req in clean-hands/staking-api/requirements.txt \
+                     clean-hands/miniapp/requirements.txt \
+                     clean-hands/requirements.txt; do
+            [ -f "$req" ] || continue
+            echo "::group::pip-audit $req"; pip-audit -r "$req" || rc=1; echo "::endgroup::"
+          done
+          exit $rc
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

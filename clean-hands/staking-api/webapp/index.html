@@ -10,7 +10,9 @@
     <link rel="icon" href="/glove.png" />
     <link rel="apple-touch-icon" href="/glove.png" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://unpkg.com/tweetnacl@1.0.3/nacl.min.js"></script>
+    <!-- ed25519 signing lib served same-origin (CSP script-src 'self'); the
+         vetted local copy avoids a no-SRI CDN dependency on the signing path. -->
+    <script src="/nacl.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
