@@ -43,6 +43,7 @@ import hmac
 import hashlib
 import os
 import re
+import sys
 import time
 from decimal import Decimal, InvalidOperation
 
@@ -71,6 +72,12 @@ FEE_USD = _f("BRIDGE_FEE_USD", 5.0)
 MIN_ORDER_USD = _f("BRIDGE_MIN_ORDER_USD", 55.0)
 MAX_FEE_PCT = _f("BRIDGE_EXTRA_FEE_MAX_PCT", 10.0)
 MIN_FEE_PCT = _f("BRIDGE_EXTRA_FEE_MIN_PCT", 0.0)
+# Decimal places kept on the fee PERCENTAGE. This must be fine enough that the
+# flat $5 holds on big orders: the fee on a $1M order is 0.0005%, which 2 dp
+# would round to 0.00% ($0!) — so we keep 6 dp (accurate to <1¢ up to ~$2M
+# orders, <$1 up to ~$200M). Lower it only if the exchange rejects long
+# fractional percents (and accept a small flat-fee drift on very large orders).
+FEE_PCT_DECIMALS = max(2, min(12, int(_f("BRIDGE_FEE_PCT_DECIMALS", 6.0))))
 REQUIRE_USD = _bool("BRIDGE_REQUIRE_USD", True)
 RESERVE_WALLET = (os.environ.get("BRIDGE_RESERVE_WALLET", "") or "").strip()
 BRAND = (os.environ.get("BRIDGE_BRAND", "") or "").strip() or "No Stains Bridge"
@@ -196,9 +203,20 @@ def fee_for(send_usd: float) -> tuple[float, float]:
     else:
         pct = FEE_USD / send_usd * 100.0
     pct = max(MIN_FEE_PCT, min(MAX_FEE_PCT, pct))
-    pct = round(pct, 2)
+    pct = round(pct, FEE_PCT_DECIMALS)  # NOT 2 dp — see FEE_PCT_DECIMALS
     effective = round(send_usd * pct / 100.0, 2)
     return pct, effective
+
+
+def _applied_fee_pct(order: dict):
+    """The partner-fee percentage the exchange actually applied, if it echoes
+    one back. Lets us reconcile against what we asked for (the fee model is the
+    whole revenue mechanism and the override param is provider-specific)."""
+    v = easybit.pick(order, "extraFee", "extraFeeOverride", "partnerFee", "fee")
+    try:
+        return float(v) if v is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _min_hint(send_usd: float, amount: str) -> str:
@@ -304,7 +322,11 @@ async def create(*, send: str, receive: str, amount: str, receive_address: str,
     fee_pct, fee_usd = fee_for(send_usd or 0.0)
     override = fee_pct if priced else None
 
-    # Best-effort address validation (does not block on a provider hiccup).
+    # Pre-flight address check. validate_address fails OPEN only on a transport
+    # error (returns True); a definitive "invalid" returns False and blocks here.
+    # Either way create_order below is the AUTHORITATIVE gate — the exchange
+    # re-validates the address when generating the deposit address, so a bad
+    # address cannot slip through even on a validation hiccup.
     if not await easybit.validate_address(receive, receive_address, receive_network):
         raise BridgeError("that destination address is not valid for the chosen coin/network")
 
@@ -314,6 +336,19 @@ async def create(*, send: str, receive: str, amount: str, receive_address: str,
         receive_tag=receive_tag, refund_address=refund_address, refund_tag=refund_tag,
         extra_fee=override,
     )
+
+    # Reconcile the fee: if the exchange echoes back the applied partner fee and
+    # it disagrees with what we asked for, the override param/units may be wrong
+    # for this provider — surface it loudly rather than silently mis-charging.
+    if override is not None:
+        applied = _applied_fee_pct(order)
+        if applied is not None and abs(applied - override) > 1e-4:
+            print(
+                f"[bridge][warn] fee mismatch on order {easybit.order_id_of(order)}: "
+                f"intended {override}% but exchange applied {applied}% — check "
+                "EASYBIT_EXTRA_FEE_PARAM / fee units against the live API.",
+                file=sys.stderr,
+            )
 
     oid = easybit.order_id_of(order)
     deposit_addr = easybit.deposit_address_of(order)

@@ -22,7 +22,7 @@ jobs:
 
       - name: API test suite
         working-directory: clean-hands/staking-api
-        run: python -m pytest test_staking.py -q
+        run: python -m pytest test_staking.py test_bridge.py -q
 
       - name: Compile every Python file (bots included)
         run: find clean-hands -name '*.py' -print0 | xargs -0 -n1 python -m py_compile

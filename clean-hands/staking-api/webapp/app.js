@@ -1092,6 +1092,7 @@
     quote: null,
     stage: 'quote', // quote -> confirm
     addrOk: null,
+    addrChecking: false,
   };
   let _quoteT, _addrT, _bridgePoll;
 
@@ -1245,14 +1246,29 @@
     if (side === 'recv') checkAddr();
   }
 
+  function setSelIfPresent(sel, val) {
+    if (!val) return;
+    for (let i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === val) {
+        sel.value = val;
+        return;
+      }
+    }
+  }
+
   function flipBridge() {
-    const s = $('bf-send'),
-      r = $('bf-recv');
-    const sv = s.value;
-    s.value = r.value;
-    r.value = sv;
-    onCoinChange('send');
-    onCoinChange('recv');
+    const sCoin = $('bf-send').value,
+      sNet = $('bf-send-net').value;
+    const rCoin = $('bf-recv').value,
+      rNet = $('bf-recv-net').value;
+    $('bf-send').value = rCoin;
+    $('bf-recv').value = sCoin;
+    onCoinChange('send'); // refills bf-send-net for the new send coin
+    onCoinChange('recv'); // refills bf-recv-net for the new receive coin
+    // Carry each leg's chosen network across the flip when still offered.
+    setSelIfPresent($('bf-send-net'), rNet);
+    setSelIfPresent($('bf-recv-net'), sNet);
+    onBridgeInput();
     haptic();
   }
 
@@ -1345,9 +1361,12 @@
     if (!addr) {
       chk.textContent = '';
       BR.addrOk = null;
+      BR.addrChecking = false;
       updatePrimary();
       return;
     }
+    BR.addrChecking = true; // block confirm until this resolves
+    updatePrimary();
     try {
       const r = await api('/api/bridge/validate-address', {
         currency: $('bf-recv').value,
@@ -1361,6 +1380,7 @@
       BR.addrOk = null;
       chk.textContent = '';
     }
+    BR.addrChecking = false;
     updatePrimary();
   }
 
@@ -1373,7 +1393,7 @@
     const go = $('bf-go');
     if (!go) return;
     const addr = ($('bf-addr').value || '').trim();
-    const ready = BR.quote && addr && BR.addrOk !== false;
+    const ready = BR.quote && addr && BR.addrOk !== false && !BR.addrChecking;
     go.disabled = !ready;
     go.textContent = BR.stage === 'confirm' ? 'Confirm — get deposit address' : 'Review swap';
   }
