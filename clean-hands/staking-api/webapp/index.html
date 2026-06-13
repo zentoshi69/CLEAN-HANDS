@@ -29,7 +29,7 @@
         --ink-2: #2e74c0;
         --ink-deep: #0f3e73;
         --text: #16385c;
-        --muted: #5d7ea3;
+        --muted: #4d6e93; /* AA-contrast secondary text (~5:1 on the light bg) */
         --line: rgba(27, 93, 166, 0.16);
         --line-2: rgba(27, 93, 166, 0.28);
         --pos: #2f9e63;
@@ -42,6 +42,15 @@
         padding: 0;
         box-sizing: border-box;
         -webkit-tap-highlight-color: transparent;
+      }
+      /* Keyboard focus ring. Tap-highlight is removed above, and nothing else
+         defined :focus, so keyboard users previously had no visible focus at
+         all. The 2px offset sits in the gap on the light page/card, so the ring
+         stays high-contrast even over the dark-blue solid buttons. */
+      :focus-visible {
+        outline: 2.5px solid var(--ink-deep);
+        outline-offset: 2px;
+        border-radius: 4px;
       }
       html,
       body {
@@ -159,6 +168,44 @@
       }
       .wallet-wrap {
         position: relative;
+      }
+      .top-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      /* round icon button in the header — opens the all-wallets portfolio */
+      .iconbtn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        flex: none;
+        border-radius: 50%;
+        border: 1.5px solid var(--line-2);
+        background: rgba(255, 255, 255, 0.72);
+        color: var(--ink-2);
+        cursor: pointer;
+        transition: 0.2s;
+        backdrop-filter: blur(6px);
+      }
+      .iconbtn svg {
+        width: 18px;
+        height: 18px;
+      }
+      .iconbtn:hover {
+        background: #fff;
+        border-color: var(--ink-2);
+        box-shadow: 0 8px 20px -12px rgba(46, 116, 192, 0.7);
+      }
+      .iconbtn:active {
+        transform: scale(0.94);
+      }
+      .iconbtn.on {
+        background: var(--ink-2);
+        border-color: var(--ink-2);
+        color: #fff;
       }
       .pct-row {
         display: flex;
@@ -1027,7 +1074,22 @@
             <small>soft staking</small>
           </div>
         </div>
-        <div class="wallet-wrap">
+        <div class="top-actions">
+          <button
+            class="iconbtn"
+            id="folio-chip"
+            onclick="App.portfolio()"
+            aria-label="All wallets — portfolio"
+            title="All wallets"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1.5" />
+              <rect x="14" y="3" width="7" height="7" rx="1.5" />
+              <rect x="3" y="14" width="7" height="7" rx="1.5" />
+              <rect x="14" y="14" width="7" height="7" rx="1.5" />
+            </svg>
+          </button>
+          <div class="wallet-wrap">
           <button class="wallet" id="wallet-chip" onclick="App.walletMenu(event)">
             <span class="wdot"></span><span id="wallet-chip-addr">—</span
             ><span class="wcaret">▾</span>
@@ -1084,6 +1146,7 @@
               </svg>
               Disconnect
             </button>
+          </div>
           </div>
         </div>
       </header>
@@ -1438,7 +1501,7 @@
       </nav>
     </div>
 
-    <div id="toast"></div>
+    <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <script src="/wallet.js?v=10"></script>
     <script src="/app.js?v=10"></script>
