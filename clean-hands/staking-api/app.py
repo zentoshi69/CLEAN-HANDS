@@ -39,7 +39,9 @@ from pydantic import BaseModel
 
 import db
 import auth
+import bridge
 import config
+import easybit
 import economics as econ
 import market
 import ratelimit
@@ -795,6 +797,11 @@ def api_economics():
             # Set MINIAPP_BRIDGE_EMBED=1 ONLY when bridgeUrl is a real embeddable
             # widget URL (one that allows framing) to render it inline.
             "bridgeEmbed": os.environ.get("MINIAPP_BRIDGE_EMBED", "").strip() in ("1", "true", "yes"),
+            # No Stains Bridge (white-label EasyBit) — when EASYBIT_API_KEY is set,
+            # bridgeMode is "api" and the app renders the in-app swap form; without
+            # it, bridgeMode is "link" and the existing launch-card stays. These
+            # fields let the UI show the SAME min/fee the server enforces.
+            **bridge.public_config(),
             "decimals": db.DECIMALS,
             "mint": market.MINT,
             # WalletConnect relay (QR — works with ANY wallet app; the escape
@@ -1178,6 +1185,136 @@ def api_relay_ack(rid: str, request: Request):
         raise HTTPException(400, "bad relay id")
     store.get_store().delete("relay:" + rid)
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+#  NO STAINS BRIDGE — white-label EasyBit (API mode)                            #
+#  The API key lives only here; the browser talks to these endpoints, never to #
+#  EasyBit directly. All bridge endpoints are public (no login) but IP rate-    #
+#  limited, so a swap works on the website without connecting a Solana wallet.  #
+#  When EASYBIT_API_KEY is unset these 503, and the UI uses the link fallback.  #
+# --------------------------------------------------------------------------- #
+class BridgeQuoteBody(BaseModel):
+    send: str
+    receive: str
+    amount: str | float | int
+    sendNetwork: str | None = None
+    receiveNetwork: str | None = None
+
+
+class BridgeValidateBody(BaseModel):
+    currency: str
+    address: str
+    network: str | None = None
+
+
+class BridgeOrderBody(BaseModel):
+    send: str
+    receive: str
+    amount: str | float | int
+    receiveAddress: str
+    sendNetwork: str | None = None
+    receiveNetwork: str | None = None
+    receiveTag: str | None = None
+    refundAddress: str | None = None
+    refundTag: str | None = None
+
+
+def _bridge_err(e: Exception) -> HTTPException:
+    """Map our typed bridge/exchange errors to a clean HTTP error. Never leak
+    internals — only the user-facing message and a sane status escape."""
+    if isinstance(e, bridge.BridgeError):
+        return HTTPException(e.status, e.message)
+    if isinstance(e, easybit.EasyBitError):
+        return HTTPException(e.status, e.message)
+    return HTTPException(502, "the bridge is temporarily unavailable")
+
+
+def _bridge_ready():
+    if not easybit.enabled():
+        raise HTTPException(503, "bridge is not configured")
+
+
+def _trim_currency(c: dict) -> dict:
+    sym = easybit.pick(c, "currency", "coin", "symbol", "ticker", default="")
+    nets = []
+    for n in (c.get("networkList") or c.get("networks") or []):
+        if isinstance(n, dict):
+            net = easybit.pick(n, "network", "id", "name", default="")
+            if net:
+                nets.append({"network": net, "name": easybit.pick(n, "name", default=net)})
+        elif isinstance(n, str):
+            nets.append({"network": n, "name": n})
+    return {"coin": sym, "name": easybit.pick(c, "name", default=sym), "networks": nets}
+
+
+@app.get("/api/bridge/currencies")
+async def api_bridge_currencies(request: Request):
+    ratelimit.hit(request, "bridge")
+    _bridge_ready()
+    try:
+        raw = await easybit.currency_list()
+    except easybit.EasyBitError as e:
+        raise _bridge_err(e)
+    out = [_trim_currency(c) for c in raw if isinstance(c, dict)]
+    out = [c for c in out if c["coin"]]
+    return JSONResponse({"currencies": out}, headers={"Cache-Control": "public, max-age=300"})
+
+
+@app.post("/api/bridge/quote")
+async def api_bridge_quote(body: BridgeQuoteBody, request: Request):
+    ratelimit.hit(request, "bridge")
+    _bridge_ready()
+    try:
+        return await bridge.quote(
+            body.send, body.receive, body.amount,
+            send_network=body.sendNetwork or "", receive_network=body.receiveNetwork or "",
+        )
+    except (bridge.BridgeError, easybit.EasyBitError) as e:
+        raise _bridge_err(e)
+
+
+@app.post("/api/bridge/validate-address")
+async def api_bridge_validate(body: BridgeValidateBody, request: Request):
+    ratelimit.hit(request, "bridge")
+    _bridge_ready()
+    try:
+        coin = bridge.norm_coin(body.currency)
+        net = bridge.norm_network(body.network or "")
+        addr = bridge.norm_address(body.address)
+    except bridge.BridgeError:
+        return {"valid": False}
+    try:
+        ok = await easybit.validate_address(coin, addr, net)
+    except easybit.EasyBitError as e:
+        raise _bridge_err(e)
+    return {"valid": bool(ok)}
+
+
+@app.post("/api/bridge/order")
+async def api_bridge_order(body: BridgeOrderBody, request: Request):
+    ratelimit.hit(request, "bridge_order")
+    _bridge_ready()
+    try:
+        return await bridge.create(
+            send=body.send, receive=body.receive, amount=body.amount,
+            receive_address=body.receiveAddress,
+            send_network=body.sendNetwork or "", receive_network=body.receiveNetwork or "",
+            receive_tag=body.receiveTag, refund_address=body.refundAddress,
+            refund_tag=body.refundTag, client_ip=ratelimit.client_ip(request),
+        )
+    except (bridge.BridgeError, easybit.EasyBitError) as e:
+        raise _bridge_err(e)
+
+
+@app.get("/api/bridge/order/{order_id}")
+async def api_bridge_order_status(order_id: str, request: Request):
+    ratelimit.hit(request, "bridge_status")
+    _bridge_ready()
+    try:
+        return await bridge.status_of_order(order_id)
+    except (bridge.BridgeError, easybit.EasyBitError) as e:
+        raise _bridge_err(e)
 
 
 @app.get("/healthz")
