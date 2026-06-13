@@ -178,13 +178,23 @@ def _accrue(conn, wallet: str) -> None:
     """Bring a staker's rewards up to `now`. All arithmetic in integer base units
     (floored), so there is no float drift over many small accruals."""
     row = db.get_staker(conn, wallet)
+    prev_ts = row["last_accrual_ts"]
     now = int(time.time())
+    dt = now - prev_ts
+    if dt <= 0:
+        return  # nothing to settle (or clock went backwards — never credit that)
     eff_base, _secs, _refs, apr = _apr_for(conn, wallet, row)
-    dt = now - row["last_accrual_ts"]
     reward_base = int(econ.accrue(eff_base, apr.effective_apr, dt))  # floor
+    # Compare-and-swap on last_accrual_ts: every money path opens its own
+    # connection, so two concurrent accruals would each read the SAME prev_ts
+    # and both add reward for the SAME [prev_ts, now] window — minting rewards.
+    # Conditioning the write on last_accrual_ts == prev_ts means only the first
+    # writer credits the interval; the loser's UPDATE matches 0 rows and is
+    # dropped (the interval it would credit was already credited).
     conn.execute(
-        "UPDATE stakers SET accrued = accrued + ?, last_accrual_ts=? WHERE wallet=?",
-        (reward_base, now, wallet),
+        "UPDATE stakers SET accrued = accrued + ?, last_accrual_ts=? "
+        "WHERE wallet=? AND last_accrual_ts=?",
+        (reward_base, now, wallet, prev_ts),
     )
     conn.commit()
 
@@ -1325,4 +1335,11 @@ def glove_link(code: str, request: Request):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("STAKE_PORT", "8090")))
+    # Bind localhost by default — the API sits behind nginx/Caddy (see DNS.md:
+    # "never expose 8090 publicly"). Set STAKE_HOST=0.0.0.0 only to deliberately
+    # expose it (and firewall the port yourself).
+    uvicorn.run(
+        app,
+        host=os.environ.get("STAKE_HOST", "127.0.0.1"),
+        port=int(os.environ.get("STAKE_PORT", "8090")),
+    )

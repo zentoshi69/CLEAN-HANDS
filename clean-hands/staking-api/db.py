@@ -89,6 +89,9 @@ def db():
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
+        # Concurrent writers serialize under WAL; wait for the lock (up to 5s)
+        # instead of raising SQLITE_BUSY and 500-ing a money request.
+        conn.execute("PRAGMA busy_timeout=5000")
         try:
             yield conn
         finally:

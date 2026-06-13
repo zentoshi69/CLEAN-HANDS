@@ -36,14 +36,20 @@ SESSION_TTL = int(os.environ.get("STAKE_SESSION_TTL", "172800"))
 SESSION_REFRESH_AFTER = int(os.environ.get("STAKE_SESSION_REFRESH_AFTER", "21600"))  # 6h
 INITDATA_TTL = int(os.environ.get("STAKE_INITDATA_TTL", "86400"))
 LOGIN_PREFIX = "CLEAN soft-staking login"
+# Domain bound into the signed message (SIWS-style). A signature captured by a
+# look-alike clone over our nonce can't be relayed here, because the message
+# the wallet signs names this app's domain and we verify against it.
+LOGIN_DOMAIN = os.environ.get("STAKE_LOGIN_DOMAIN", "cleanhands.fun")
 
 
 # --------------------------------------------------------------------------- #
 #  WALLET (Solana ed25519)                                                     #
 # --------------------------------------------------------------------------- #
 def login_message(wallet: str, nonce: str) -> str:
-    """The exact string the wallet must sign. Human-readable on purpose."""
-    return f"{LOGIN_PREFIX}\nwallet: {wallet}\nnonce: {nonce}"
+    """The exact string the wallet must sign. Human-readable on purpose.
+    Carries the app domain so a signature phished by a clone site can't be
+    replayed against this server (server issues AND re-verifies this message)."""
+    return f"{LOGIN_PREFIX}\ndomain: {LOGIN_DOMAIN}\nwallet: {wallet}\nnonce: {nonce}"
 
 
 def is_valid_wallet(wallet: str) -> bool:
