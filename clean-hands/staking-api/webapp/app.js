@@ -67,6 +67,13 @@
       (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
     );
   }
+  // Copy arbitrary text with the house haptic + toast (used by the portfolio
+  // address chips, alongside the connected-wallet copyAddr).
+  function copyText(text, msg) {
+    if (text && navigator.clipboard) navigator.clipboard.writeText(text);
+    haptic();
+    toast(msg || 'Copied ✦');
+  }
   async function api(path, body) {
     const res = await fetch(path, {
       method: 'POST',
@@ -531,6 +538,10 @@
       $('m-liq').textContent = PRICE.liquidity_usd ? '$' + fmt(PRICE.liquidity_usd) : '—';
       $('m-vol').textContent = PRICE.volume_24h ? '$' + fmt(PRICE.volume_24h) : '—';
       updatePortfolio();
+      // If the price lands while the portfolio is open, repaint it so the USD
+      // columns fill in instead of staying blank until the next link/unlink.
+      const fv = $('view-folio');
+      if (TOKEN && fv && !fv.hidden) loadFolio();
     } catch (e) {}
   }
   function updatePortfolio() {
@@ -911,34 +922,80 @@
   let LINKING = false;
   function renderFolio(r) {
     const t = r.totals || {};
+    const priced = !!(PRICE && PRICE.available);
+    const setUsd = (id, amt) => {
+      const el = $(id);
+      if (el) el.textContent = priced ? usd(amt || 0) : '';
+    };
     $('f-holdings').textContent = fmt(t.holdings || 0);
-    $('f-usd').textContent = PRICE && PRICE.available ? usd(t.holdings || 0) : '';
+    $('f-usd').textContent = priced ? usd(t.holdings || 0) : '';
     $('f-bal').textContent = fmt(t.balance || 0);
     $('f-staked').textContent = fmt(t.staked || 0);
     $('f-pend').textContent = fmt(t.pending_rewards || 0);
+    $('f-burned').textContent = fmt(t.total_burned || 0);
+    setUsd('f-bal-usd', t.balance);
+    setUsd('f-staked-usd', t.staked);
+    setUsd('f-pend-usd', t.pending_rewards);
+    setUsd('f-burned-usd', t.total_burned);
+
+    const wallets = r.wallets || [];
+    // Blended APR: stake-weighted across the cluster. With nothing staked yet
+    // there is no weight, so show the best rate any wallet would earn instead.
+    const totalStaked = wallets.reduce((s, w) => s + (Number(w.staked) || 0), 0);
+    const blended =
+      totalStaked > 0
+        ? wallets.reduce((s, w) => s + (Number(w.apr_pct) || 0) * (Number(w.staked) || 0), 0) /
+          totalStaked
+        : wallets.reduce((m, w) => Math.max(m, Number(w.apr_pct) || 0), 0);
+    const aprEl = $('f-apr');
+    if (aprEl) aprEl.textContent = (Math.round(blended * 10) / 10).toLocaleString() + '%';
+
+    const totalHoldings = Number(t.holdings) || 0;
     const box = $('folio-rows');
     box.innerHTML =
       `<div class="lbl folio-count">${r.count || 0} of ${r.limit || 20} wallets — linked forever until you remove them</div>` +
-      (r.wallets || [])
-        .map(
-          (w) => `<div class="card fwal">
+      wallets
+        .map((w) => {
+          const hold = (Number(w.balance) || 0) + (Number(w.pending_rewards) || 0);
+          const share =
+            totalHoldings > 0 ? Math.round((hold / totalHoldings) * 1000) / 10 : 0;
+          // "Effective" stake = boost-adjusted base used for rewards; only worth
+          // a tile when a burn has actually lifted it above the recorded stake.
+          const boosted = (Number(w.staked_effective) || 0) > (Number(w.staked) || 0) + 1e-9;
+          return `<div class="card fwal">
         <div class="fwal-top">
-          <code class="fwal-addr">${esc(w.wallet.slice(0, 4) + '…' + w.wallet.slice(-4))}</code>
+          <button class="fwal-addr" data-copy="${esc(w.wallet)}" title="Tap to copy full address">${esc(
+            w.wallet.slice(0, 4) + '…' + w.wallet.slice(-4),
+          )}<span class="fwal-copy">⧉</span></button>
           ${w.anchor ? '<span class="fpill">⚓ anchor</span>' : ''}
           ${w.me ? '<span class="fpill on">this session</span>' : ''}
           ${w.anchor ? '' : `<button class="funlink" data-unlink="${esc(w.wallet)}">✕ Remove</button>`}
         </div>
+        <div class="fwal-share" title="${share}% of portfolio"><div class="fwal-share-bar" style="width:${Math.min(100, Math.max(share, 2))}%"></div></div>
+        <div class="fwal-share-lbl">${share}% of portfolio · ${fmt(hold)} $CLEAN holdings</div>
         <div class="fwal-stats">
           <div><span class="fv">${fmt(w.balance)}</span><span class="fk">Balance</span></div>
           <div><span class="fv">${fmt(w.staked)}</span><span class="fk">Staked</span></div>
           <div><span class="fv">${fmt(w.pending_rewards)}</span><span class="fk">Pending</span></div>
           <div><span class="fv">${w.apr_pct}%</span><span class="fk">APR</span></div>
+          <div><span class="fv">${fmt(w.total_burned)}</span><span class="fk">Burned</span></div>
+          ${boosted ? `<div><span class="fv">${fmt(w.staked_effective)}</span><span class="fk">Effective</span></div>` : ''}
         </div>
-      </div>`,
-        )
+        <div class="fwal-foot">
+          <span class="fwal-usd">${priced ? '≈ ' + usd(hold) + ' holdings' : ''}</span>
+          <button class="fwal-link" data-explore="${esc(w.wallet)}">Solscan ↗</button>
+        </div>
+      </div>`;
+        })
         .join('');
     box.querySelectorAll('[data-unlink]').forEach((b) => {
       b.onclick = () => unlinkWallet(b.dataset.unlink);
+    });
+    box.querySelectorAll('[data-copy]').forEach((b) => {
+      b.onclick = () => copyText(b.dataset.copy, 'Address copied ✦');
+    });
+    box.querySelectorAll('[data-explore]').forEach((b) => {
+      b.onclick = () => openExt('https://solscan.io/account/' + b.dataset.explore);
     });
   }
   async function loadFolio() {

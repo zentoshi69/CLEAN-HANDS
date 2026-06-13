@@ -787,6 +787,21 @@
         color: var(--ink-deep);
         font-size: 0.95rem;
         letter-spacing: 0.02em;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+      }
+      .fwal-copy {
+        font-size: 0.78rem;
+        color: var(--ink-2);
+        opacity: 0.55;
+      }
+      .fwal-addr:active {
+        opacity: 0.65;
       }
       .fpill {
         font-size: 0.6rem;
@@ -855,6 +870,67 @@
         text-transform: uppercase;
         color: var(--muted);
         margin-top: 2px;
+      }
+      /* aggregate header: let the 5 portfolio totals reflow instead of cramming */
+      .folio-stats {
+        grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+      }
+      .stat .u {
+        font-size: 0.62rem;
+        font-weight: 700;
+        color: var(--ink-2);
+        margin-top: 3px;
+        letter-spacing: 0.02em;
+      }
+      /* per-wallet: share-of-portfolio bar */
+      .fwal-share {
+        height: 6px;
+        background: rgba(27, 93, 166, 0.1);
+        border-radius: 100px;
+        overflow: hidden;
+        margin-top: 12px;
+      }
+      .fwal-share-bar {
+        height: 100%;
+        min-width: 2px;
+        border-radius: 100px;
+        background: linear-gradient(90deg, var(--sky), var(--ink-2));
+      }
+      .fwal-share-lbl {
+        font-size: 0.64rem;
+        font-weight: 600;
+        color: var(--muted);
+        margin-top: 5px;
+        letter-spacing: 0.02em;
+      }
+      /* per-wallet: footer with USD value + explorer link */
+      .fwal-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 11px;
+      }
+      .fwal-usd {
+        font-size: 0.74rem;
+        font-weight: 700;
+        color: var(--ink-2);
+      }
+      .fwal-link {
+        border: 1.5px solid rgba(27, 93, 166, 0.22);
+        color: var(--ink-2);
+        background: none;
+        border-radius: 10px;
+        padding: 5px 11px;
+        font-weight: 700;
+        font-size: 0.72rem;
+        cursor: pointer;
+        font-family: inherit;
+        transition: 0.15s;
+      }
+      .fwal-link:active {
+        transform: scale(0.95);
       }
       /* bridge / swap widget host — branded frame around the provider iframe */
       .bridge-host {
@@ -1070,18 +1146,31 @@
             <div class="num" id="f-holdings">—</div>
             <div class="lbl">Total $CLEAN across your wallets · <span id="f-usd">—</span></div>
           </div>
-          <div class="stats">
+          <div class="stats folio-stats">
             <div class="card stat">
               <div class="k" id="f-bal">—</div>
               <div class="l">In wallets</div>
+              <div class="u" id="f-bal-usd"></div>
             </div>
             <div class="card stat">
               <div class="k" id="f-staked">—</div>
               <div class="l">Staked</div>
+              <div class="u" id="f-staked-usd"></div>
             </div>
             <div class="card stat">
               <div class="k" id="f-pend">—</div>
               <div class="l">Pending</div>
+              <div class="u" id="f-pend-usd"></div>
+            </div>
+            <div class="card stat">
+              <div class="k" id="f-burned">—</div>
+              <div class="l">Burned</div>
+              <div class="u" id="f-burned-usd"></div>
+            </div>
+            <div class="card stat">
+              <div class="k" id="f-apr">—</div>
+              <div class="l">Avg APR</div>
+              <div class="u">stake-weighted</div>
             </div>
           </div>
           <div id="folio-rows"></div>
