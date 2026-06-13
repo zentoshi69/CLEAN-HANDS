@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Never commit user/test photos or pipeline outputs
+samples/*
+!samples/README.md
+*_gloved.png
+*_mask.png
+*_diff.png
+*_normalized.png
