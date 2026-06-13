@@ -155,6 +155,7 @@
       }
     }
     if (v === 'bridge') loadBridge();
+    else stopBridgePoll(); // don't keep polling order status off-tab
     haptic();
     if (v === 'board') loadBoard();
     if (v === 'trade') loadPrice();
@@ -1080,21 +1081,29 @@
     }
   }
 
-  // ---- No Stains Bridge (reskinned exchange) ----------------------------- //
-  // Exchange homepages refuse to be iframed (X-Frame-Options), and iframes are
-  // flaky inside the Telegram webview anyway — so by default we render a branded
-  // LAUNCH card that opens the ref URL externally (referral preserved). Inline
-  // embedding only kicks in when the operator points bridgeUrl at a real
-  // embeddable widget AND sets bridgeEmbed.
-  let _bridgeLoaded = false;
+  // ---- No Stains Bridge --------------------------------------------------- //
+  // Two modes, chosen by the server (CONFIG.bridgeMode):
+  //   "api"  — the real in-app swap form. The API key lives on OUR server; the
+  //            browser only calls /api/bridge/*, so it's a true white-label.
+  //   "link" — fallback when no exchange API key is set: a branded launch card
+  //            (or inline iframe) that opens an external URL. Unchanged.
+  let _bridgeLoaded = false; // link-mode one-shot guard
+  let _bridgeAppBuilt = false; // api-mode build-once guard
   function loadBridge() {
-    if (_bridgeLoaded) return;
     const host = $('bridge-host');
     const note = $('bridge-note');
     if (!host) return;
+    if (CONFIG && CONFIG.bridgeMode === 'api') {
+      buildBridgeApp(host, note);
+      return;
+    }
+    if (_bridgeLoaded) return;
+    loadBridgeLink(host, note);
+  }
+
+  function loadBridgeLink(host, note) {
     const url = (CONFIG && CONFIG.bridgeUrl) || '';
     const ok = url && /^https:\/\//.test(url);
-
     if (ok && CONFIG.bridgeEmbed) {
       const f = document.createElement('iframe');
       f.src = url;
@@ -1110,15 +1119,14 @@
       _bridgeLoaded = true;
       return;
     }
-
     if (ok) {
       host.innerHTML =
         '<div class="bridge-empty">' +
         '<img class="glove" src="/glove.png" alt="">' +
         '<div class="t">No Stains Bridge</div>' +
-        '<div class="d">Swap and bridge across chains — wallet-to-wallet, never through us. Opens the spotless EasyBit exchange in a new tab.</div>' +
+        '<div class="d">Swap and bridge across chains — wallet-to-wallet, never through us. Opens the spotless exchange in a new tab.</div>' +
         '<button class="btn btn-solid" id="bridge-go" style="margin-top:6px;min-width:200px">🧤 Open No Stains Bridge ↗</button>' +
-        '<div class="d" style="font-size:.78rem">Powered by EasyBit · your funds stay in your wallet</div>' +
+        '<div class="d" style="font-size:.78rem">Your funds stay in your wallet</div>' +
         '</div>';
       const go = $('bridge-go');
       if (go) go.onclick = () => openExt(url);
@@ -1126,14 +1134,442 @@
       _bridgeLoaded = true;
       return;
     }
-
     host.innerHTML =
       '<div class="bridge-empty">' +
       '<img class="glove" src="/glove.png" alt="">' +
       '<div class="t">Bridge is warming up</div>' +
-      '<div class="d">Set MINIAPP_BRIDGE_URL to your EasyBit ref or widget URL and it appears right here.</div>' +
+      '<div class="d">Set EASYBIT_API_KEY for the in-app bridge, or MINIAPP_BRIDGE_URL for a launch card.</div>' +
       '</div>';
     if (note) note.textContent = '';
+  }
+
+  // ---- No Stains Bridge — API mode (in-app swap) -------------------------- //
+  const BR = {
+    coins: [], // [{coin,name,networks:[{network,name}]}]
+    quote: null,
+    stage: 'quote', // quote -> confirm
+    addrOk: null,
+    addrChecking: false,
+  };
+  let _quoteT, _addrT, _bridgePoll;
+
+  function stopBridgePoll() {
+    if (_bridgePoll) {
+      clearTimeout(_bridgePoll);
+      _bridgePoll = null;
+    }
+  }
+
+  // Same-origin GET helper that surfaces the server's error detail (api() is POST).
+  async function bridgeGet(path) {
+    const r = await fetch(path);
+    if (!r.ok) {
+      let d = r.status;
+      try {
+        d = (await r.json()).detail || d;
+      } catch (e) {}
+      throw new Error(d);
+    }
+    return r.json();
+  }
+
+  function copyText(t) {
+    try {
+      navigator.clipboard.writeText(t);
+      toast('Copied');
+    } catch (e) {
+      toast('Copy failed');
+    }
+    haptic();
+  }
+
+  function buildBridgeApp(host, note) {
+    if (note) note.textContent = '';
+    if (_bridgeAppBuilt) return;
+    _bridgeAppBuilt = true;
+    const minUsd = (CONFIG && CONFIG.bridgeMinUsd) || 55;
+    const feeUsd = (CONFIG && CONFIG.bridgeFeeUsd) || 5;
+    host.innerHTML =
+      '<div class="bridge-form">' +
+      '  <div class="bridge-leg">' +
+      '    <div class="top-l"><span>You send</span><span>min $' +
+      esc(String(minUsd)) +
+      '</span></div>' +
+      '    <div class="lrow"><input class="amt" id="bf-amt" inputmode="decimal" placeholder="0.0" autocomplete="off" />' +
+      '      <select class="coinsel" id="bf-send" aria-label="Send coin"></select></div>' +
+      '    <div class="bridge-net"><select class="netsel" id="bf-send-net" aria-label="Send network"></select></div>' +
+      '  </div>' +
+      '  <div class="bridge-swap"><button id="bf-flip" title="Flip" aria-label="Flip direction">⇅</button></div>' +
+      '  <div class="bridge-leg">' +
+      '    <div class="top-l"><span>You get (estimated)</span><span id="bf-rate"></span></div>' +
+      '    <div class="lrow"><input class="amt" id="bf-recv-amt" disabled placeholder="0.0" />' +
+      '      <select class="coinsel" id="bf-recv" aria-label="Receive coin"></select></div>' +
+      '    <div class="bridge-net"><select class="netsel" id="bf-recv-net" aria-label="Receive network"></select></div>' +
+      '  </div>' +
+      '  <div class="field" style="margin-top:12px">' +
+      '    <div class="top-l"><span>Destination address</span><span id="bf-addr-chk"></span></div>' +
+      '    <div class="input"><input id="bf-addr" placeholder="Where you receive the coins" autocomplete="off" spellcheck="false" /></div>' +
+      '  </div>' +
+      '  <div class="field"><div class="top-l"><span>Memo / Tag (only if your coin needs one)</span></div>' +
+      '    <div class="input"><input id="bf-tag" placeholder="Optional" autocomplete="off" spellcheck="false" /></div></div>' +
+      '  <div class="bridge-sum" id="bf-sum"></div>' +
+      '  <div class="bridge-msg" id="bf-msg"></div>' +
+      '  <button class="btn btn-solid" id="bf-go" disabled>Review swap</button>' +
+      '  <div class="bridge-warn">A flat $' +
+      esc(String(feeUsd)) +
+      ' service fee is included in your quote. Always verify the deposit address shown in this app before sending — sending the wrong coin or network can mean permanent loss.</div>' +
+      '</div>' +
+      '<div id="bf-result"></div>';
+
+    // Wire events (addEventListener, not inline handlers — CSP-clean).
+    $('bf-amt').addEventListener('input', onBridgeInput);
+    $('bf-addr').addEventListener('input', onAddrInput);
+    $('bf-tag').addEventListener('input', () => setStage('quote'));
+    $('bf-send').addEventListener('change', () => onCoinChange('send'));
+    $('bf-recv').addEventListener('change', () => onCoinChange('recv'));
+    $('bf-send-net').addEventListener('change', onBridgeInput);
+    $('bf-recv-net').addEventListener('change', () => {
+      BR.addrOk = null;
+      onBridgeInput();
+      checkAddr();
+    });
+    $('bf-flip').addEventListener('click', flipBridge);
+    $('bf-go').addEventListener('click', onBridgePrimary);
+
+    loadBridgeCoins();
+  }
+
+  async function loadBridgeCoins() {
+    const msg = $('bf-msg');
+    try {
+      const r = await bridgeGet('/api/bridge/currencies');
+      BR.coins = (r && r.currencies) || [];
+    } catch (e) {
+      if (msg) {
+        msg.className = 'bridge-msg err';
+        msg.textContent = 'Could not load coins: ' + e.message;
+      }
+      return;
+    }
+    if (!BR.coins.length) {
+      if (msg) {
+        msg.className = 'bridge-msg err';
+        msg.textContent = 'No coins available right now — try again shortly.';
+      }
+      return;
+    }
+    fillCoinSelect($('bf-send'), 'USDC');
+    fillCoinSelect($('bf-recv'), 'SOL');
+    // Never default both legs to the same coin (tiny exchanges may lack USDC/SOL).
+    if ($('bf-send').value === $('bf-recv').value && BR.coins.length > 1) {
+      const alt = BR.coins.find((c) => c.coin !== $('bf-send').value);
+      if (alt) $('bf-recv').value = alt.coin;
+    }
+    onCoinChange('send');
+    onCoinChange('recv');
+  }
+
+  function fillCoinSelect(sel, prefer) {
+    sel.innerHTML = '';
+    let preferIdx = 0;
+    BR.coins.forEach((c, i) => {
+      const o = new Option(c.coin, c.coin);
+      sel.add(o);
+      if (c.coin === prefer) preferIdx = i;
+    });
+    sel.selectedIndex = preferIdx;
+  }
+
+  function coinByCode(code) {
+    return BR.coins.find((c) => c.coin === code) || null;
+  }
+
+  function fillNetSelect(sel, networks) {
+    sel.innerHTML = '';
+    const nets = networks || [];
+    if (!nets.length) {
+      sel.style.visibility = 'hidden';
+      return;
+    }
+    sel.style.visibility = 'visible';
+    nets.forEach((n) => sel.add(new Option(n.name || n.network, n.network)));
+  }
+
+  function onCoinChange(side) {
+    const c = coinByCode($(side === 'send' ? 'bf-send' : 'bf-recv').value);
+    fillNetSelect($(side === 'send' ? 'bf-send-net' : 'bf-recv-net'), c && c.networks);
+    if (side === 'recv') BR.addrOk = null;
+    onBridgeInput();
+    if (side === 'recv') checkAddr();
+  }
+
+  function setSelIfPresent(sel, val) {
+    if (!val) return;
+    for (let i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === val) {
+        sel.value = val;
+        return;
+      }
+    }
+  }
+
+  function flipBridge() {
+    const sCoin = $('bf-send').value,
+      sNet = $('bf-send-net').value;
+    const rCoin = $('bf-recv').value,
+      rNet = $('bf-recv-net').value;
+    $('bf-send').value = rCoin;
+    $('bf-recv').value = sCoin;
+    onCoinChange('send'); // refills bf-send-net for the new send coin
+    onCoinChange('recv'); // refills bf-recv-net for the new receive coin
+    // Carry each leg's chosen network across the flip when still offered.
+    setSelIfPresent($('bf-send-net'), rNet);
+    setSelIfPresent($('bf-recv-net'), sNet);
+    onBridgeInput();
+    haptic();
+  }
+
+  function bridgeFields() {
+    return {
+      send: $('bf-send').value,
+      receive: $('bf-recv').value,
+      sendNetwork: $('bf-send-net').value || '',
+      receiveNetwork: $('bf-recv-net').value || '',
+      amount: ($('bf-amt').value || '').trim(),
+    };
+  }
+
+  function onBridgeInput() {
+    setStage('quote');
+    clearTimeout(_quoteT);
+    _quoteT = setTimeout(doQuote, 400);
+  }
+
+  function onAddrInput() {
+    setStage('quote');
+    BR.addrOk = null;
+    $('bf-addr-chk').textContent = '';
+    clearTimeout(_addrT);
+    _addrT = setTimeout(checkAddr, 600);
+  }
+
+  async function doQuote() {
+    const f = bridgeFields();
+    const sum = $('bf-sum'),
+      msg = $('bf-msg'),
+      recv = $('bf-recv-amt');
+    if (!f.amount || Number(f.amount) <= 0) {
+      sum.innerHTML = '';
+      recv.value = '';
+      msg.textContent = '';
+      $('bf-rate').textContent = '';
+      updatePrimary();
+      return;
+    }
+    msg.className = 'bridge-msg';
+    msg.textContent = 'Getting best rate…';
+    try {
+      const q = await api('/api/bridge/quote', f);
+      BR.quote = q;
+      recv.value = q.receiveAmount != null ? String(q.receiveAmount) : '';
+      renderQuoteSummary(q);
+      msg.textContent = '';
+    } catch (e) {
+      BR.quote = null;
+      recv.value = '';
+      sum.innerHTML = '';
+      $('bf-rate').textContent = '';
+      msg.className = 'bridge-msg err';
+      msg.textContent = e.message || 'Could not get a quote.';
+    }
+    updatePrimary();
+  }
+
+  function renderQuoteSummary(q) {
+    const rows = [];
+    if (q.rate != null && isFinite(+q.rate))
+      $('bf-rate').textContent = '1 ' + q.send + ' ≈ ' + (+q.rate).toPrecision(6) + ' ' + q.receive;
+    if (q.feeUsd != null)
+      rows.push(['Service fee', '$' + (+q.feeUsd).toFixed(2) + ' (' + q.feePct + '%)']);
+    if (q.networkFee != null && q.networkFee !== '')
+      rows.push(['Network fee', String(q.networkFee) + ' ' + q.receive]);
+    if (q.sendUsd != null) rows.push(['Order value', '≈ $' + (+q.sendUsd).toFixed(2)]);
+    if (q.min != null) rows.push(['Exchange min', String(q.min) + ' ' + q.send]);
+    const sum = $('bf-sum');
+    sum.innerHTML = '';
+    rows.forEach(([name, v]) => {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const n = document.createElement('span');
+      n.className = 'name';
+      n.textContent = name;
+      const val = document.createElement('span');
+      val.className = 'v';
+      val.textContent = v;
+      row.appendChild(n);
+      row.appendChild(val);
+      sum.appendChild(row);
+    });
+  }
+
+  async function checkAddr() {
+    const addr = ($('bf-addr').value || '').trim();
+    const chk = $('bf-addr-chk');
+    if (!addr) {
+      chk.textContent = '';
+      BR.addrOk = null;
+      BR.addrChecking = false;
+      updatePrimary();
+      return;
+    }
+    BR.addrChecking = true; // block confirm until this resolves
+    updatePrimary();
+    try {
+      const r = await api('/api/bridge/validate-address', {
+        currency: $('bf-recv').value,
+        network: $('bf-recv-net').value || '',
+        address: addr,
+      });
+      BR.addrOk = !!r.valid;
+      chk.textContent = r.valid ? '✓ valid' : '✗ invalid';
+      chk.style.color = r.valid ? '#1c7a3f' : '#b3261e';
+    } catch (e) {
+      BR.addrOk = null;
+      chk.textContent = '';
+    }
+    BR.addrChecking = false;
+    updatePrimary();
+  }
+
+  function setStage(stage) {
+    BR.stage = stage;
+    updatePrimary();
+  }
+
+  function updatePrimary() {
+    const go = $('bf-go');
+    if (!go) return;
+    const addr = ($('bf-addr').value || '').trim();
+    const ready = BR.quote && addr && BR.addrOk !== false && !BR.addrChecking;
+    go.disabled = !ready;
+    go.textContent = BR.stage === 'confirm' ? 'Confirm — get deposit address' : 'Review swap';
+  }
+
+  async function onBridgePrimary() {
+    if (!BR.quote) return;
+    if (BR.stage === 'quote') {
+      // Validate the address before committing, if not already known-good.
+      if (BR.addrOk == null) await checkAddr();
+      if (BR.addrOk === false) {
+        toast('Destination address looks invalid');
+        return;
+      }
+      setStage('confirm');
+      const msg = $('bf-msg');
+      msg.className = 'bridge-msg';
+      msg.textContent = 'Double-check the destination address, then confirm to get your deposit address.';
+      return;
+    }
+    await createBridgeOrder();
+  }
+
+  async function createBridgeOrder() {
+    const go = $('bf-go');
+    const msg = $('bf-msg');
+    const f = bridgeFields();
+    f.receiveAddress = ($('bf-addr').value || '').trim();
+    const tag = ($('bf-tag').value || '').trim();
+    if (tag) f.receiveTag = tag;
+    go.disabled = true;
+    go.textContent = 'Opening order…';
+    msg.className = 'bridge-msg';
+    msg.textContent = '';
+    try {
+      const o = await api('/api/bridge/order', f);
+      renderDeposit(o);
+      haptic('medium');
+    } catch (e) {
+      msg.className = 'bridge-msg err';
+      msg.textContent = e.message || 'Could not open the order.';
+      setStage('confirm');
+      go.disabled = false;
+    }
+  }
+
+  function renderDeposit(o) {
+    stopBridgePoll();
+    const wrap = $('bf-result');
+    const net = o.sendNetwork ? ' (' + esc(o.sendNetwork) + ')' : '';
+    wrap.innerHTML =
+      '<div class="deposit-box">' +
+      '  <div class="row"><span class="name">Send exactly</span><span class="v" id="dep-amt"></span></div>' +
+      '  <div class="top-l" style="margin-top:8px">Deposit address' +
+      net +
+      '</div>' +
+      '  <div class="addr" id="dep-addr"></div>' +
+      '  <button class="btn btn-ghost" id="dep-copy">Copy address</button>' +
+      '  <div id="dep-tag-wrap" hidden><div class="top-l" style="margin-top:8px">Deposit memo/tag</div><div class="addr" id="dep-tag"></div></div>' +
+      '  <div class="row" style="margin-top:8px"><span class="name">You receive</span><span class="v" id="dep-recv"></span></div>' +
+      '  <div class="row"><span class="name">Order</span><span class="v" id="dep-id"></span></div>' +
+      '  <div class="row"><span class="name">Status</span><span class="statusbadge" id="dep-status">…</span></div>' +
+      '  <button class="btn btn-ghost" id="dep-new" style="margin-top:10px">Start another swap</button>' +
+      '</div>';
+    // External/dynamic values via textContent — never innerHTML (no injection).
+    $('dep-amt').textContent = (o.sendAmount != null ? o.sendAmount : '') + ' ' + o.send;
+    $('dep-addr').textContent = o.depositAddress || '';
+    $('dep-recv').textContent = '~ ' + (o.receiveAmount != null ? o.receiveAmount : '') + ' ' + o.receive;
+    $('dep-id').textContent = o.orderId || '';
+    if (o.depositTag) {
+      $('dep-tag-wrap').hidden = false;
+      $('dep-tag').textContent = o.depositTag;
+    }
+    setStatusBadge($('dep-status'), o.status, o.phase);
+    $('dep-copy').addEventListener('click', () => copyText(o.depositAddress || ''));
+    $('dep-new').addEventListener('click', resetBridge);
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (o.orderId) pollStatus(o.orderId);
+  }
+
+  function setStatusBadge(el, status, phase) {
+    if (!el) return;
+    el.textContent = status || 'pending';
+    el.className = 'statusbadge' + (phase ? ' ' + phase : '');
+  }
+
+  function pollStatus(orderId) {
+    stopBridgePoll();
+    const tick = async () => {
+      const el = $('dep-status');
+      if (!el) return; // panel gone (user reset/left)
+      try {
+        const s = await bridgeGet('/api/bridge/order/' + encodeURIComponent(orderId));
+        setStatusBadge(el, s.status, s.phase);
+        if (s.phase === 'done' || s.phase === 'refund' || s.phase === 'failed') {
+          if (s.phase === 'done') toast('Swap complete 🧤');
+          return; // terminal — stop polling
+        }
+      } catch (e) {
+        /* transient — keep polling */
+      }
+      _bridgePoll = setTimeout(tick, 9000);
+    };
+    _bridgePoll = setTimeout(tick, 5000);
+  }
+
+  function resetBridge() {
+    stopBridgePoll();
+    $('bf-result').innerHTML = '';
+    $('bf-amt').value = '';
+    $('bf-recv-amt').value = '';
+    $('bf-addr').value = '';
+    $('bf-tag').value = '';
+    $('bf-addr-chk').textContent = '';
+    $('bf-sum').innerHTML = '';
+    $('bf-rate').textContent = '';
+    $('bf-msg').textContent = '';
+    BR.quote = null;
+    BR.addrOk = null;
+    setStage('quote');
   }
   global.App = {
     show,
