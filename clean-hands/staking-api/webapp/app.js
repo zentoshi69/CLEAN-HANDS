@@ -932,11 +932,9 @@
     };
     $('f-holdings').textContent = fmt(t.holdings || 0);
     $('f-usd').textContent = priced ? usd(t.holdings || 0) : '';
-    $('f-bal').textContent = fmt(t.balance || 0);
     $('f-staked').textContent = fmt(t.staked || 0);
     $('f-pend').textContent = fmt(t.pending_rewards || 0);
     $('f-burned').textContent = fmt(t.total_burned || 0);
-    setUsd('f-bal-usd', t.balance);
     setUsd('f-staked-usd', t.staked);
     setUsd('f-pend-usd', t.pending_rewards);
     setUsd('f-burned-usd', t.total_burned);
@@ -977,7 +975,6 @@
         <div class="fwal-share" title="${share}% of portfolio"><div class="fwal-share-bar" style="width:${Math.min(100, Math.max(share, 2))}%"></div></div>
         <div class="fwal-share-lbl">${share}% of portfolio · ${fmt(hold)} $CLEAN holdings</div>
         <div class="fwal-stats">
-          <div><span class="fv">${fmt(w.balance)}</span><span class="fk">Balance</span></div>
           <div><span class="fv">${fmt(w.staked)}</span><span class="fk">Staked</span></div>
           <div><span class="fv">${fmt(w.pending_rewards)}</span><span class="fk">Pending</span></div>
           <div><span class="fv">${w.apr_pct}%</span><span class="fk">APR</span></div>
