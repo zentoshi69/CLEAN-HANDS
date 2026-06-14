@@ -26,6 +26,25 @@ The game also runs with **no backend at all** — just open `index.html`. Progre
 falls back to `localStorage`; the leaderboard/cloud-save light up only when
 `server.py` is reachable.
 
+## Drop in the real art 🎨
+
+The hero is a **full-bleed background image** with the glass UI floating on top
+(the old hand-drawn hands are gone). To match the mock, replace the placeholder
+backdrop with the real render:
+
+- Save it as **`assets/scene-dubai.jpg`** (also accepts `.png` / `.webp`).
+- It must be the **scene only** — gloved hands + city, **no UI**. The HUD, HEAT
+  bar, counter, cards and nav are drawn by the app on top; baking them into the
+  image doubles them up.
+- Portrait, ~900×1600 or larger.
+- **Per city:** `assets/scene-monaco.jpg`, `assets/scene-singapore.jpg`, … swap
+  in automatically when you ESCAPE. A missing image falls back to a soft
+  gradient + a "drop it here" hint.
+
+`gen_scene.py` made the current placeholder — replace `assets/scene-*.jpg` with
+the real art. (Keep `standalone.html` next to the `assets/` folder so it can
+find the image.)
+
 ## What's in it (matches the screenshot)
 
 - **Top pills:** LEVEL · 📍 city · GOAL (escape target).

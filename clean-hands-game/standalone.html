@@ -97,81 +97,71 @@ body {
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
+  /* fallback wash until a scene image is dropped in */
+  background: linear-gradient(#a9d2f7 0, #cfe6fb 40%, #eaf6ff 70%, #f6fbff 100%);
 }
-.sky {
+.scene-img {
   position: absolute;
   inset: 0;
-  background: linear-gradient(#a9d2f7 0, #cfe6fb 38%, #eaf6ff 64%, #f6fbff 100%);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transition: opacity 0.5s ease;
 }
-.sun {
-  position: absolute;
-  top: 8%;
-  left: 50%;
-  width: 320px;
-  height: 320px;
-  transform: translateX(-50%);
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 62%);
+.scene-img.on {
+  opacity: 1;
 }
-.skyline {
+.scrim-top {
   position: absolute;
-  bottom: 22%;
+  top: 0;
   left: 0;
-  width: 100%;
-  height: 42%;
-  opacity: 0.92;
-  filter: drop-shadow(0 10px 18px rgba(60, 110, 170, 0.18));
+  right: 0;
+  height: 34%;
+  background: linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
 }
-.lagoon {
-  position: absolute;
-  bottom: 18%;
-  left: 0;
-  width: 100%;
-  height: 8%;
-  background: linear-gradient(#bfe6f2, #8fd2e6);
-  opacity: 0.7;
-}
-.floor {
+.scrim-bottom {
   position: absolute;
   bottom: 0;
   left: 0;
-  width: 100%;
-  height: 22%;
-  background:
-    linear-gradient(120deg, rgba(255, 255, 255, 0.5) 0, transparent 40%),
-    linear-gradient(#f3f7fb, #dde7f0);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  right: 0;
+  height: 30%;
+  background: linear-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.5));
 }
-.floor::after {
-  content: '';
+.scene-hint {
   position: absolute;
-  inset: 0;
-  background:
-    repeating-linear-gradient(115deg, rgba(190, 205, 220, 0.25) 0 1px, transparent 1px 70px);
+  left: 50%;
+  top: 52%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  padding: 16px 20px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1.5px dashed var(--line-2);
+  box-shadow: var(--shadow-sm);
+  max-width: 80%;
 }
-/* floor-to-ceiling window mullions */
-.mullions {
-  position: absolute;
-  inset: 0 0 22% 0;
-  background:
-    linear-gradient(90deg, transparent 0, transparent calc(33% - 2px), rgba(255, 255, 255, 0.7) 33%, transparent calc(33% + 2px)),
-    linear-gradient(90deg, transparent 0, transparent calc(66% - 2px), rgba(255, 255, 255, 0.7) 66%, transparent calc(66% + 2px));
-  opacity: 0.6;
+.scene-hint[hidden] {
+  display: none;
 }
-.palm {
-  position: absolute;
-  width: 120px;
-  height: 160px;
-  bottom: 16%;
-  opacity: 0.9;
-  filter: drop-shadow(0 8px 10px rgba(40, 90, 60, 0.25));
+.scene-hint b {
+  display: block;
+  color: var(--ink-deep);
+  font-weight: 800;
+  font-size: 0.95rem;
 }
-.palm-l {
-  left: -22px;
-  transform: scaleX(-1) rotate(-6deg);
+.scene-hint span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-top: 4px;
 }
-.palm-r {
-  right: -22px;
-  transform: rotate(-4deg);
+.scene-hint code {
+  font-family: ui-monospace, monospace;
+  background: rgba(47, 116, 192, 0.12);
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: var(--ink-2);
 }
 
 /* ============================ HUD ============================ */
@@ -410,56 +400,29 @@ body {
   cursor: pointer;
   font-family: inherit;
 }
-.tap-glow {
+.tap-ring {
   position: absolute;
-  width: min(76vw, 320px);
-  aspect-ratio: 1;
+  width: 90px;
+  height: 90px;
+  margin: -45px 0 0 -45px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.85), rgba(190, 224, 251, 0) 64%);
-  animation: breathe 3.4s ease-in-out infinite;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 70%);
+  opacity: 0;
+  pointer-events: none;
 }
-@keyframes breathe {
-  0%, 100% { transform: scale(1); opacity: 0.85; }
-  50% { transform: scale(1.07); opacity: 1; }
+.tap-ring.go {
+  animation: ring 0.45s ease-out;
 }
-.tap-card {
-  position: relative;
-  width: min(72vw, 300px);
-  aspect-ratio: 300 / 220;
-  display: grid;
-  place-items: center;
-  border-radius: 26px;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.55), rgba(214, 236, 255, 0.25));
-  border: 1.5px solid rgba(255, 255, 255, 0.7);
-  box-shadow: var(--shadow);
-  transition: transform 0.08s ease;
-}
-.tap:active .tap-card {
-  transform: scale(0.95);
-}
-.hands {
-  width: 92%;
-  height: 92%;
-  overflow: visible;
-}
-.cash-stack {
-  transform-origin: 150px 100px;
-}
-.tap:active .cash-stack {
-  animation: riffle 0.22s ease;
-}
-@keyframes riffle {
-  50% { transform: translateY(-6px) rotate(-2deg); }
-}
-.sparks {
-  animation: twinkle 2.6s ease-in-out infinite;
-}
-@keyframes twinkle {
-  0%, 100% { opacity: 0.45; }
-  50% { opacity: 1; }
+@keyframes ring {
+  0% { opacity: 0.9; transform: scale(0.4); }
+  100% { opacity: 0; transform: scale(1.6); }
 }
 .tap-hint {
-  position: relative;
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
   padding: 7px 16px;
   border-radius: 100px;
   background: rgba(12, 47, 90, 0.82);
@@ -467,6 +430,7 @@ body {
   font-size: 0.74rem;
   font-weight: 800;
   letter-spacing: 0.1em;
+  white-space: nowrap;
 }
 
 /* floating +$ on tap */
@@ -876,71 +840,16 @@ body {
   <body>
     <div class="phone" id="app">
       <!-- ===================== SCENE (parallax background) ===================== -->
-      <div class="scene" id="scene" aria-hidden="true">
-        <div class="sky"></div>
-        <div class="sun"></div>
-        <svg class="skyline" viewBox="0 0 420 240" preserveAspectRatio="xMidYMax meet">
-          <defs>
-            <linearGradient id="tower" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#cfe6fb" />
-              <stop offset="1" stop-color="#9cc4ee" />
-            </linearGradient>
-            <linearGradient id="towerHi" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#eaf5ff" />
-              <stop offset="1" stop-color="#b6d6f5" />
-            </linearGradient>
-          </defs>
-          <!-- back row -->
-          <g fill="url(#tower)" opacity="0.7">
-            <rect x="6" y="150" width="26" height="90" rx="3" />
-            <rect x="38" y="120" width="20" height="120" rx="3" />
-            <rect x="64" y="160" width="30" height="80" rx="3" />
-            <rect x="330" y="140" width="24" height="100" rx="3" />
-            <rect x="360" y="120" width="22" height="120" rx="3" />
-            <rect x="388" y="158" width="26" height="82" rx="3" />
-          </g>
-          <!-- front row -->
-          <g fill="url(#towerHi)">
-            <rect x="100" y="120" width="30" height="120" rx="4" />
-            <rect x="136" y="96" width="24" height="144" rx="4" />
-            <rect x="266" y="104" width="26" height="136" rx="4" />
-            <rect x="296" y="128" width="30" height="112" rx="4" />
-            <!-- Burj-like spire -->
-            <path d="M196 240 L205 40 L214 240 Z" />
-            <rect x="201" y="20" width="8" height="36" rx="3" />
-          </g>
-          <!-- window dots -->
-          <g fill="#ffffff" opacity="0.5">
-            <rect x="142" y="110" width="3" height="6" />
-            <rect x="150" y="124" width="3" height="6" />
-            <rect x="272" y="118" width="3" height="6" />
-            <rect x="305" y="142" width="3" height="6" />
-          </g>
-        </svg>
-        <div class="lagoon"></div>
-        <div class="floor"></div>
-        <div class="mullions"></div>
-        <svg class="palm palm-l" viewBox="0 0 120 160">
-          <g fill="#3f9d6b">
-            <path d="M60 160 C58 110 56 80 60 60 C64 80 66 110 64 160 Z" fill="#2f7d54" />
-            <path d="M60 64 C30 50 12 56 0 70 C26 60 44 64 60 78 Z" />
-            <path d="M60 64 C40 36 20 30 6 30 C30 38 44 50 60 76 Z" />
-            <path d="M60 64 C60 30 70 14 84 6 C72 30 66 44 62 74 Z" />
-            <path d="M60 64 C92 50 110 56 120 70 C96 60 78 64 62 78 Z" />
-          </g>
-        </svg>
-        <svg class="palm palm-r" viewBox="0 0 120 160">
-          <g fill="#3f9d6b">
-            <path d="M60 160 C58 110 56 80 60 60 C64 80 66 110 64 160 Z" fill="#2f7d54" />
-            <path d="M60 64 C30 50 12 56 0 70 C26 60 44 64 60 78 Z" />
-            <path d="M60 64 C40 36 20 30 6 30 C30 38 44 50 60 76 Z" />
-            <path d="M60 64 C60 30 70 14 84 6 C72 30 66 44 62 74 Z" />
-            <path d="M60 64 C92 50 110 56 120 70 C96 60 78 64 62 78 Z" />
-          </g>
-        </svg>
+            <div class="scene" id="scene" aria-hidden="true">
+        <div class="scene-img" id="scene-img"></div>
+        <div class="scrim-top"></div>
+        <div class="scrim-bottom"></div>
+        <div class="scene-hint" id="scene-hint" hidden>
+          <b>Drop the scene image here</b>
+          <span>save it as <code>assets/scene-dubai.jpg</code> &mdash; hands + city, no UI</span>
+        </div>
       </div>
-
-      <!-- ===================== HUD (top) ===================== -->
+<!-- ===================== HUD (top) ===================== -->
       <header class="hud">
         <div class="pills">
           <div class="pill"><span class="pk">LEVEL</span><span class="pv" id="ui-level">1</span></div>
@@ -977,34 +886,7 @@ body {
       <main class="stage">
         <section class="view view-launder" id="view-launder">
           <button class="tap" id="ui-tap" type="button" aria-label="Launder money">
-            <span class="tap-glow"></span>
-            <span class="tap-card">
-              <svg class="hands" viewBox="0 0 300 220">
-                <!-- cash fan -->
-                <g class="cash-stack">
-                  <rect x="92" y="66" width="116" height="70" rx="8" fill="#e7f3e8" stroke="#b7d8bb" transform="rotate(-7 150 100)"/>
-                  <rect x="92" y="66" width="116" height="70" rx="8" fill="#eef8ef" stroke="#b7d8bb" transform="rotate(6 150 100)"/>
-                  <rect x="96" y="70" width="108" height="64" rx="8" fill="#dff0e1" stroke="#9fc9a5"/>
-                  <circle cx="150" cy="102" r="20" fill="#cfe9d4" stroke="#9fc9a5"/>
-                  <text x="150" y="110" text-anchor="middle" font-size="22" font-weight="800" fill="#2f7d54">$</text>
-                  <text x="112" y="86" font-size="11" font-weight="800" fill="#3f9d6b">100</text>
-                  <text x="172" y="128" font-size="11" font-weight="800" fill="#3f9d6b">100</text>
-                </g>
-                <!-- gloved hands -->
-                <g class="glove glove-l">
-                  <path d="M40 220 C40 150 64 120 96 124 C120 127 124 150 120 170 C118 182 100 188 92 186 C108 196 110 210 104 220 Z" fill="#bfe0fb" stroke="#7db4ea" stroke-width="3"/>
-                </g>
-                <g class="glove glove-r">
-                  <path d="M260 220 C260 150 236 120 204 124 C180 127 176 150 180 170 C182 182 200 188 208 186 C192 196 190 210 196 220 Z" fill="#bfe0fb" stroke="#7db4ea" stroke-width="3"/>
-                </g>
-                <!-- sparkles -->
-                <g class="sparks" fill="#ffffff">
-                  <path d="M70 60 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4 Z"/>
-                  <path d="M232 78 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 Z"/>
-                  <path d="M150 40 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 Z"/>
-                </g>
-              </svg>
-            </span>
+            <span class="tap-ring" id="ui-tapring"></span>
             <span class="tap-hint">TAP · SWIPE TO RIFFLE</span>
             <span class="floaters" id="ui-floaters"></span>
           </button>
@@ -1396,14 +1278,26 @@ body {
   }
 
   // -------------------------------------------------------------- actions
-  function launder() {
+  function launder(e) {
     if (Date.now() < bustedUntil) return;
     const gain = perTap();
     state.cash += gain;
     state.lifetime += gain;
     state.taps++;
     state.heat = Math.min(100, state.heat + TAP_HEAT * coolFactor());
-    floater('+' + moneyShort(gain));
+    // drop the +$ and the ripple right where they tapped (over the hands)
+    let xp = 50,
+      yp = 50;
+    const tap = $('ui-tap');
+    if (e && tap && e.clientX != null) {
+      const r = tap.getBoundingClientRect();
+      const lx = e.clientX - r.left,
+        ly = e.clientY - r.top;
+      xp = (lx / r.width) * 100;
+      yp = (ly / r.height) * 100;
+      ring(lx, ly);
+    }
+    floater('+' + moneyShort(gain), xp, yp);
     $('ui-cash').classList.remove('pop');
     void $('ui-cash').offsetWidth;
     $('ui-cash').classList.add('pop');
@@ -1413,16 +1307,25 @@ body {
     render();
     saveSoon();
   }
+  function ring(lx, ly) {
+    const r = $('ui-tapring');
+    if (!r) return;
+    r.style.left = lx + 'px';
+    r.style.top = ly + 'px';
+    r.classList.remove('go');
+    void r.offsetWidth;
+    r.classList.add('go');
+  }
   let _fl = 0;
-  function floater(txt) {
+  function floater(txt, xp, yp) {
     const now = Date.now();
-    if (now - _fl < 55) return;
+    if (now - _fl < 50) return;
     _fl = now;
     const f = document.createElement('span');
     f.className = 'float';
     f.textContent = txt;
-    f.style.left = 40 + Math.random() * 20 + '%';
-    f.style.top = '52%';
+    f.style.left = (xp != null ? xp : 50) + '%';
+    f.style.top = (yp != null ? yp : 50) + '%';
     $('ui-floaters').appendChild(f);
     setTimeout(() => f.remove(), 900);
   }
@@ -1484,6 +1387,7 @@ body {
     state.ups = {};
     state.bribes = 0;
     state.heat = 0;
+    setScene(CITIES[state.cityIdx]);
     toast('Escaped to ' + CITIES[state.cityIdx] + ' ✈️  ×' + prestigeMult().toFixed(2));
     confetti();
     checkRep();
@@ -1527,6 +1431,34 @@ body {
     $('ui-dock').classList.toggle('hidden', tab !== 'launder');
     document.querySelectorAll('.nav-btn').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
     if (tab !== 'launder') renderPanel(tab);
+  }
+
+  // -------------------------------------------------------------- scene image
+  // Full-bleed background photo per city. Drop art at assets/scene-<city>.<ext>
+  // (jpg/png/webp). Until then, a soft gradient + a "drop it here" hint show.
+  function setScene(city) {
+    const slug = (city || 'dubai').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const exts = ['jpg', 'jpeg', 'png', 'webp'];
+    const img = $('scene-img');
+    const hint = $('scene-hint');
+    if (!img) return;
+    let i = 0;
+    (function next() {
+      if (i >= exts.length) {
+        img.classList.remove('on');
+        if (hint) hint.hidden = false;
+        return;
+      }
+      const url = 'assets/scene-' + slug + '.' + exts[i++];
+      const probe = new Image();
+      probe.onload = () => {
+        img.style.backgroundImage = 'url("' + url + '")';
+        img.classList.add('on');
+        if (hint) hint.hidden = true;
+      };
+      probe.onerror = next;
+      probe.src = url;
+    })();
   }
 
   // -------------------------------------------------------------- $CLEAN buy
@@ -1575,7 +1507,7 @@ body {
   function bind() {
     $('ui-tap').addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      launder();
+      launder(e);
     });
     $('ui-feat').addEventListener('click', buyFeatured);
     $('ui-buy').addEventListener('click', buyClean);
@@ -1605,6 +1537,7 @@ body {
     offline();
     bind();
     showTab('launder');
+    setScene(CITIES[state.cityIdx]);
     render();
     let last = performance.now();
     setInterval(() => {

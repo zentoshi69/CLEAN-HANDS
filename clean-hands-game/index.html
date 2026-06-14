@@ -19,71 +19,16 @@
   <body>
     <div class="phone" id="app">
       <!-- ===================== SCENE (parallax background) ===================== -->
-      <div class="scene" id="scene" aria-hidden="true">
-        <div class="sky"></div>
-        <div class="sun"></div>
-        <svg class="skyline" viewBox="0 0 420 240" preserveAspectRatio="xMidYMax meet">
-          <defs>
-            <linearGradient id="tower" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#cfe6fb" />
-              <stop offset="1" stop-color="#9cc4ee" />
-            </linearGradient>
-            <linearGradient id="towerHi" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#eaf5ff" />
-              <stop offset="1" stop-color="#b6d6f5" />
-            </linearGradient>
-          </defs>
-          <!-- back row -->
-          <g fill="url(#tower)" opacity="0.7">
-            <rect x="6" y="150" width="26" height="90" rx="3" />
-            <rect x="38" y="120" width="20" height="120" rx="3" />
-            <rect x="64" y="160" width="30" height="80" rx="3" />
-            <rect x="330" y="140" width="24" height="100" rx="3" />
-            <rect x="360" y="120" width="22" height="120" rx="3" />
-            <rect x="388" y="158" width="26" height="82" rx="3" />
-          </g>
-          <!-- front row -->
-          <g fill="url(#towerHi)">
-            <rect x="100" y="120" width="30" height="120" rx="4" />
-            <rect x="136" y="96" width="24" height="144" rx="4" />
-            <rect x="266" y="104" width="26" height="136" rx="4" />
-            <rect x="296" y="128" width="30" height="112" rx="4" />
-            <!-- Burj-like spire -->
-            <path d="M196 240 L205 40 L214 240 Z" />
-            <rect x="201" y="20" width="8" height="36" rx="3" />
-          </g>
-          <!-- window dots -->
-          <g fill="#ffffff" opacity="0.5">
-            <rect x="142" y="110" width="3" height="6" />
-            <rect x="150" y="124" width="3" height="6" />
-            <rect x="272" y="118" width="3" height="6" />
-            <rect x="305" y="142" width="3" height="6" />
-          </g>
-        </svg>
-        <div class="lagoon"></div>
-        <div class="floor"></div>
-        <div class="mullions"></div>
-        <svg class="palm palm-l" viewBox="0 0 120 160">
-          <g fill="#3f9d6b">
-            <path d="M60 160 C58 110 56 80 60 60 C64 80 66 110 64 160 Z" fill="#2f7d54" />
-            <path d="M60 64 C30 50 12 56 0 70 C26 60 44 64 60 78 Z" />
-            <path d="M60 64 C40 36 20 30 6 30 C30 38 44 50 60 76 Z" />
-            <path d="M60 64 C60 30 70 14 84 6 C72 30 66 44 62 74 Z" />
-            <path d="M60 64 C92 50 110 56 120 70 C96 60 78 64 62 78 Z" />
-          </g>
-        </svg>
-        <svg class="palm palm-r" viewBox="0 0 120 160">
-          <g fill="#3f9d6b">
-            <path d="M60 160 C58 110 56 80 60 60 C64 80 66 110 64 160 Z" fill="#2f7d54" />
-            <path d="M60 64 C30 50 12 56 0 70 C26 60 44 64 60 78 Z" />
-            <path d="M60 64 C40 36 20 30 6 30 C30 38 44 50 60 76 Z" />
-            <path d="M60 64 C60 30 70 14 84 6 C72 30 66 44 62 74 Z" />
-            <path d="M60 64 C92 50 110 56 120 70 C96 60 78 64 62 78 Z" />
-          </g>
-        </svg>
+            <div class="scene" id="scene" aria-hidden="true">
+        <div class="scene-img" id="scene-img"></div>
+        <div class="scrim-top"></div>
+        <div class="scrim-bottom"></div>
+        <div class="scene-hint" id="scene-hint" hidden>
+          <b>Drop the scene image here</b>
+          <span>save it as <code>assets/scene-dubai.jpg</code> &mdash; hands + city, no UI</span>
+        </div>
       </div>
-
-      <!-- ===================== HUD (top) ===================== -->
+<!-- ===================== HUD (top) ===================== -->
       <header class="hud">
         <div class="pills">
           <div class="pill"><span class="pk">LEVEL</span><span class="pv" id="ui-level">1</span></div>
@@ -120,34 +65,7 @@
       <main class="stage">
         <section class="view view-launder" id="view-launder">
           <button class="tap" id="ui-tap" type="button" aria-label="Launder money">
-            <span class="tap-glow"></span>
-            <span class="tap-card">
-              <svg class="hands" viewBox="0 0 300 220">
-                <!-- cash fan -->
-                <g class="cash-stack">
-                  <rect x="92" y="66" width="116" height="70" rx="8" fill="#e7f3e8" stroke="#b7d8bb" transform="rotate(-7 150 100)"/>
-                  <rect x="92" y="66" width="116" height="70" rx="8" fill="#eef8ef" stroke="#b7d8bb" transform="rotate(6 150 100)"/>
-                  <rect x="96" y="70" width="108" height="64" rx="8" fill="#dff0e1" stroke="#9fc9a5"/>
-                  <circle cx="150" cy="102" r="20" fill="#cfe9d4" stroke="#9fc9a5"/>
-                  <text x="150" y="110" text-anchor="middle" font-size="22" font-weight="800" fill="#2f7d54">$</text>
-                  <text x="112" y="86" font-size="11" font-weight="800" fill="#3f9d6b">100</text>
-                  <text x="172" y="128" font-size="11" font-weight="800" fill="#3f9d6b">100</text>
-                </g>
-                <!-- gloved hands -->
-                <g class="glove glove-l">
-                  <path d="M40 220 C40 150 64 120 96 124 C120 127 124 150 120 170 C118 182 100 188 92 186 C108 196 110 210 104 220 Z" fill="#bfe0fb" stroke="#7db4ea" stroke-width="3"/>
-                </g>
-                <g class="glove glove-r">
-                  <path d="M260 220 C260 150 236 120 204 124 C180 127 176 150 180 170 C182 182 200 188 208 186 C192 196 190 210 196 220 Z" fill="#bfe0fb" stroke="#7db4ea" stroke-width="3"/>
-                </g>
-                <!-- sparkles -->
-                <g class="sparks" fill="#ffffff">
-                  <path d="M70 60 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4 Z"/>
-                  <path d="M232 78 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 Z"/>
-                  <path d="M150 40 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 Z"/>
-                </g>
-              </svg>
-            </span>
+            <span class="tap-ring" id="ui-tapring"></span>
             <span class="tap-hint">TAP · SWIPE TO RIFFLE</span>
             <span class="floaters" id="ui-floaters"></span>
           </button>

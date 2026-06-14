@@ -328,14 +328,26 @@
   }
 
   // -------------------------------------------------------------- actions
-  function launder() {
+  function launder(e) {
     if (Date.now() < bustedUntil) return;
     const gain = perTap();
     state.cash += gain;
     state.lifetime += gain;
     state.taps++;
     state.heat = Math.min(100, state.heat + TAP_HEAT * coolFactor());
-    floater('+' + moneyShort(gain));
+    // drop the +$ and the ripple right where they tapped (over the hands)
+    let xp = 50,
+      yp = 50;
+    const tap = $('ui-tap');
+    if (e && tap && e.clientX != null) {
+      const r = tap.getBoundingClientRect();
+      const lx = e.clientX - r.left,
+        ly = e.clientY - r.top;
+      xp = (lx / r.width) * 100;
+      yp = (ly / r.height) * 100;
+      ring(lx, ly);
+    }
+    floater('+' + moneyShort(gain), xp, yp);
     $('ui-cash').classList.remove('pop');
     void $('ui-cash').offsetWidth;
     $('ui-cash').classList.add('pop');
@@ -345,16 +357,25 @@
     render();
     saveSoon();
   }
+  function ring(lx, ly) {
+    const r = $('ui-tapring');
+    if (!r) return;
+    r.style.left = lx + 'px';
+    r.style.top = ly + 'px';
+    r.classList.remove('go');
+    void r.offsetWidth;
+    r.classList.add('go');
+  }
   let _fl = 0;
-  function floater(txt) {
+  function floater(txt, xp, yp) {
     const now = Date.now();
-    if (now - _fl < 55) return;
+    if (now - _fl < 50) return;
     _fl = now;
     const f = document.createElement('span');
     f.className = 'float';
     f.textContent = txt;
-    f.style.left = 40 + Math.random() * 20 + '%';
-    f.style.top = '52%';
+    f.style.left = (xp != null ? xp : 50) + '%';
+    f.style.top = (yp != null ? yp : 50) + '%';
     $('ui-floaters').appendChild(f);
     setTimeout(() => f.remove(), 900);
   }
@@ -416,6 +437,7 @@
     state.ups = {};
     state.bribes = 0;
     state.heat = 0;
+    setScene(CITIES[state.cityIdx]);
     toast('Escaped to ' + CITIES[state.cityIdx] + ' ✈️  ×' + prestigeMult().toFixed(2));
     confetti();
     checkRep();
@@ -459,6 +481,34 @@
     $('ui-dock').classList.toggle('hidden', tab !== 'launder');
     document.querySelectorAll('.nav-btn').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
     if (tab !== 'launder') renderPanel(tab);
+  }
+
+  // -------------------------------------------------------------- scene image
+  // Full-bleed background photo per city. Drop art at assets/scene-<city>.<ext>
+  // (jpg/png/webp). Until then, a soft gradient + a "drop it here" hint show.
+  function setScene(city) {
+    const slug = (city || 'dubai').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const exts = ['jpg', 'jpeg', 'png', 'webp'];
+    const img = $('scene-img');
+    const hint = $('scene-hint');
+    if (!img) return;
+    let i = 0;
+    (function next() {
+      if (i >= exts.length) {
+        img.classList.remove('on');
+        if (hint) hint.hidden = false;
+        return;
+      }
+      const url = 'assets/scene-' + slug + '.' + exts[i++];
+      const probe = new Image();
+      probe.onload = () => {
+        img.style.backgroundImage = 'url("' + url + '")';
+        img.classList.add('on');
+        if (hint) hint.hidden = true;
+      };
+      probe.onerror = next;
+      probe.src = url;
+    })();
   }
 
   // -------------------------------------------------------------- $CLEAN buy
@@ -507,7 +557,7 @@
   function bind() {
     $('ui-tap').addEventListener('pointerdown', (e) => {
       e.preventDefault();
-      launder();
+      launder(e);
     });
     $('ui-feat').addEventListener('click', buyFeatured);
     $('ui-buy').addEventListener('click', buyClean);
@@ -537,6 +587,7 @@
     offline();
     bind();
     showTab('launder');
+    setScene(CITIES[state.cityIdx]);
     render();
     let last = performance.now();
     setInterval(() => {
