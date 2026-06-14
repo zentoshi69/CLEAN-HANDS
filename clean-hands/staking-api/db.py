@@ -18,7 +18,7 @@ DB_PATH = os.environ.get("STAKE_DB", os.path.join(os.path.dirname(__file__), "st
 # --------------------------------------------------------------------------- #
 DECIMALS = int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
 BASE = 10**DECIMALS
-SCHEMA_VERSION = 6  # bumped by migrations
+SCHEMA_VERSION = 7  # bumped by migrations
 
 
 def to_base(ui_amount: float) -> int:
@@ -107,13 +107,18 @@ CREATE TABLE IF NOT EXISTS stakers (
     balance_ts BIGINT NOT NULL DEFAULT 0, stake_start_ts BIGINT NOT NULL DEFAULT 0,
     last_accrual_ts BIGINT NOT NULL DEFAULT 0, accrued BIGINT NOT NULL DEFAULT 0,
     claimed_total BIGINT NOT NULL DEFAULT 0, total_burned BIGINT NOT NULL DEFAULT 0,
+    mm_liquidity_cents BIGINT NOT NULL DEFAULT 0,
     referred_by TEXT, ref_code TEXT UNIQUE, payout_wallet TEXT,
     payout_confirmed_ts BIGINT NOT NULL DEFAULT 0, created_at BIGINT NOT NULL);
 ALTER TABLE stakers ADD COLUMN IF NOT EXISTS ref_code TEXT UNIQUE;
 ALTER TABLE stakers ADD COLUMN IF NOT EXISTS payout_wallet TEXT;
 ALTER TABLE stakers ADD COLUMN IF NOT EXISTS payout_confirmed_ts BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE stakers ADD COLUMN IF NOT EXISTS mm_liquidity_cents BIGINT NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS burns (
     signature TEXT PRIMARY KEY, wallet TEXT NOT NULL, amount BIGINT NOT NULL, ts BIGINT NOT NULL);
+CREATE TABLE IF NOT EXISTS mm_deposits (
+    signature TEXT PRIMARY KEY, wallet TEXT NOT NULL, usd_cents BIGINT NOT NULL,
+    lamports BIGINT NOT NULL DEFAULT 0, clean_base BIGINT NOT NULL DEFAULT 0, ts BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS ledger (
     id BIGSERIAL PRIMARY KEY, ts BIGINT NOT NULL, wallet TEXT NOT NULL,
     action TEXT NOT NULL, amount BIGINT NOT NULL, detail TEXT);
@@ -173,6 +178,14 @@ def init_db():
                 signature  TEXT PRIMARY KEY,                -- idempotency: 1 credit per tx
                 wallet     TEXT NOT NULL,
                 amount     REAL NOT NULL,
+                ts         INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS mm_deposits (
+                signature  TEXT PRIMARY KEY,                -- idempotency: 1 credit per tx
+                wallet     TEXT NOT NULL,
+                usd_cents  INTEGER NOT NULL,                -- credited USD value (cents)
+                lamports   INTEGER NOT NULL DEFAULT 0,      -- SOL leg
+                clean_base INTEGER NOT NULL DEFAULT 0,      -- $CLEAN leg (base units)
                 ts         INTEGER NOT NULL
             );
             -- Append-only audit trail of every balance-affecting action. Never
@@ -332,6 +345,21 @@ def _migrate(conn) -> None:
         )
         conn.execute("PRAGMA user_version = 6")
         conn.commit()
+        ver = 6
+    if ver < 7:
+        # v7: market-maker liquidity booster — per-staker deposit total (USD cents)
+        # plus an idempotent deposit log (one credit per tx).
+        conn.execute("ALTER TABLE stakers ADD COLUMN mm_liquidity_cents INTEGER NOT NULL DEFAULT 0")
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS mm_deposits (
+                signature TEXT PRIMARY KEY, wallet TEXT NOT NULL, usd_cents INTEGER NOT NULL,
+                lamports INTEGER NOT NULL DEFAULT 0, clean_base INTEGER NOT NULL DEFAULT 0,
+                ts INTEGER NOT NULL);
+            """
+        )
+        conn.execute("PRAGMA user_version = 7")
+        conn.commit()
 
 
 def get_staker(conn, wallet: str):
@@ -415,6 +443,10 @@ def wallet_by_ref_code(conn, code: str) -> str | None:
 
 def burn_seen(conn, signature: str) -> bool:
     return conn.execute("SELECT 1 FROM burns WHERE signature=?", (signature,)).fetchone() is not None
+
+
+def mm_seen(conn, signature: str) -> bool:
+    return conn.execute("SELECT 1 FROM mm_deposits WHERE signature=?", (signature,)).fetchone() is not None
 
 
 def create_claim(conn, wallet: str, amount_base: int, status: str = "requested") -> None:

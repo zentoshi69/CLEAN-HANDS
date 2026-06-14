@@ -15,6 +15,9 @@ APP=/home/clean/CLEAN-HANDS/clean-hands
 echo "== website (cleanhands.fun landing) =="
 mkdir -p /var/www/clean-site
 cp "$APP/deploy/site-index.html" /var/www/clean-site/index.html
+# standalone landing pages (pretty URLs /boost and /bridge via nginx try_files)
+cp "$APP/deploy/boost.html" /var/www/clean-site/boost.html
+cp "$APP/deploy/bridge.html" /var/www/clean-site/bridge.html
 
 echo "== shop product photos =="
 mkdir -p /var/www/clean-site/shop
@@ -40,7 +43,7 @@ systemctl restart degen-staking && sleep 2
 
 echo "== VERIFY =="
 echo "app:       $(curl -s -o /dev/null -w '%{http_code}' https://app.cleanhands.fun/)"
-echo "wp(app):   $(curl -s https://app.cleanhands.fun/whitepaper | grep -oc data-econ) live spans"
+echo "wp(app):   $(curl -s https://app.cleanhands.fun/whitepaper | grep -oc data-act) acts"
 echo "website:   $(curl -s -o /dev/null -w '%{http_code}' https://cleanhands.fun/)"
 echo "wp(site):  $(curl -s -o /dev/null -w '%{http_code}' https://cleanhands.fun/whitepaper)"
 echo "site live: $(curl -s https://cleanhands.fun/ | grep -oc lv-staked) stat hooks"

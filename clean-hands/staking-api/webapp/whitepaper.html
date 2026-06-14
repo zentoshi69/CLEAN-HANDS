@@ -2,16 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <title>$CLEAN — White Paper</title>
-<meta name="description" content="The $CLEAN white paper."/>
+<meta name="description" content="Money is dirty. So we keep it clean. The $CLEAN white paper — soft-staking, boosters, burn, and a bridge that comes out spotless."/>
 <meta property="og:title" content="$CLEAN — White Paper"/>
-<meta property="og:description" content="The cleanest paper in crypto."/>
+<meta property="og:description" content="Money is dirty. So we keep it clean. Extra clean. Clean hands, dirty money."/>
 <meta property="og:image" content="https://cleanhands.fun/glove.png"/>
+<meta name="theme-color" content="#F4FAFF"/>
 <link rel="icon" href="/glove.png"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
 :root{
   --sky:#86BFF8;--sky-2:#A9D3FB;--sky-soft:#D6EAFD;--glove:#EAF4FE;
@@ -23,16 +24,18 @@
   --shadow:0 24px 60px -28px rgba(27,93,166,.35);
   --shadow-sm:0 10px 30px -18px rgba(27,93,166,.45);
 }
-*{margin:0;padding:0;box-sizing:border-box}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{scroll-behavior:smooth}
 body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--paper);color:var(--ink-deep);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(60% 50% at 12% 6%,rgba(134,191,248,.28),transparent 60%),radial-gradient(55% 45% at 92% 16%,rgba(169,211,251,.26),transparent 60%),radial-gradient(70% 60% at 50% 112%,rgba(134,191,248,.22),transparent 60%)}
+a{color:inherit;text-decoration:none}
 
 /* progress bar */
-#prog{position:fixed;top:0;left:0;height:3px;width:0;z-index:50;
+#prog{position:fixed;top:0;left:0;height:3px;width:0;z-index:60;
   background:linear-gradient(90deg,var(--sky),var(--ink-2));box-shadow:0 0 12px rgba(134,191,248,.9)}
 
-/* nav — identical to cleanhands.fun landing */
-a{color:inherit;text-decoration:none}
+/* nav */
 nav{position:fixed;top:0;left:0;right:0;z-index:50;transition:.35s ease}
 nav .bar{margin:14px auto;max-width:1180px;display:flex;align-items:center;justify-content:space-between;padding:10px 14px 10px 16px;border-radius:20px;border:1.5px solid transparent;background:transparent;transition:.35s ease}
 nav.scrolled .bar{background:rgba(255,255,255,.72);backdrop-filter:blur(16px);border-color:var(--line);box-shadow:var(--shadow-sm)}
@@ -41,187 +44,194 @@ nav.scrolled .bar{background:rgba(255,255,255,.72);backdrop-filter:blur(16px);bo
 .brand .lock{display:flex;flex-direction:column;line-height:.9}
 .brand b{font-family:'Fraunces',serif;font-size:1.06rem;font-weight:700;letter-spacing:.07em;color:var(--ink-deep)}
 .brand .sub{font-family:'Caveat',cursive;font-size:1.2rem;color:var(--ink-2);margin-top:-1px}
-.navlinks{display:flex;gap:26px;font-weight:500;font-size:.95rem;color:var(--ink-deep)}
-.navlinks a{position:relative;opacity:.8;transition:.2s;cursor:pointer}
+.navlinks{display:flex;gap:24px;font-weight:500;font-size:.95rem;color:var(--ink-deep)}
+.navlinks a{position:relative;opacity:.8;transition:.2s}
 .navlinks a:hover,.navlinks a.cur{opacity:1}
 .navlinks a::after{content:"";position:absolute;left:0;bottom:-6px;height:2px;width:0;background:var(--ink-2);transition:.25s}
 .navlinks a:hover::after,.navlinks a.cur::after{width:100%}
 @media(max-width:900px){.navlinks{display:none}}
 .nav-right{display:flex;align-items:center;gap:10px}
-.btn{font-family:inherit;font-weight:600;font-size:.95rem;cursor:pointer;border-radius:14px;padding:12px 22px;transition:.22s ease;border:1.5px solid var(--ink-2);white-space:nowrap}
+.btn{font-family:inherit;font-weight:600;font-size:.95rem;cursor:pointer;border-radius:14px;padding:12px 22px;transition:.22s ease;border:1.5px solid var(--ink-2);white-space:nowrap;display:inline-flex;align-items:center;gap:8px}
 .btn-solid{background:var(--ink-2);color:#fff;box-shadow:0 10px 24px -12px rgba(46,116,192,.8)}
 .btn-solid:hover{background:var(--ink);transform:translateY(-2px);box-shadow:0 16px 30px -14px rgba(27,93,166,.85)}
-.icon-btn{position:relative;width:46px;height:46px;border-radius:14px;border:1.5px solid var(--line-2);background:rgba(255,255,255,.5);cursor:pointer;display:grid;place-items:center;color:var(--ink-deep);transition:.2s;font-size:1.1rem;text-decoration:none}
+.btn-ghost{background:rgba(255,255,255,.6);color:var(--ink);border-color:var(--line-2)}
+.btn-ghost:hover{background:#fff;transform:translateY(-2px)}
+.icon-btn{width:46px;height:46px;border-radius:14px;border:1.5px solid var(--line-2);background:rgba(255,255,255,.5);display:grid;place-items:center;color:var(--ink-deep);transition:.2s;font-size:1.1rem}
 .icon-btn:hover{background:#fff;transform:translateY(-2px)}
-@media(max-width:900px){.icon-btn{width:42px;height:42px}}
 
-/* layout: toc + stages */
-.wrap{display:flex;max-width:1180px;margin:0 auto;padding:104px 20px 0;gap:36px}
-.toc{position:sticky;top:104px;align-self:flex-start;min-width:200px;padding:18px 0;display:none}
-@media(min-width:880px){.toc{display:block}}
-.toc .ttl{font-size:.68rem;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
-.toc a{display:block;padding:7px 12px;margin:2px 0;font-size:.85rem;font-weight:600;color:var(--muted);
-  text-decoration:none;border-left:2px solid var(--line);transition:.25s}
-.toc a.on{color:var(--ink-2);border-left-color:var(--ink-2);text-shadow:0 0 14px rgba(134,191,248,.9)}
-.main{flex:1;min-width:0}
+/* act dots */
+.dots{position:fixed;right:22px;top:50%;transform:translateY(-50%);z-index:40;display:flex;flex-direction:column;gap:14px}
+@media(max-width:760px){.dots{display:none}}
+.dots a{width:11px;height:11px;border-radius:50%;border:1.5px solid var(--line-2);background:rgba(255,255,255,.55);transition:.3s}
+.dots a.on{background:var(--ink-2);border-color:var(--ink-2);box-shadow:0 0 0 5px rgba(46,116,192,.14);transform:scale(1.1)}
 
-/* hero */
-.hero{min-height:62vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative}
-.hero img{width:96px;height:96px;border-radius:50%;border:2px solid var(--line);background:#fff;
-  box-shadow:0 24px 60px -28px rgba(27,93,166,.5);animation:bob 5s ease-in-out infinite}
+/* intro */
+.intro{position:relative;z-index:2;min-height:94vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:120px 20px 40px}
+.intro img{width:104px;height:104px;border-radius:50%;border:2px solid var(--line);background:#fff;object-fit:cover;box-shadow:0 24px 60px -28px rgba(27,93,166,.5);animation:bob 5s ease-in-out infinite}
 @keyframes bob{50%{transform:translateY(-9px)}}
-.hero h1{font-family:'Fraunces',serif;font-weight:700;font-size:clamp(2rem,6vw,3.2rem);margin-top:22px;letter-spacing:-.01em}
-.hero .sub{margin-top:8px;color:var(--muted);font-size:.95rem;font-weight:600}
+.intro .eyebrow{font-family:'Caveat',cursive;font-size:1.7rem;color:var(--ink-2);font-weight:700;margin-top:18px}
+.intro h1{font-family:'Fraunces',serif;font-weight:700;font-size:clamp(2.4rem,7vw,4.4rem);line-height:1;margin-top:2px}
+.intro h1 span{display:block;font-family:'Caveat',cursive;color:var(--ink-2);font-size:clamp(2.6rem,7.8vw,5rem);line-height:.9}
+.scrollcue{margin-top:42px;color:var(--muted);font-weight:800;letter-spacing:.22em;text-transform:uppercase;font-size:.68rem;animation:cue 2s ease-in-out infinite}
+@keyframes cue{50%{transform:translateY(8px);opacity:.45}}
 
-/* THE STAGES — sections of pure clean */
-.s{position:relative;min-height:78vh;border-bottom:1px dashed var(--line);overflow:hidden}
-.s:last-of-type{border-bottom:none}
+/* ===== THE ACTS ===== */
+.act{position:relative;min-height:104vh;display:grid;place-items:center;overflow:hidden;padding:70px 20px}
+.act-inner{position:relative;z-index:3;text-align:center;max-width:960px;will-change:transform,opacity}
+.big{font-family:'Fraunces',serif;font-weight:700;line-height:.9;letter-spacing:-.02em;font-size:clamp(3rem,14vw,9rem)}
+.lede{margin:28px auto 0;max-width:580px;color:var(--muted);font-size:clamp(1rem,2.5vw,1.24rem);font-weight:600;line-height:1.65}
+.lede b{color:var(--ink-deep)}
 
-/* glow orbs drifting in each stage */
-.orb{position:absolute;border-radius:50%;filter:blur(34px);opacity:.5;pointer-events:none;
-  animation:drift 16s ease-in-out infinite alternate}
-@keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(46px,-38px) scale(1.18)}}
+/* per-act motion-gradient shine (each different) */
+.shine{-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+.s1{background-image:linear-gradient(100deg,#0F3E73 18%,#5d7ea3 40%,#A9D3FB 50%,#5d7ea3 60%,#0F3E73 82%);background-size:300% 100%;animation:shineA 6s linear infinite}
+.s2{background-image:linear-gradient(100deg,#2E74C0 24%,#86BFF8 44%,#ffffff 52%,#86BFF8 60%,#2E74C0 76%);background-size:300% 100%;animation:shineB 4.4s linear infinite}
+.s3{background-image:linear-gradient(100deg,#2E74C0,#14F195 28%,#86BFF8 44%,#9945FF 56%,#86BFF8 72%,#2E74C0);background-size:420% 100%;animation:shineC 3.1s linear infinite}
+.s4{background-image:linear-gradient(100deg,#0F3E73 18%,#2E74C0 38%,#A9D3FB 50%,#2E74C0 62%,#0F3E73 82%);background-size:300% 100%;animation:shineD 7s ease-in-out infinite}
+@keyframes shineA{to{background-position:-300% 0}}
+@keyframes shineB{to{background-position:300% 0}}
+@keyframes shineC{to{background-position:-420% 0}}
+@keyframes shineD{0%,100%{background-position:0 0}50%{background-position:200% 0}}
 
-/* twinkling stars */
-.star{position:absolute;color:var(--sky);pointer-events:none;opacity:0;
-  text-shadow:0 0 10px rgba(134,191,248,.95),0 0 26px rgba(169,211,251,.7);
-  animation:twinkle var(--d,3s) ease-in-out var(--w,0s) infinite}
-@keyframes twinkle{0%,100%{opacity:0;transform:scale(.5) rotate(0deg)}
-  50%{opacity:var(--o,.95);transform:scale(1.12) rotate(22deg)}}
+/* reveal sweep across the act */
+.act::before{content:"";position:absolute;top:0;bottom:0;left:-30%;width:26%;z-index:4;pointer-events:none;
+  background:linear-gradient(105deg,transparent,rgba(255,255,255,.7) 50%,transparent);
+  transform:skewX(-14deg) translateX(-240%);opacity:0}
+.act.lit::before{animation:sweep 1.9s cubic-bezier(.4,0,.2,1) .1s 1 forwards}
+@keyframes sweep{0%{opacity:0;transform:skewX(-14deg) translateX(-240%)}12%{opacity:1}88%{opacity:1}100%{opacity:0;transform:skewX(-14deg) translateX(640%)}}
 
-/* ——— per-section motion variations (each stage feels different) ——— */
-/* fairy dust: tiny motes rising like embers of light */
-.mote{position:absolute;bottom:-12px;width:var(--sz,5px);height:var(--sz,5px);border-radius:50%;
-  background:radial-gradient(circle,#fff 0%,var(--sky) 55%,transparent 75%);pointer-events:none;opacity:0;
-  filter:drop-shadow(0 0 6px rgba(169,211,251,.95));
-  animation:rise var(--d,9s) linear var(--w,0s) infinite}
-@keyframes rise{0%{opacity:0;transform:translate(0,0) scale(.6)}
-  12%{opacity:var(--o,.9)}55%{transform:translate(var(--sway,18px),-46vh) scale(1)}
-  100%{opacity:0;transform:translate(calc(var(--sway,18px) * -1),-86vh) scale(.4)}}
+/* bubble parallax layers */
+.bubbles{position:absolute;inset:-16% -6%;pointer-events:none;will-change:transform}
+.l-back{z-index:0;filter:blur(2px);opacity:.7}
+.l-mid{z-index:1}
+.l-front{z-index:2}
+.bub{position:absolute;border-radius:50%;opacity:0;
+  background:radial-gradient(circle at 32% 28%,rgba(255,255,255,.96),rgba(169,211,251,.45) 60%,rgba(134,191,248,.14));
+  border:1px solid rgba(255,255,255,.5);box-shadow:0 6px 18px -8px rgba(46,116,192,.45);
+  animation:bubrise var(--d,12s) linear var(--w,0s) infinite}
+@keyframes bubrise{0%{opacity:0;transform:translateY(24px) scale(.7)}10%{opacity:var(--o,.7)}90%{opacity:calc(var(--o,.7)*.7)}100%{opacity:0;transform:translateY(-130px) scale(1.05)}}
+.bub.pop{animation:bubpop .56s ease-out forwards}
+@keyframes bubpop{0%{opacity:.9;transform:scale(1)}55%{opacity:.5;transform:scale(1.55)}100%{opacity:0;transform:scale(2)}}
+.bub.pop::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:2px solid rgba(134,191,248,.75);animation:bubring .56s ease-out forwards}
+@keyframes bubring{0%{opacity:.85;transform:scale(.55)}100%{opacity:0;transform:scale(1.8)}}
 
-/* aurora: soft ribbons of light breathing across the stage */
-.aur{position:absolute;left:-12%;right:-12%;height:34%;pointer-events:none;opacity:0;
-  background:linear-gradient(100deg,transparent,rgba(134,191,248,.22) 30%,rgba(214,234,253,.36) 50%,rgba(153,69,255,.10) 70%,transparent);
-  filter:blur(26px);transform:skewY(-4deg);
-  animation:aurora var(--d,11s) ease-in-out var(--w,0s) infinite alternate}
-@keyframes aurora{from{opacity:.35;transform:skewY(-4deg) translateX(-7%)}
-  to{opacity:.8;transform:skewY(-2.5deg) translateX(7%)}}
+/* inward-curved twinkle stars around the headline */
+.stars{position:absolute;inset:-14% -8%;pointer-events:none;z-index:2}
+.cstar{position:absolute;color:#fff;font-family:'Fraunces',serif;pointer-events:none;opacity:0;
+  text-shadow:0 0 12px rgba(134,191,248,.95),0 0 30px rgba(169,211,251,.7);
+  animation:cstar var(--d,3.4s) ease-in-out var(--w,0s) infinite}
+@keyframes cstar{
+  0%{opacity:0;transform:translate(var(--fx,20px),var(--fy,14px)) scale(.2) rotate(-32deg)}
+  45%{opacity:var(--o,1);transform:translate(0,0) scale(1) rotate(0deg)}
+  62%{opacity:var(--o,1);transform:translate(0,0) scale(1) rotate(4deg)}
+  100%{opacity:0;transform:translate(calc(var(--fx,20px)*-.55),calc(var(--fy,14px)*-.55)) scale(.5) rotate(36deg)}}
 
-/* halo: expanding rings of clean */
-.ring{position:absolute;border-radius:50%;border:1.5px solid rgba(134,191,248,.7);pointer-events:none;opacity:0;
-  animation:ringx var(--d,5s) ease-out var(--w,0s) infinite}
-@keyframes ringx{0%{opacity:.85;transform:scale(.15)}100%{opacity:0;transform:scale(1.6)}}
+/* sparkle on burst */
+.spark{position:fixed;z-index:55;pointer-events:none;color:#fff;font-family:'Fraunces',serif;
+  text-shadow:0 0 8px rgba(134,191,248,.9);animation:sparkfly .62s ease-out forwards}
+@keyframes sparkfly{0%{opacity:1;transform:translate(0,0) scale(.5)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1.15) rotate(60deg)}}
 
-/* comet: little arcs of glitter drifting sideways */
-.comet{position:absolute;width:64px;height:1.5px;border-radius:2px;pointer-events:none;opacity:0;
-  background:linear-gradient(90deg,transparent,#fff);filter:drop-shadow(0 0 5px rgba(134,191,248,.9));
-  animation:cometx var(--d,7s) ease-in var(--w,0s) infinite}
-@keyframes cometx{0%{opacity:0;transform:translate(0,0) rotate(var(--rot,12deg))}
-  10%{opacity:.95}100%{opacity:0;transform:translate(46vw,12vh) rotate(var(--rot,12deg))}}
-
-/* glitter rain: soft flecks falling slow */
-.fleck{position:absolute;top:-12px;width:3px;height:9px;border-radius:3px;pointer-events:none;opacity:0;
-  background:linear-gradient(180deg,#fff,rgba(134,191,248,.1));filter:drop-shadow(0 0 4px rgba(169,211,251,.9));
-  animation:fall var(--d,8s) linear var(--w,0s) infinite}
-@keyframes fall{0%{opacity:0;transform:translateY(0) rotate(8deg)}10%{opacity:var(--o,.8)}
-  100%{opacity:0;transform:translateY(82vh) rotate(-10deg)}}
-
-/* pulse glyph: a slow heavenly bloom in the middle of a stage */
-.bloom{position:absolute;pointer-events:none;color:#fff;font-size:var(--sz,42px);opacity:0;
-  text-shadow:0 0 18px rgba(134,191,248,1),0 0 54px rgba(169,211,251,.8);
-  animation:bloomx var(--d,6s) ease-in-out var(--w,0s) infinite}
-@keyframes bloomx{0%,100%{opacity:0;transform:scale(.5) rotate(-8deg)}
-  50%{opacity:.95;transform:scale(1.25) rotate(8deg)}}
-
-.s [class]{animation-play-state:paused}
-.s.in [class]{animation-play-state:running}
-
-/* shine sweep when a stage reveals */
-.s::after{content:"";position:absolute;top:-30%;bottom:-30%;left:-25%;width:24%;pointer-events:none;
-  background:linear-gradient(105deg,transparent,rgba(255,255,255,.85) 50%,transparent);
-  transform:skewX(-14deg) translateX(-160%);opacity:0}
-.s.in::after{animation:sweep 1.7s cubic-bezier(.4,0,.2,1) .15s 1 forwards}
-@keyframes sweep{0%{opacity:0;transform:skewX(-14deg) translateX(-160%)}
-  12%{opacity:1}88%{opacity:1}100%{opacity:0;transform:skewX(-14deg) translateX(640%)}}
-
-/* sparkle pop on reveal */
-.s .star{animation-play-state:paused}
-.s.in .star{animation-play-state:running}
-
-/* shooting stars across the whole page */
-.shoot{position:fixed;top:0;left:0;width:130px;height:2px;z-index:5;pointer-events:none;opacity:0;
-  background:linear-gradient(90deg,rgba(134,191,248,0),rgba(255,255,255,.95));
-  border-radius:2px;filter:drop-shadow(0 0 8px rgba(134,191,248,.9))}
-.shoot.go{animation:shoot 1.25s ease-in 1 forwards}
-@keyframes shoot{0%{opacity:0;transform:translate(var(--sx),var(--sy)) rotate(24deg)}
-  8%{opacity:1}100%{opacity:0;transform:translate(calc(var(--sx) + 64vw),calc(var(--sy) + 30vh)) rotate(24deg)}}
-
-/* footer: just the glove, gleaming */
-.end{min-height:46vh;display:flex;align-items:center;justify-content:center;position:relative}
-.end img{width:190px;height:190px;border-radius:50%;border:2px solid var(--line);background:#fff;
-  object-fit:contain;padding:26px;
-  box-shadow:0 0 0 0 rgba(134,191,248,.55);animation:halo 3.2s ease-out infinite}
-@keyframes halo{0%{box-shadow:0 0 0 0 rgba(134,191,248,.55)}100%{box-shadow:0 0 0 42px rgba(134,191,248,0)}}
+/* final act */
+.endglove{width:118px;height:118px;border-radius:50%;border:2px solid var(--line);background:#fff;object-fit:contain;padding:16px;margin:0 auto 14px;display:block;
+  box-shadow:0 0 0 0 rgba(134,191,248,.5);animation:halo 3.2s ease-out infinite}
+@keyframes halo{0%{box-shadow:0 0 0 0 rgba(134,191,248,.5)}100%{box-shadow:0 0 0 40px rgba(134,191,248,0)}}
+.cta{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:34px}
 
 @media(prefers-reduced-motion:reduce){
-  *,.s::after{animation:none!important}
-  .star{opacity:.6}
+  *,.act::before{animation:none!important}
+  .act-inner{opacity:1!important;transform:none!important}
+  .shine{-webkit-text-fill-color:var(--ink-deep);color:var(--ink-deep);background:none}
+  .cstar{opacity:.5}
+  .bub{opacity:.4}
 }
 </style>
 </head>
 <body>
 <div id="prog"></div>
+
 <nav id="nav">
   <div class="bar">
     <a class="brand" href="https://cleanhands.fun/"><img src="/glove.png" alt="CLEAN"/><span class="lock"><b>CLEAN HANDS.</b><span class="sub">Dirty money</span></span></a>
     <div class="navlinks">
-      <a href="https://cleanhands.fun/">Wash</a>
-      <a href="https://cleanhands.fun/">Shop</a>
-      <a href="https://cleanhands.fun/">FAQ</a>
+      <a href="https://cleanhands.fun/#/wash">Wash</a>
+      <a href="https://cleanhands.fun/boost">Boost</a>
+      <a href="https://cleanhands.fun/bridge">Bridge</a>
+      <a href="https://cleanhands.fun/#/shop">Shop</a>
       <a href="/whitepaper" class="cur">Paper</a>
     </div>
     <div class="nav-right">
-      <a class="btn btn-solid" href="https://app.cleanhands.fun/">Connect</a>
+      <a class="btn btn-solid" href="https://app.cleanhands.fun/">Open app ↗</a>
       <a class="icon-btn" href="https://cleanhands.fun/" aria-label="Back to site" title="Back to site">←</a>
     </div>
   </div>
 </nav>
 
-<div class="wrap">
-  <nav class="toc" id="toc">
-    <div class="ttl">Contents</div>
-    <a href="#summary">01 · Summary</a>
-    <a href="#problem">02 · Why memes die</a>
-    <a href="#mechanics">03 · Mechanics</a>
-    <a href="#tokenomics">04 · Tokenomics</a>
-    <a href="#architecture">05 · Architecture</a>
-    <a href="#security">06 · Security</a>
-    <a href="#roadmap">07 · Roadmap</a>
-    <a href="#marketing">08 · Marketing</a>
-    <a href="#risk">09 · Risk</a>
-  </nav>
-
-  <main class="main">
-    <header class="hero" id="top">
-      <img src="/glove.png" alt="$CLEAN glove"/>
-      <h1>White&nbsp;Paper</h1>
-      <div class="sub">v1.0 · final</div>
-    </header>
-
-    <section class="s" id="summary"></section>
-    <section class="s" id="problem"></section>
-    <section class="s" id="mechanics"></section>
-    <section class="s" id="tokenomics"></section>
-    <section class="s" id="architecture"></section>
-    <section class="s" id="security"></section>
-    <section class="s" id="roadmap"></section>
-    <section class="s" id="marketing"></section>
-    <section class="s" id="risk"></section>
-
-    <div class="end"><img src="/glove.png" alt=""/></div>
-  </main>
+<div class="dots">
+  <a href="#act1" aria-label="Money is dirty"></a>
+  <a href="#act2" aria-label="So we keep it clean"></a>
+  <a href="#act3" aria-label="Extra clean"></a>
+  <a href="#act4" aria-label="Clean hands, dirty money"></a>
 </div>
 
-<script src="/whitepaper.js"></script>
+<header class="intro">
+  <img src="/glove.png" alt="$CLEAN glove"/>
+  <div class="eyebrow">The White Paper</div>
+  <h1>Clean hands.<span>Dirty money.</span></h1>
+  <div class="scrollcue">Scroll to wash ✦</div>
+</header>
+
+<main>
+  <section class="act" id="act1" data-act="1">
+    <div class="bubbles l-back" data-depth="-0.16" aria-hidden="true"></div>
+    <div class="bubbles l-mid" data-depth="-0.06" aria-hidden="true"></div>
+    <div class="bubbles l-front" data-depth="0.09" aria-hidden="true"></div>
+    <div class="act-inner" data-depth="0.03">
+      <div class="stars" aria-hidden="true"></div>
+      <h2 class="big shine s1">MONEY IS<br>DIRTY</h2>
+      <p class="lede">Every cycle it’s the same: memecoins pump, founders ghost, liquidity vanishes, and the bag-holders are left holding fumes. <b>The money was always dirty.</b></p>
+    </div>
+  </section>
+
+  <section class="act" id="act2" data-act="2">
+    <div class="bubbles l-back" data-depth="-0.16" aria-hidden="true"></div>
+    <div class="bubbles l-mid" data-depth="-0.06" aria-hidden="true"></div>
+    <div class="bubbles l-front" data-depth="0.09" aria-hidden="true"></div>
+    <div class="act-inner" data-depth="0.03">
+      <div class="stars" aria-hidden="true"></div>
+      <h2 class="big shine s2">SO WE KEEP<br>IT CLEAN</h2>
+      <p class="lede">$CLEAN is <b>soft-staking</b> — your tokens never leave your wallet. Non-custodial yield, transparent on-chain mechanics, no lock-ups, no smoke. <b>Clean hands on your own keys.</b></p>
+    </div>
+  </section>
+
+  <section class="act" id="act3" data-act="3">
+    <div class="bubbles l-back" data-depth="-0.16" aria-hidden="true"></div>
+    <div class="bubbles l-mid" data-depth="-0.06" aria-hidden="true"></div>
+    <div class="bubbles l-front" data-depth="0.09" aria-hidden="true"></div>
+    <div class="act-inner" data-depth="0.03">
+      <div class="stars" aria-hidden="true"></div>
+      <h2 class="big shine s3">EXTRA<br>CLEAN</h2>
+      <p class="lede">Boosters that actually <b>add up</b> — holdings, loyalty, referrals and market-maker liquidity — stack to a clean <b>3×</b>. Burn to crank your APR permanently. <b>Deflation, by design.</b></p>
+    </div>
+  </section>
+
+  <section class="act" id="act4" data-act="4">
+    <div class="bubbles l-back" data-depth="-0.16" aria-hidden="true"></div>
+    <div class="bubbles l-mid" data-depth="-0.06" aria-hidden="true"></div>
+    <div class="bubbles l-front" data-depth="0.09" aria-hidden="true"></div>
+    <div class="act-inner" data-depth="0.03">
+      <div class="stars" aria-hidden="true"></div>
+      <img class="endglove" src="/glove.png" alt=""/>
+      <h2 class="big shine s4">CLEAN HANDS<br>DIRTY MONEY</h2>
+      <p class="lede">Wash your bags. Keep your keys. Come out spotless. <b>The cleanest paper in crypto.</b></p>
+      <div class="cta">
+        <a class="btn btn-solid" href="https://app.cleanhands.fun/">Open the app ↗</a>
+        <a class="btn btn-ghost" href="https://cleanhands.fun/boost">Boost Lab</a>
+        <a class="btn btn-ghost" href="https://cleanhands.fun/bridge">No Stains Bridge</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/whitepaper.js?v=2"></script>
 </body>
 </html>

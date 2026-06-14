@@ -137,7 +137,7 @@
     renderWallets();
   }
   function show(v) {
-    ['stake', 'trade', 'bridge', 'boost', 'meme', 'board', 'invite', 'folio'].forEach((n) => {
+    ['stake', 'trade', 'boost', 'game', 'meme', 'board', 'invite', 'folio'].forEach((n) => {
       const el = $('view-' + n);
       if (el) el.hidden = n !== v;
     });
@@ -157,11 +157,46 @@
         sc.scrollTop = 0;
       }
     }
-    if (v === 'bridge') loadBridge();
+    if (v === 'trade') loadBridge(); // bridge now lives inside the Trade tab
     else stopBridgePoll(); // don't keep polling order status off-tab
+    if (v === 'game') loadGame();
     haptic();
     if (v === 'board') loadBoard();
     if (v === 'trade') loadPrice();
+  }
+
+  // GAME: lazy-load the embedded game on first open (so it never costs anything
+  // until tapped), with an external fallback link if the host refuses framing.
+  function loadGame() {
+    const url = (CONFIG && CONFIG.gameUrl) || 'https://clean-hands-dirty-money.vercel.app/';
+    const open = $('game-open');
+    if (open && !open.getAttribute('href')) open.setAttribute('href', url);
+    const f = $('game-frame');
+    if (f && !f.getAttribute('src')) f.setAttribute('src', url);
+  }
+
+  // Invite lives in EVERY tab (no standalone invite section): clone a compact
+  // referral card into each view. Class-based so there are no duplicate IDs;
+  // paint() fills .inv-link / .inv-count.
+  function injectInvite() {
+    const tpl =
+      '<div class="card panel inv-card"><h3>🤝 Invite &amp; earn</h3>' +
+      '<p class="desc">Each active referral adds <b>+2% APR</b> (up to +30%). You have <b class="inv-count">0</b> active.</p>' +
+      '<div class="ca"><span class="lab">REF</span><code class="inv-link">—</code>' +
+      '<span class="cp" onclick="App.copyLink()">copy</span></div>' +
+      '<button class="btn btn-solid" style="margin-top:10px" onclick="App.invite()">Share invite ✦</button></div>';
+    ['stake', 'board', 'boost', 'trade', 'game'].forEach((n) => {
+      const v = $('view-' + n);
+      if (v && !v.querySelector('.inv-card')) {
+        const d = document.createElement('div');
+        d.innerHTML = tpl;
+        const card = d.firstChild;
+        if (!card) return;
+        // on TOP for the leaderboard (board), at the BOTTOM for every other tab
+        if (n === 'board') v.insertBefore(card, v.firstChild);
+        else v.appendChild(card);
+      }
+    });
   }
 
   function addBtn(el, label, onclick, ghost) {
@@ -305,6 +340,10 @@
     if (chip) chip.classList.toggle('connected', !!pk);
     if (MINT) $('ca-text').textContent = MINT;
     $('ref-text').textContent = inviteLink().replace(/^https?:\/\//, '');
+    // invite cards injected into every tab (class-based, no duplicate IDs)
+    const _invl = inviteLink().replace(/^https?:\/\//, '');
+    document.querySelectorAll('.inv-link').forEach((e) => (e.textContent = _invl));
+    document.querySelectorAll('.inv-count').forEach((e) => (e.textContent = fmt(p.active_referrals)));
     updatePortfolio();
     startTicker();
   }
@@ -948,13 +987,68 @@
     }
   }
 
-  // Liquidity (market-maker) booster. The real CLEAN+SOL deposit + on-chain
-  // position verification is wired server-side; until that lands this is the
-  // documented hook the dev replaces (mirror the burn flow: submit, then credit).
+  // Market-maker liquidity. After the wallet signs+sends the deposit, the
+  // on-chain signature returns via onTx -> afterMmTx, which credits the booster.
+  async function afterMmTx(sig, ctx) {
+    try {
+      const r = await api('/api/mm/add', authedBody({ signature: sig }));
+      paint(r.profile);
+      if (typeof celebrateBoost === 'function') celebrateBoost();
+      toast('💧 Liquidity credited: +$' + fmt(r.added_usd));
+    } catch (e) {
+      toast('Liquidity submit failed: ' + String(e.message));
+    }
+  }
+
+  // Deposit SOL (+ optional $CLEAN) to the MM reserve. SOL is required; $CLEAN is
+  // optional but never SOL-less. Server enforces the USD min/max; we pre-check
+  // with a live quote so we don't make the user sign a deposit it would reject.
   async function addLiquidity() {
-    // DEV: build the CLEAN+SOL pool deposit, submit it, then POST the position
-    // to your liquidity-verify endpoint so the server credits the additive boost.
-    toast('💧 Liquidity booster — coming soon ✦');
+    if (!CONFIG.mmEnabled || !CONFIG.mmWallet) return toast('Liquidity booster — coming soon ✦');
+    const pk = CleanWallet.currentPubkey();
+    if (!pk) return toast('Connect your wallet first');
+    const solAmt = parseFloat(($('bl-lp-sol') || {}).value) || 0;
+    const cleanAmt = parseFloat(($('bl-lp-clean') || {}).value) || 0;
+    const min = CONFIG.mmMinUsd || 50, max = CONFIG.mmMaxUsd || 500;
+    if (solAmt <= 0) return toast('Add SOL — the SOL leg is required (min $' + min + ')');
+    try {
+      const q = await fetch('/api/mm/quote').then((r) => r.json());
+      const solUsd = solAmt * (q.sol_usd || 0);
+      const cleanUsd = cleanAmt * (q.clean_usd || 0);
+      if (q.sol_usd && solUsd < min) return toast('SOL leg must be ≥ $' + min + ' (≈ $' + solUsd.toFixed(0) + ')');
+      if (cleanAmt > 0 && q.clean_usd) {
+        if (cleanUsd < min) return toast('If you add $CLEAN it must be ≥ $' + min);
+        if (cleanUsd >= max) return toast('$CLEAN leg must be under $' + max);
+      }
+    } catch (e) {}
+    toast('Building deposit…');
+    try {
+      const web3 = await import('https://esm.sh/@solana/web3.js@1.95');
+      const owner = new web3.PublicKey(pk);
+      const reserve = new web3.PublicKey(CONFIG.mmWallet);
+      const conn = new web3.Connection(safeRpc());
+      const tx = new web3.Transaction();
+      tx.add(web3.SystemProgram.transfer({
+        fromPubkey: owner, toPubkey: reserve, lamports: Math.round(solAmt * 1e9),
+      }));
+      if (cleanAmt > 0 && MINT) {
+        const splt = await import('https://esm.sh/@solana/spl-token@0.4');
+        const mint = new web3.PublicKey(MINT);
+        const dec = (CONFIG && CONFIG.decimals) || 6;
+        const fromAta = await splt.getAssociatedTokenAddress(mint, owner);
+        const toAta = await splt.getAssociatedTokenAddress(mint, reserve, true);
+        tx.add(splt.createAssociatedTokenAccountIdempotentInstruction(owner, toAta, reserve, mint));
+        tx.add(splt.createTransferCheckedInstruction(
+          fromAta, mint, toAta, owner, BigInt(Math.round(cleanAmt * 10 ** dec)), dec,
+        ));
+      }
+      tx.feePayer = owner;
+      tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+      const ser = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+      CleanWallet.signAndSendTransaction(CleanWallet.b58encode(new Uint8Array(ser)), { kind: 'mm' });
+    } catch (e) {
+      toast('Deposit build failed: ' + (e.message || e));
+    }
   }
 
   // ---- boot ------------------------------------------------------------- //
@@ -981,6 +1075,7 @@
     wireBurnChips();
     wirePctRow();
     initBoostLab();
+    injectInvite();
 
     // Live wallet detection: extensions inject asynchronously on desktop, so
     // re-render the connect screen whenever a new wallet announces itself.
@@ -1001,7 +1096,9 @@
     const step = CleanWallet.init({
       onConnect: afterConnect,
       onSign: afterSign,
-      onTx: afterBurnTx,
+      onTx: function (s, c) {
+        return c && c.kind === 'mm' ? afterMmTx(s, c) : afterBurnTx(s, c);
+      },
       onError: (e) => {
         toast('Wallet: ' + (e.message || e));
         showConnect();

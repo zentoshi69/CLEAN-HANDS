@@ -204,3 +204,15 @@ async def refresh_prices() -> dict:
 def last_prices() -> dict:
     """Last-known CLEAN/SOL USD prices (synchronous, no network I/O)."""
     return dict(_last_prices)
+
+
+async def clean_price_usd() -> float:
+    """$CLEAN spot price in USD (0.0 if unknown). Used by the deposit-MM quote."""
+    s = summary(await best_pair())
+    return float((s or {}).get("price_usd") or 0.0)
+
+
+async def sol_price_usd() -> float:
+    """SOL spot price in USD via its deepest wrapped-SOL pool (0.0 if unknown)."""
+    s = summary(await best_pair(WSOL_MINT))
+    return float((s or {}).get("price_usd") or 0.0)

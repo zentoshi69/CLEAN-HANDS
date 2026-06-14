@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>No Stains Bridge — CLEAN · move funds in, come out clean</title>
+<meta name="description" content="The No Stains Bridge moves your funds into $CLEAN across 30+ chains — best route auto-aggregated, full quote before you sign, fully non-custodial. Powered by LI.FI, baked into the CLEAN app."/>
+<meta property="og:title" content="No Stains Bridge — CLEAN"/>
+<meta property="og:description" content="Bridge any asset into CLEAN. One flat fee, non-custodial, no hidden spread."/>
+<meta property="og:type" content="website"/>
+<meta name="theme-color" content="#F4FAFF"/>
+<link rel="icon" href="/glove.png"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sky:#86BFF8; --sky-2:#A9D3FB; --sky-soft:#D6EAFD; --glove:#EAF4FE;
+  --paper:#F4FAFF; --white:#FFFFFF;
+  --ink:#1B5DA6; --ink-2:#2E74C0; --ink-deep:#0F3E73;
+  --skin:#E7B492; --sol:#9945FF; --sol-2:#14F195; --fire:#ff7a3c;
+  --line:rgba(27,93,166,.16); --line-2:rgba(27,93,166,.28);
+  --text:#16385c; --muted:#4d6e93;
+  --shadow:0 24px 60px -28px rgba(27,93,166,.35);
+  --shadow-sm:0 10px 30px -18px rgba(27,93,166,.45);
+  --r:26px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--paper);color:var(--text);overflow-x:hidden;line-height:1.55;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(60% 50% at 12% 8%,rgba(134,191,248,.30),transparent 60%),radial-gradient(55% 45% at 92% 18%,rgba(169,211,251,.28),transparent 60%),radial-gradient(70% 60% at 50% 110%,rgba(134,191,248,.22),transparent 60%)}
+body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E")}
+.wrap{max-width:1180px;margin:0 auto;padding:0 26px;position:relative;z-index:2}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2.5px solid var(--ink-deep);outline-offset:3px;border-radius:6px}
+
+/* nav */
+nav{position:fixed;top:0;left:0;right:0;z-index:50;transition:.35s ease}
+nav .bar{margin:14px auto;max-width:1180px;display:flex;align-items:center;justify-content:space-between;padding:10px 14px 10px 16px;border-radius:20px;border:1.5px solid transparent;background:transparent;transition:.35s ease}
+nav.scrolled .bar{background:rgba(255,255,255,.72);backdrop-filter:blur(16px);border-color:var(--line);box-shadow:var(--shadow-sm)}
+.brand{display:flex;align-items:center;gap:12px;font-weight:700;cursor:pointer}
+.brand img{width:42px;height:42px;border-radius:50%;border:1.5px solid var(--line);background:#fff;object-fit:cover}
+.brand .lock{display:flex;flex-direction:column;line-height:.9}
+.brand b{font-family:'Fraunces',serif;font-size:1.06rem;font-weight:700;letter-spacing:.07em;color:var(--ink-deep)}
+.brand .sub{font-family:'Caveat',cursive;font-size:1.2rem;color:var(--ink-2);margin-top:-1px}
+.navlinks{display:flex;gap:26px;font-weight:500;font-size:.95rem;color:var(--ink-deep)}
+.navlinks a{position:relative;opacity:.8;transition:.2s;cursor:pointer}
+.navlinks a:hover,.navlinks a.cur{opacity:1}
+.navlinks a::after{content:"";position:absolute;left:0;bottom:-6px;height:2px;width:0;background:var(--ink-2);transition:.25s}
+.navlinks a:hover::after,.navlinks a.cur::after{width:100%}
+.nav-right{display:flex;align-items:center;gap:10px}
+.hamb{display:none;background:none;border:none;font-size:1.4rem;color:var(--ink-deep);cursor:pointer}
+@media(max-width:900px){.navlinks{position:fixed;inset:0;z-index:1;flex-direction:column;gap:0;align-items:stretch;background:rgba(244,250,255,.98);backdrop-filter:blur(20px);padding:92px 28px 30px;transform:translateY(-105%);transition:transform .42s cubic-bezier(.3,.9,.2,1);overflow:auto}
+  .navlinks.open{transform:none}
+  .navlinks a{font-family:'Fraunces',serif;font-size:1.5rem;color:var(--ink-deep);padding:18px 2px;border-bottom:1px solid var(--line);opacity:1}
+  .navlinks a::after{display:none}
+  .hamb{display:grid}}
+
+.btn{font-family:inherit;font-weight:600;font-size:.95rem;cursor:pointer;border-radius:14px;padding:12px 22px;transition:.22s ease;border:1.5px solid var(--ink-2);white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn-solid{background:var(--ink-2);color:#fff;box-shadow:0 10px 24px -12px rgba(46,116,192,.8)}
+.btn-solid:hover{background:var(--ink);transform:translateY(-2px);box-shadow:0 16px 30px -14px rgba(27,93,166,.85)}
+.btn-ghost{background:rgba(255,255,255,.5);color:var(--ink);border-color:var(--line-2)}
+.btn-ghost:hover{background:#fff;transform:translateY(-2px)}
+.btn.full{width:100%}
+
+section{position:relative;padding:70px 0;z-index:2}
+.pad{padding-top:150px}
+.eyebrow{font-family:'Caveat',cursive;font-size:1.6rem;color:var(--ink-2);font-weight:700}
+.h2{font-family:'Fraunces',serif;font-weight:600;color:var(--ink-deep);font-size:clamp(2rem,4vw,3rem);line-height:1.05;letter-spacing:-.01em;margin-top:2px}
+.sec-head{max-width:620px;margin-bottom:40px}
+.sec-head p{color:var(--muted);margin-top:14px;font-size:1.05rem}
+
+/* reveal */
+.rv{opacity:0;transform:translateY(24px);transition:.7s cubic-bezier(.2,.7,.2,1)}
+.rv.in{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){.rv{opacity:1;transform:none;transition:none}}
+
+/* ===== EXTRA SHINE FX (boost + bridge pages only) ===== */
+.shine{background:linear-gradient(100deg,var(--ink-deep) 28%,var(--sky) 44%,var(--ink-2) 54%,var(--ink-deep) 70%);background-size:240% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;animation:shineMove 7s linear infinite}
+@keyframes shineMove{to{background-position:-240% 0}}
+.aurora{position:absolute;inset:-30% -10% auto;height:680px;z-index:0;pointer-events:none;filter:blur(64px);opacity:.7}
+.aurora i{position:absolute;border-radius:50%;mix-blend-mode:multiply;animation:auroraDrift 20s ease-in-out infinite alternate}
+.aurora i:nth-child(1){width:440px;height:440px;left:3%;top:0;background:radial-gradient(circle,rgba(134,191,248,.55),transparent 70%)}
+.aurora i:nth-child(2){width:400px;height:400px;right:6%;top:40px;background:radial-gradient(circle,rgba(169,211,251,.5),transparent 70%);animation-duration:24s}
+.aurora i:nth-child(3){width:320px;height:320px;left:42%;top:140px;background:radial-gradient(circle,rgba(20,241,149,.18),transparent 70%);animation-duration:28s}
+@keyframes auroraDrift{to{transform:translate(46px,34px) scale(1.12)}}
+.sheen{position:relative;overflow:hidden}
+.sheen::after{content:"";position:absolute;top:0;left:-75%;width:55%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.6),transparent);transform:skewX(-18deg);animation:sheenSweep 6s ease-in-out infinite;pointer-events:none;z-index:3}
+@keyframes sheenSweep{0%{left:-75%}58%,100%{left:150%}}
+.glow{position:relative;isolation:isolate}
+.glow::before{content:"";position:absolute;inset:-3px;border-radius:inherit;background:linear-gradient(120deg,var(--sky),var(--ink-2),var(--sol),var(--sky));background-size:300% 300%;filter:blur(11px);opacity:.5;z-index:-1;animation:glowShift 6.5s linear infinite}
+@keyframes glowShift{to{background-position:300% 0}}
+.starfield{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1}
+.starfield .st{position:absolute;color:#fff;font-family:'Fraunces',serif;filter:drop-shadow(0 2px 7px rgba(46,116,192,.5));animation:twinkle var(--td,3s) ease-in-out infinite;opacity:0}
+@keyframes twinkle{0%,100%{opacity:0;transform:scale(.55) rotate(0)}50%{opacity:var(--to,.85);transform:scale(1) rotate(9deg)}}
+.burst{position:fixed;left:0;top:0;z-index:120;pointer-events:none;color:var(--ink-2);font-family:'Fraunces',serif;will-change:transform,opacity}
+@keyframes burstfly{0%{opacity:1;transform:translate(0,0) scale(.4) rotate(0)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1.15) rotate(var(--dr))}}
+
+/* hero */
+.tagpill{display:inline-flex;align-items:center;gap:9px;font-size:.78rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);border:1.5px solid var(--line-2);border-radius:100px;padding:8px 16px;background:rgba(255,255,255,.6);margin-bottom:18px}
+.tagpill .dot{width:7px;height:7px;border-radius:50%;background:var(--sol-2);box-shadow:0 0 0 4px rgba(20,241,149,.18)}
+.hero{display:grid;grid-template-columns:1.02fr .98fr;gap:42px;align-items:center}
+@media(max-width:900px){.hero{grid-template-columns:1fr;text-align:center}.hero .lead{margin-left:auto;margin-right:auto}.hero-cta{justify-content:center}}
+h1{font-family:'Fraunces',serif;font-weight:600;color:var(--ink-deep);font-size:clamp(2.8rem,6.2vw,4.6rem);line-height:1;letter-spacing:-.01em}
+.lead{font-size:1.12rem;color:var(--muted);max-width:480px;margin:24px 0 30px;line-height:1.65}
+.hero-cta{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.tiny{font-size:.82rem;color:var(--muted);margin-top:18px}
+
+/* bridge visual */
+.bridge-vis{position:relative;border:1.5px solid var(--line);border-radius:var(--r);background:linear-gradient(165deg,rgba(214,234,253,.6),rgba(255,255,255,.4));padding:46px 30px;overflow:hidden;box-shadow:var(--shadow);min-height:300px;display:grid;place-items:center}
+.bridge-vis>*{position:relative;z-index:2}
+.piers{display:flex;align-items:flex-start;justify-content:space-between;width:100%;max-width:400px}
+.pier{display:flex;flex-direction:column;align-items:center;gap:10px;width:96px}
+.disc{width:88px;height:88px;border-radius:50%;display:grid;place-items:center;font-size:2.1rem;border:2px solid #fff;box-shadow:var(--shadow-sm);background:radial-gradient(circle at 38% 30%,#fff,var(--sky-soft))}
+.disc.clean{background:radial-gradient(circle at 38% 30%,#fff,var(--sky));box-shadow:0 14px 34px -16px rgba(46,116,192,.7)}
+.disc img{width:54px;height:54px;border-radius:50%}
+.pier small{font-weight:700;font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.track{flex:1;position:relative;height:88px;margin:0 6px}
+.track .arc{position:absolute;left:0;right:0;top:14px;height:54px;border:2px dashed var(--line-2);border-bottom:none;border-radius:80px 80px 0 0}
+.track .flow{position:absolute;top:8px;font-family:'Fraunces',serif;color:var(--ink-2);font-size:1.1rem;text-shadow:0 2px 8px rgba(46,116,192,.45);animation:flowAcross 2.8s linear infinite}
+.track .flow.f2{animation-delay:.7s}.track .flow.f3{animation-delay:1.4s}.track .flow.f4{animation-delay:2.1s}
+@keyframes flowAcross{0%{left:-2%;opacity:0;transform:translateY(0) scale(.7)}12%{opacity:1}50%{transform:translateY(-26px) scale(1)}88%{opacity:1}100%{left:102%;opacity:0;transform:translateY(0) scale(.7)}}
+.bridge-quote{margin-top:30px;width:100%;max-width:400px;border:1.5px solid var(--line);border-radius:18px;background:#fff;padding:16px 18px;box-shadow:var(--shadow-sm)}
+.bridge-quote .qr{display:flex;justify-content:space-between;padding:7px 0;font-size:.92rem;border-bottom:1px dashed var(--line)}
+.bridge-quote .qr:last-child{border:none}.bridge-quote .qr b{color:var(--ink-deep)}
+.bridge-quote .qr .pos{color:var(--sol-2);font-weight:700}
+/* LI.FI widget host */
+.lifi-wrap{width:100%;display:flex;flex-direction:column;align-items:center}
+.lifi-host{width:100%;max-width:460px;min-height:580px;display:flex;align-items:center;justify-content:center}
+.lifi-load{color:var(--muted);font-weight:700;font-family:'Fraunces',serif;font-size:1.1rem;opacity:.85}
+.lifi-cap{font-size:.78rem;color:var(--muted);text-align:center;margin-top:14px;max-width:380px}
+.lifi-fallback{text-align:center;padding:34px 20px;border:1.5px solid var(--line);border-radius:var(--r);background:rgba(255,255,255,.65);width:100%;max-width:420px;box-shadow:var(--shadow-sm)}
+.lifi-fallback p{color:var(--muted);margin-bottom:16px}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:760px){.steps{grid-template-columns:1fr}}
+.stepc{border:1.5px solid var(--line);border-radius:20px;padding:26px;background:rgba(255,255,255,.6);backdrop-filter:blur(8px);transition:.25s;position:relative;overflow:hidden}
+.stepc:hover{transform:translateY(-5px);border-color:var(--line-2);box-shadow:var(--shadow-sm)}
+.stepc .n{font-family:'Caveat',cursive;font-size:1.6rem;color:var(--ink-2);font-weight:700}
+.stepc .ic{font-size:1.9rem;margin-top:4px}
+.stepc h4{font-family:'Fraunces',serif;font-size:1.2rem;color:var(--ink-deep);margin:8px 0 6px;font-weight:600}
+.stepc p{font-size:.92rem;color:var(--muted)}
+
+/* assets */
+.assets{display:flex;flex-wrap:wrap;gap:10px}
+.asset{display:inline-flex;align-items:center;gap:9px;border:1.5px solid var(--line);border-radius:100px;padding:10px 18px;background:rgba(255,255,255,.6);font-weight:600;color:var(--ink-deep);font-size:.92rem;transition:.2s}
+.asset:hover{border-color:var(--ink-2);transform:translateY(-2px);box-shadow:var(--shadow-sm)}
+.asset .d{width:10px;height:10px;border-radius:50%}
+
+/* facts */
+.facts{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media(max-width:760px){.facts{grid-template-columns:repeat(2,1fr)}}
+.fact{border:1.5px solid var(--line);border-radius:20px;padding:24px 20px;background:rgba(255,255,255,.55);backdrop-filter:blur(8px);transition:.25s}
+.fact:hover{transform:translateY(-4px);border-color:var(--line-2);box-shadow:var(--shadow-sm)}
+.fact .k{font-family:'Fraunces',serif;font-size:1.9rem;font-weight:700;color:var(--ink-deep)}
+.fact .l{font-size:.82rem;color:var(--muted);font-weight:500;margin-top:4px;text-transform:uppercase;letter-spacing:.06em}
+
+/* faq */
+.faq{max-width:780px;margin:0 auto}
+.qa{border:1.5px solid var(--line);border-radius:18px;background:rgba(255,255,255,.6);margin-bottom:12px;overflow:hidden}
+.qa summary{list-style:none;cursor:pointer;padding:18px 20px;font-weight:700;color:var(--ink-deep);display:flex;justify-content:space-between;align-items:center;gap:14px}
+.qa summary::-webkit-details-marker{display:none}
+.qa summary::after{content:"+";font-family:'Fraunces',serif;font-size:1.4rem;color:var(--ink-2);transition:.25s}
+.qa[open] summary::after{transform:rotate(45deg)}
+.qa .ans{padding:0 20px 18px;color:var(--muted);font-size:.95rem}
+
+/* cta band */
+.band{position:relative;overflow:hidden;border-radius:var(--r);background:linear-gradient(150deg,var(--ink-2),var(--ink));color:#fff;padding:54px 40px;text-align:center;box-shadow:var(--shadow)}
+.band h2{font-family:'Fraunces',serif;font-size:clamp(1.8rem,3.6vw,2.6rem);font-weight:600;color:#fff}
+.band p{opacity:.9;margin:12px auto 26px;max-width:540px}
+.btn-claim{background:#fff;color:var(--ink);border-color:#fff;font-weight:700}
+.btn-claim:hover{background:var(--sky-soft);transform:translateY(-2px)}
+
+/* footer */
+footer{padding:60px 0 40px;border-top:1.5px solid var(--line);margin-top:30px;position:relative;z-index:2}
+.foot{display:grid;grid-template-columns:1.4fr 2fr;gap:40px}
+@media(max-width:760px){.foot{grid-template-columns:1fr}}
+.foot p{color:var(--muted);font-size:.92rem;margin-top:14px;max-width:340px}
+.fcols{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.fcol h5{font-size:.78rem;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-deep);margin-bottom:12px}
+.fcol a{display:block;color:var(--muted);font-size:.92rem;padding:5px 0;transition:.2s;cursor:pointer}
+.fcol a:hover{color:var(--ink-2)}
+.disclaim{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:36px;padding-top:24px;border-top:1px solid var(--line);color:var(--muted);font-size:.82rem}
+
+#toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(140%);z-index:99;background:var(--ink-deep);color:#fff;padding:14px 24px;border-radius:14px;font-weight:600;font-size:.92rem;box-shadow:var(--shadow);transition:.4s cubic-bezier(.2,.8,.2,1);display:flex;align-items:center;gap:10px;max-width:90vw}
+#toast.show{transform:translateX(-50%) translateY(0)}
+/* a11y polish */
+@media(max-width:900px){.nav-right .btn{padding:10px 14px;font-size:.85rem}}
+@media(prefers-reduced-motion:reduce){
+  .shine,.aurora i,.sheen::after,.glow::before,.starfield .st,.track .flow{animation:none!important}
+  .shine{-webkit-text-fill-color:var(--ink-deep);color:var(--ink-deep);background:none}
+}
+</style>
+</head>
+<body>
+
+<nav id="nav">
+  <div class="bar">
+    <a class="brand" href="/"><img src="/glove.png" alt="CLEAN"/><span class="lock"><b>CLEAN</b><span class="sub">clean hands</span></span></a>
+    <div class="navlinks" id="navlinks">
+      <a href="/#/wash">Wash</a>
+      <a href="/boost">Boost</a>
+      <a href="/bridge" class="cur">Bridge</a>
+      <a href="/#/shop">Shop</a>
+      <a href="/#/faq">FAQ</a>
+      <a href="/whitepaper" target="_blank" rel="noopener">Paper</a>
+    </div>
+    <div class="nav-right">
+      <a class="btn btn-solid" href="https://app.cleanhands.fun/" target="_blank" rel="noopener">Open app ↗</a>
+      <button class="hamb" id="hamb" aria-label="Open menu">☰</button>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="pad">
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="starfield" id="heroStars" aria-hidden="true"></div>
+  <div class="wrap">
+    <div class="hero">
+      <div class="rv">
+        <span class="tagpill"><span class="dot"></span>Cross-chain · powered by LI.FI</span>
+        <h1><span class="shine">No Stains Bridge</span></h1>
+        <p class="lead">Move funds in from <b>any chain</b> and come out clean in <b>$CLEAN</b>. One flat fee, a quote before you sign, and your keys never leave your hands — the bridge is baked right into the CLEAN app.</p>
+        <div class="hero-cta">
+          <a class="btn btn-solid glow" href="#bridge-now">Start bridging ↓</a>
+          <a class="btn btn-ghost" href="#how">How it works</a>
+        </div>
+        <div class="tiny">✦ 30+ chains · thousands of tokens · non-custodial · best route</div>
+      </div>
+
+      <div class="lifi-wrap rv" id="bridge-now">
+        <div class="lifi-host" id="lifiHost"><div class="lifi-load">✦ Loading the bridge…</div></div>
+        <p class="lifi-cap">Live &amp; non-custodial — powered by <b>LI.FI</b>. Routes across Solana, Ethereum, Bitcoin &amp; more, straight into $CLEAN.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section id="how" style="padding-top:20px">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="eyebrow">Three steps</span><h2 class="h2">How the bridge works</h2><p>No bridging gymnastics, no sketchy wrapped tokens. Pick what you’ve got, get a quote, and land in CLEAN — all from inside the app.</p></div>
+    <div class="steps">
+      <div class="stepc rv"><div class="n">01</div><div class="ic">🪙</div><h4>Pick your asset</h4><p>Choose from 50+ assets across 20+ chains — BTC, ETH, SOL, USDC and more. Enter an amount and see a live quote.</p></div>
+      <div class="stepc rv sheen"><div class="n">02</div><div class="ic">🌉</div><h4>We route it</h4><p>LI.FI’s aggregator scans 30+ chains and dozens of bridges/DEXs for the best path. You see the full quote — rate, fees and gas — before you sign.</p></div>
+      <div class="stepc rv"><div class="n">03</div><div class="ic">🧤</div><h4>Land in CLEAN</h4><p>Funds arrive as $CLEAN in your own wallet, ready to wash, stake, and boost. Non-custodial end to end.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- SUPPORTED ASSETS -->
+<section style="padding-top:10px">
+  <div class="wrap">
+    <div class="sec-head rv" style="margin-bottom:26px"><span class="eyebrow">Come as you are</span><h2 class="h2" style="font-size:clamp(1.7rem,3.4vw,2.4rem)">Bring any bag</h2></div>
+    <div class="assets rv">
+      <span class="asset"><span class="d" style="background:#f7931a"></span>BTC</span>
+      <span class="asset"><span class="d" style="background:#627eea"></span>ETH</span>
+      <span class="asset"><span class="d" style="background:#9945FF"></span>SOL</span>
+      <span class="asset"><span class="d" style="background:#2775ca"></span>USDC</span>
+      <span class="asset"><span class="d" style="background:#26a17b"></span>USDT</span>
+      <span class="asset"><span class="d" style="background:#f0b90b"></span>BNB</span>
+      <span class="asset"><span class="d" style="background:#e84142"></span>AVAX</span>
+      <span class="asset"><span class="d" style="background:#0033ad"></span>ADA</span>
+      <span class="asset"><span class="d" style="background:#8247e5"></span>MATIC</span>
+      <span class="asset"><span class="d" style="background:#345d9d"></span>LTC</span>
+      <span class="asset"><span class="d" style="background:#23292f"></span>XRP</span>
+      <span class="asset"><span class="d" style="background:var(--ink-2)"></span>+ 40 more</span>
+    </div>
+  </div>
+</section>
+
+<!-- FEE TRANSPARENCY -->
+<section style="padding-top:10px">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="eyebrow">No funny business</span><h2 class="h2" style="font-size:clamp(1.7rem,3.4vw,2.4rem)">Honest by design</h2></div>
+    <div class="facts">
+      <div class="fact rv"><div class="k">30+</div><div class="l">Chains &amp; rollups</div></div>
+      <div class="fact rv"><div class="k">Best</div><div class="l">Route, auto-aggregated</div></div>
+      <div class="fact rv"><div class="k">Live</div><div class="l">Quote before you sign</div></div>
+      <div class="fact rv"><div class="k">100%</div><div class="l">Non-custodial</div></div>
+    </div>
+    <p class="rv" style="color:var(--muted);max-width:640px;margin-top:20px;font-size:.95rem">You see the exact amount you’ll receive <b style="color:var(--ink-deep)">before you sign</b> — rate, bridge fee and gas, itemised by LI.FI. No hidden spread, and funds route straight to your own wallet.</p>
+  </div>
+</section>
+
+<!-- CTA -->
+<section style="padding-top:10px">
+  <div class="wrap">
+    <div class="band rv glow">
+      <h2>Come out clean.</h2>
+      <p>Open the CLEAN app, hit the Bridge tab, and move any asset into $CLEAN — one flat fee, fully non-custodial.</p>
+      <a class="btn btn-claim" style="padding:14px 30px" href="#bridge-now">Start bridging ↓</a>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section style="padding-top:10px">
+  <div class="wrap">
+    <div class="sec-head rv" style="text-align:center;margin:0 auto 36px"><span class="eyebrow">Spot checks</span><h2 class="h2">Bridging, answered clean</h2></div>
+    <div class="faq">
+      <details class="qa rv"><summary>Is the bridge custodial?</summary><div class="ans">No. The No Stains Bridge is fully non-custodial — you connect your own wallet and sign on-chain. LI.FI routes through audited bridges and DEXs straight to your wallet; we never touch your funds.</div></details>
+      <details class="qa rv"><summary>What does it cost?</summary><div class="ans">You pay network gas plus any bridge/DEX fee in your chosen route — all itemised in the LI.FI quote before you sign. No hidden spread: what the quote shows is what you get.</div></details>
+      <details class="qa rv"><summary>Which assets and chains are supported?</summary><div class="ans">Thousands of tokens across 30+ chains — including BTC, ETH, SOL, USDC, USDT, BNB and more — auto-routed by LI.FI to land as $CLEAN on Solana.</div></details>
+      <details class="qa rv"><summary>Where do I use it?</summary><div class="ans">Right here on this page — connect your wallet and bridge. The <a href="https://app.cleanhands.fun/" target="_blank" rel="noopener" style="color:var(--ink-2);font-weight:700">CLEAN app ↗</a> Bridge tab opens this same bridge in your browser, where wallet-signing works best.</div></details>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div><a class="brand" href="/"><img src="/glove.png" alt="CLEAN"/><span class="lock"><b>CLEAN</b><span class="sub">clean hands</span></span></a>
+        <p>Clean hands. Dirty money. The only place your bags come out fresher than they went in.</p></div>
+      <div class="fcols">
+        <div class="fcol"><h5>Protocol</h5><a href="/#/wash">Wash &amp; Cycles</a><a href="/boost">Boost &amp; MM</a><a href="/bridge">No Stains Bridge</a><a href="/#/shop">Shop</a><a href="/whitepaper" target="_blank" rel="noopener">White Paper</a></div>
+        <div class="fcol"><h5>Community</h5><a href="https://t.me/CLEANHANDSDIRTYMONEY" target="_blank" rel="noopener">Telegram</a><a href="https://x.com/Cleanhandscoin" target="_blank" rel="noopener">X / Twitter</a><a href="https://dexscreener.com/solana/bdcc5xbzdmyfnybnzyb4aasnyamqczpnlnqhzbn1rupu" target="_blank" rel="noopener">DexScreener</a></div>
+        <div class="fcol"><h5>Trust</h5><a href="/#/faq">FAQ</a><a href="https://app.cleanhands.fun/" target="_blank" rel="noopener">Open app</a></div>
+      </div>
+    </div>
+    <div class="disclaim"><span>© 2026 CLEAN. A meme. Not financial advice — never bridge more than you can lose.</span><span>Made with gloves on ✦</span></div>
+  </div>
+</footer>
+
+<div id="toast">✦ <span id="toastMsg"></span></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const nav=$('nav');addEventListener('scroll',()=>nav.classList.toggle('scrolled',scrollY>30));
+nav.classList.toggle('scrolled',scrollY>30);
+const hb=$('hamb'),nl=$('navlinks');
+if(hb)hb.onclick=()=>{const o=nl.classList.toggle('open');hb.textContent=o?'✕':'☰';};
+if(nl)nl.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{nl.classList.remove('open');if(hb)hb.textContent='☰';}));
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.14});
+document.querySelectorAll('.rv').forEach(el=>io.observe(el));
+const toast=$('toast'),toastMsg=$('toastMsg');let tT;
+function say(m){toastMsg.textContent=m;toast.classList.add('show');clearTimeout(tT);tT=setTimeout(()=>toast.classList.remove('show'),2600);}
+(function(){const host=$('heroStars');if(!host)return;for(let i=0;i<24;i++){const s=document.createElement('span');s.className='st';s.textContent='✦';s.style.left=(Math.random()*100).toFixed(2)+'%';s.style.top=(Math.random()*60).toFixed(2)+'%';s.style.fontSize=(0.5+Math.random()*1.3).toFixed(2)+'rem';s.style.setProperty('--td',(2.4+Math.random()*3.4).toFixed(2)+'s');s.style.setProperty('--to',(0.4+Math.random()*0.45).toFixed(2));s.style.animationDelay=(-Math.random()*4).toFixed(2)+'s';host.appendChild(s);}})();
+function starBurst(x,y){if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;for(let i=0;i<20;i++){const s=document.createElement('div');s.className='burst';s.textContent='✦';const ang=Math.random()*Math.PI*2,dist=60+Math.random()*140;s.style.left=x+'px';s.style.top=y+'px';s.style.fontSize=(0.7+Math.random()*1.3).toFixed(2)+'rem';s.style.setProperty('--dx',(Math.cos(ang)*dist).toFixed(0)+'px');s.style.setProperty('--dy',(Math.sin(ang)*dist).toFixed(0)+'px');s.style.setProperty('--dr',(Math.random()*180-90).toFixed(0)+'deg');s.style.animation='burstfly '+(0.7+Math.random()*0.5).toFixed(2)+'s cubic-bezier(.2,.7,.3,1) forwards';document.body.appendChild(s);setTimeout(()=>s.remove(),1300);}}
+/* a little sparkle when you grab the primary CTA */
+document.querySelectorAll('a.btn-solid,a.btn-claim').forEach(b=>b.addEventListener('click',e=>{const r=b.getBoundingClientRect();starBurst(r.left+r.width/2,r.top+r.height/2);}));
+</script>
+<script type="module">
+/* ===== LI.FI Widget (v4) — themed, non-custodial, defaults to $CLEAN on Solana.
+   Loaded from esm.sh (no build step). If the CDN/widget can't load, we fall back
+   to a branded "Open the bridge" link to jumper.exchange so it's never a dead box. */
+(async () => {
+  const SOL_CHAIN = 1151111081099710; // LI.FI's Solana chain id
+  const host = document.getElementById('lifiHost');
+  if (!host) return;
+  let MINT = '';
+  try { const c = await fetch('/api/economics').then(r => r.json()); MINT = (c && c.mint) || ''; } catch (e) {}
+  const jumper = 'https://jumper.exchange/?toChain=' + SOL_CHAIN + (MINT ? ('&toToken=' + MINT) : '');
+  const fallback = () => {
+    host.innerHTML = '<div class="lifi-fallback"><p>Tap below to open the bridge in a new tab — connect your wallet and bridge straight into $CLEAN.</p>'
+      + '<a class="btn btn-solid glow" target="_blank" rel="noopener" href="' + jumper + '">Open the bridge ↗</a></div>';
+  };
+  const watchdog = setTimeout(fallback, 12000);
+  try {
+    const opt = '?external=react,react-dom';
+    const [React, RD, W, EP, SP] = await Promise.all([
+      import('https://esm.sh/react@18'),
+      import('https://esm.sh/react-dom@18/client'),
+      import('https://esm.sh/@lifi/widget@4' + opt),
+      import('https://esm.sh/@lifi/widget-provider-ethereum@4' + opt),
+      import('https://esm.sh/@lifi/widget-provider-solana@4' + opt),
+    ]);
+    const R = React.default || React;
+    const config = {
+      integrator: 'CLEAN Hands',
+      providers: [EP.EthereumProvider(), SP.SolanaProvider()],
+      appearance: 'light',
+      theme: {
+        palette: { primary: { main: '#2E74C0' }, secondary: { main: '#86BFF8' } },
+        shape: { borderRadius: 16, borderRadiusSecondary: 12 },
+        typography: { fontFamily: "'Plus Jakarta Sans', sans-serif" },
+        container: { boxShadow: '0 24px 60px -28px rgba(27,93,166,.35)', borderRadius: '22px', border: '1.5px solid rgba(27,93,166,.16)' },
+      },
+      toChain: SOL_CHAIN,
+      ...(MINT ? { toToken: MINT } : {}),
+    };
+    host.innerHTML = '';
+    RD.createRoot(host).render(R.createElement(W.LiFiWidget, { integrator: 'CLEAN Hands', config }));
+    clearTimeout(watchdog);
+  } catch (e) {
+    clearTimeout(watchdog);
+    fallback();
+  }
+})();
+</script>
+</body>
+</html>

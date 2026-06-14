@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>The Boost Lab — CLEAN · stack your booster to 3×</title>
+<meta name="description" content="Stack your $CLEAN booster the honest way — add CLEAN + SOL to the market-maker pool, burn to crank it, and line every tier up for a clean 3×. Non-custodial, on-chain, deflationary."/>
+<meta property="og:title" content="The Boost Lab — CLEAN"/>
+<meta property="og:description" content="Add liquidity, burn to boost, stack to a clean 3×. Tokens never leave your wallet."/>
+<meta property="og:type" content="website"/>
+<meta name="theme-color" content="#F4FAFF"/>
+<link rel="icon" href="/glove.png"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sky:#86BFF8; --sky-2:#A9D3FB; --sky-soft:#D6EAFD; --glove:#EAF4FE;
+  --paper:#F4FAFF; --white:#FFFFFF;
+  --ink:#1B5DA6; --ink-2:#2E74C0; --ink-deep:#0F3E73;
+  --skin:#E7B492; --sol:#9945FF; --sol-2:#14F195; --fire:#ff7a3c;
+  --line:rgba(27,93,166,.16); --line-2:rgba(27,93,166,.28);
+  --text:#16385c; --muted:#4d6e93;
+  --shadow:0 24px 60px -28px rgba(27,93,166,.35);
+  --shadow-sm:0 10px 30px -18px rgba(27,93,166,.45);
+  --r:26px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--paper);color:var(--text);overflow-x:hidden;line-height:1.55;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(60% 50% at 12% 8%,rgba(134,191,248,.30),transparent 60%),radial-gradient(55% 45% at 92% 18%,rgba(169,211,251,.28),transparent 60%),radial-gradient(70% 60% at 50% 110%,rgba(134,191,248,.22),transparent 60%)}
+body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E")}
+.wrap{max-width:1180px;margin:0 auto;padding:0 26px;position:relative;z-index:2}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2.5px solid var(--ink-deep);outline-offset:3px;border-radius:6px}
+
+/* nav */
+nav{position:fixed;top:0;left:0;right:0;z-index:50;transition:.35s ease}
+nav .bar{margin:14px auto;max-width:1180px;display:flex;align-items:center;justify-content:space-between;padding:10px 14px 10px 16px;border-radius:20px;border:1.5px solid transparent;background:transparent;transition:.35s ease}
+nav.scrolled .bar{background:rgba(255,255,255,.72);backdrop-filter:blur(16px);border-color:var(--line);box-shadow:var(--shadow-sm)}
+.brand{display:flex;align-items:center;gap:12px;font-weight:700;cursor:pointer}
+.brand img{width:42px;height:42px;border-radius:50%;border:1.5px solid var(--line);background:#fff;object-fit:cover}
+.brand .lock{display:flex;flex-direction:column;line-height:.9}
+.brand b{font-family:'Fraunces',serif;font-size:1.06rem;font-weight:700;letter-spacing:.07em;color:var(--ink-deep)}
+.brand .sub{font-family:'Caveat',cursive;font-size:1.2rem;color:var(--ink-2);margin-top:-1px}
+.navlinks{display:flex;gap:26px;font-weight:500;font-size:.95rem;color:var(--ink-deep)}
+.navlinks a{position:relative;opacity:.8;transition:.2s;cursor:pointer}
+.navlinks a:hover,.navlinks a.cur{opacity:1}
+.navlinks a::after{content:"";position:absolute;left:0;bottom:-6px;height:2px;width:0;background:var(--ink-2);transition:.25s}
+.navlinks a:hover::after,.navlinks a.cur::after{width:100%}
+.nav-right{display:flex;align-items:center;gap:10px}
+.hamb{display:none;background:none;border:none;font-size:1.4rem;color:var(--ink-deep);cursor:pointer}
+@media(max-width:900px){.navlinks{position:fixed;inset:0;z-index:1;flex-direction:column;gap:0;align-items:stretch;background:rgba(244,250,255,.98);backdrop-filter:blur(20px);padding:92px 28px 30px;transform:translateY(-105%);transition:transform .42s cubic-bezier(.3,.9,.2,1);overflow:auto}
+  .navlinks.open{transform:none}
+  .navlinks a{font-family:'Fraunces',serif;font-size:1.5rem;color:var(--ink-deep);padding:18px 2px;border-bottom:1px solid var(--line);opacity:1}
+  .navlinks a::after{display:none}
+  .hamb{display:grid}}
+
+.btn{font-family:inherit;font-weight:600;font-size:.95rem;cursor:pointer;border-radius:14px;padding:12px 22px;transition:.22s ease;border:1.5px solid var(--ink-2);white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn-solid{background:var(--ink-2);color:#fff;box-shadow:0 10px 24px -12px rgba(46,116,192,.8)}
+.btn-solid:hover{background:var(--ink);transform:translateY(-2px);box-shadow:0 16px 30px -14px rgba(27,93,166,.85)}
+.btn-ghost{background:rgba(255,255,255,.5);color:var(--ink);border-color:var(--line-2)}
+.btn-ghost:hover{background:#fff;transform:translateY(-2px)}
+.btn.full{width:100%}
+
+section{position:relative;padding:70px 0;z-index:2}
+.pad{padding-top:150px}
+.eyebrow{font-family:'Caveat',cursive;font-size:1.6rem;color:var(--ink-2);font-weight:700}
+.h2{font-family:'Fraunces',serif;font-weight:600;color:var(--ink-deep);font-size:clamp(2rem,4vw,3rem);line-height:1.05;letter-spacing:-.01em;margin-top:2px}
+.sec-head{max-width:620px;margin-bottom:40px}
+.sec-head p{color:var(--muted);margin-top:14px;font-size:1.05rem}
+.panel{background:rgba(255,255,255,.7);backdrop-filter:blur(14px);border:1.5px solid var(--line);border-radius:var(--r);padding:28px;box-shadow:var(--shadow)}
+
+/* reveal */
+.rv{opacity:0;transform:translateY(24px);transition:.7s cubic-bezier(.2,.7,.2,1)}
+.rv.in{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){.rv{opacity:1;transform:none;transition:none}}
+
+/* ===== EXTRA SHINE FX (boost + bridge pages only) ===== */
+.shine{background:linear-gradient(100deg,var(--ink-deep) 28%,var(--sky) 44%,var(--ink-2) 54%,var(--ink-deep) 70%);background-size:240% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;animation:shineMove 7s linear infinite}
+@keyframes shineMove{to{background-position:-240% 0}}
+.aurora{position:absolute;inset:-30% -10% auto;height:680px;z-index:0;pointer-events:none;filter:blur(64px);opacity:.7}
+.aurora i{position:absolute;border-radius:50%;mix-blend-mode:multiply;animation:auroraDrift 20s ease-in-out infinite alternate}
+.aurora i:nth-child(1){width:440px;height:440px;left:3%;top:0;background:radial-gradient(circle,rgba(134,191,248,.55),transparent 70%)}
+.aurora i:nth-child(2){width:400px;height:400px;right:6%;top:40px;background:radial-gradient(circle,rgba(169,211,251,.5),transparent 70%);animation-duration:24s}
+.aurora i:nth-child(3){width:320px;height:320px;left:42%;top:140px;background:radial-gradient(circle,rgba(20,241,149,.18),transparent 70%);animation-duration:28s}
+@keyframes auroraDrift{to{transform:translate(46px,34px) scale(1.12)}}
+.sheen{position:relative;overflow:hidden}
+.sheen::after{content:"";position:absolute;top:0;left:-75%;width:55%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.6),transparent);transform:skewX(-18deg);animation:sheenSweep 6s ease-in-out infinite;pointer-events:none;z-index:3}
+@keyframes sheenSweep{0%{left:-75%}58%,100%{left:150%}}
+.glow{position:relative;isolation:isolate}
+.glow::before{content:"";position:absolute;inset:-3px;border-radius:inherit;background:linear-gradient(120deg,var(--sky),var(--ink-2),var(--sol),var(--sky));background-size:300% 300%;filter:blur(11px);opacity:.5;z-index:-1;animation:glowShift 6.5s linear infinite}
+@keyframes glowShift{to{background-position:300% 0}}
+.starfield{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1}
+.starfield .st{position:absolute;color:#fff;font-family:'Fraunces',serif;filter:drop-shadow(0 2px 7px rgba(46,116,192,.5));animation:twinkle var(--td,3s) ease-in-out infinite;opacity:0}
+@keyframes twinkle{0%,100%{opacity:0;transform:scale(.55) rotate(0)}50%{opacity:var(--to,.85);transform:scale(1) rotate(9deg)}}
+.burst{position:fixed;left:0;top:0;z-index:120;pointer-events:none;color:var(--ink-2);font-family:'Fraunces',serif;will-change:transform,opacity}
+@keyframes burstfly{0%{opacity:1;transform:translate(0,0) scale(.4) rotate(0)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1.15) rotate(var(--dr))}}
+
+/* boost lab pieces */
+.lab-hero{position:relative;border:1.5px solid var(--line);border-radius:var(--r);background:linear-gradient(165deg,rgba(214,234,253,.6),rgba(255,255,255,.4));padding:42px 30px;overflow:hidden;box-shadow:var(--shadow)}
+.lab-hero>*{position:relative;z-index:2}
+.lab-hero .aurora{opacity:.85}
+.mm-bubbles{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.mm-bubbles i{position:absolute;bottom:-60px;border-radius:50%;background:radial-gradient(circle at 32% 28%,rgba(255,255,255,.95),rgba(169,211,251,.45) 62%,rgba(134,191,248,.16));border:1px solid rgba(255,255,255,.55);animation:mmRise linear infinite}
+@keyframes mmRise{0%{transform:translateY(0) scale(.7);opacity:0}12%{opacity:.6}88%{opacity:.4}100%{transform:translateY(-150vh) scale(1.15);opacity:0}}
+.tagpill{display:inline-flex;align-items:center;gap:9px;font-size:.78rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);border:1.5px solid var(--line-2);border-radius:100px;padding:8px 16px;background:rgba(255,255,255,.6);margin-bottom:18px}
+.tagpill .dot{width:7px;height:7px;border-radius:50%;background:var(--sol-2);box-shadow:0 0 0 4px rgba(20,241,149,.18)}
+.lab-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:26px;align-items:start;margin-top:28px}
+@media(max-width:880px){.lab-grid{grid-template-columns:1fr}}
+.lab-dialwrap{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+@property --mmp{syntax:'<number>';inherits:false;initial-value:0}
+.mm-dial{--mmp:0;width:172px;height:172px;flex:none;border-radius:50%;background:conic-gradient(from -90deg,var(--sky),var(--ink-2) calc(var(--mmp)*1%),var(--glove) calc(var(--mmp)*1%));display:grid;place-items:center;position:relative;transition:--mmp .7s cubic-bezier(.2,.8,.2,1);box-shadow:0 18px 40px -22px rgba(27,93,166,.5)}
+.mm-dial::before{content:"";position:absolute;inset:15px;border-radius:50%;background:#fff;box-shadow:inset 0 2px 12px rgba(27,93,166,.14)}
+.mm-dial::after{content:"";position:absolute;inset:-6px;border-radius:50%;background:conic-gradient(from 0deg,transparent,rgba(255,255,255,.7),transparent 30%);animation:dialRing 5s linear infinite;z-index:-1;opacity:.6}
+@keyframes dialRing{to{transform:rotate(360deg)}}
+.mm-dial .mm-mult{position:relative;font-family:'Fraunces',serif;font-weight:700;color:var(--ink-deep);font-size:2.6rem;line-height:1}
+.mm-dial em{position:relative;display:block;font-style:normal;font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:700;text-align:center;margin-top:3px}
+.mm-dial.pop{animation:dialPop .55s cubic-bezier(.2,1.6,.4,1)}
+@keyframes dialPop{0%{transform:scale(1)}42%{transform:scale(1.07)}100%{transform:scale(1)}}
+.mm-miles{display:flex;gap:8px;margin-top:14px}
+.mm-mile{flex:1;border:1.5px solid var(--line);border-radius:14px;padding:9px 6px;text-align:center;background:#fff;color:var(--muted);transition:.3s;position:relative;overflow:hidden}
+.mm-mile b{display:block;font-family:'Fraunces',serif;font-size:1.25rem;color:var(--ink-deep)}
+.mm-mile small{font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;font-weight:700}
+.mm-mile.lit{border-color:var(--ink-2);color:var(--ink-2);box-shadow:var(--shadow-sm);transform:translateY(-3px)}
+.mm-mile.lit::after{content:"";position:absolute;top:0;left:-60%;width:46%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.85),transparent);animation:mmSweep 2.6s ease-in-out infinite}
+@keyframes mmSweep{0%{left:-60%}55%,100%{left:130%}}
+.boost{border:1.5px solid var(--line);border-radius:18px;padding:18px;margin-bottom:18px;background:linear-gradient(160deg,rgba(214,234,253,.6),rgba(255,255,255,.3))}
+.boost .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+.boost .top .lbl{font-weight:600;color:var(--ink-deep);font-size:.95rem}
+.boost .top .mul{font-family:'Fraunces',serif;font-weight:700;color:var(--ink-2);font-size:1.5rem}
+.gauge{height:12px;border-radius:100px;background:var(--glove);border:1.5px solid var(--line);overflow:hidden}
+.gauge i{display:block;height:100%;width:0;border-radius:100px;background:linear-gradient(90deg,var(--sky),var(--ink-2));transition:width .5s cubic-bezier(.2,.8,.2,1)}
+.boost .note{font-size:.8rem;color:var(--muted);margin-top:10px}
+.boost .note b{color:var(--ink-2)}
+.field{border:1.5px solid var(--line);border-radius:18px;padding:16px 18px;margin-bottom:16px;background:#fff;transition:.2s}
+.field:focus-within{border-color:var(--ink-2);box-shadow:0 0 0 4px rgba(46,116,192,.1)}
+.field .row{display:flex;justify-content:space-between;font-size:.8rem;color:var(--muted);font-weight:500;margin-bottom:8px}
+.field .input{display:flex;align-items:center;gap:12px}
+.field input{border:none;outline:none;font-family:'Fraunces',serif;font-size:1.5rem;font-weight:600;color:var(--ink-deep);width:100%;background:transparent}
+.field input::placeholder{color:#bcd2ea}
+.coin{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--ink-deep);white-space:nowrap;border:1.5px solid var(--line);border-radius:12px;padding:7px 12px;background:var(--glove)}
+.mm-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:520px){.mm-two{grid-template-columns:1fr}}
+.burn-row{display:flex;gap:8px;margin-top:6px}
+.burn-chip{flex:1;border:1.5px solid var(--line-2);background:#fff;border-radius:11px;padding:9px 4px;font-weight:700;font-size:.82rem;color:var(--ink-deep);cursor:pointer;transition:.2s;font-family:inherit}
+.burn-chip:hover{border-color:var(--fire);color:var(--fire);transform:translateY(-2px)}
+.rewards{background:linear-gradient(160deg,var(--ink-2),var(--ink));color:#fff;border-radius:var(--r);padding:28px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.rewards::after{content:"✦";position:absolute;right:-10px;top:-14px;font-size:7rem;opacity:.12;font-family:'Fraunces',serif}
+.rewards .lbl{font-size:.82rem;opacity:.85;text-transform:uppercase;letter-spacing:.1em;font-weight:600}
+.rewards .big{font-family:'Fraunces',serif;font-size:2.7rem;font-weight:700;margin:6px 0 2px}
+.rewards .usd{opacity:.85;font-size:.95rem}
+.rewards hr{border:none;border-top:1px solid rgba(255,255,255,.22);margin:20px 0}
+.btn-claim{width:100%;justify-content:center;display:flex;margin-top:20px;background:#fff;color:var(--ink);border-color:#fff;font-weight:700}
+.btn-claim:hover{background:var(--sky-soft);transform:translateY(-2px)}
+.mini{display:flex;justify-content:space-between;padding:9px 0;font-size:.9rem;border-bottom:1px dashed rgba(255,255,255,.22)}
+.mini:last-child{border:none}.mini b{font-weight:700}
+.mm-machine{width:118px;height:118px;border-radius:24px;background:linear-gradient(160deg,#fff,var(--glove));border:1.5px solid var(--line-2);display:grid;place-items:center;flex:none;box-shadow:var(--shadow-sm)}
+.rewards .mm-machine{background:rgba(255,255,255,.92)}
+.mm-porthole{width:86px;height:86px;border-radius:50%;border:6px solid var(--sky-2);background:radial-gradient(circle at 50% 38%,var(--sky-soft),var(--sky));overflow:hidden;position:relative}
+.mm-drum{position:absolute;inset:0;display:grid;place-items:center;font-size:1.9rem}
+.mm-machine.spin .mm-drum{animation:mmSpin .7s linear infinite}
+@keyframes mmSpin{to{transform:rotate(360deg)}}
+.mm-machine.spin .mm-porthole::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 30% 18%,rgba(255,255,255,.7),transparent 42%);animation:mmFoam .5s ease-in-out infinite alternate}
+@keyframes mmFoam{to{transform:translateY(4px) scale(1.05)}}
+.mm-burst{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:5}
+.mm-spark{position:absolute;font-family:'Fraunces',serif;color:#fff;filter:drop-shadow(0 3px 8px rgba(46,116,192,.5));animation:mmPop .9s ease-out forwards}
+@keyframes mmPop{0%{transform:translate(0,0) scale(.2) rotate(0);opacity:0}20%{opacity:1}100%{transform:translate(var(--dx),var(--dy)) scale(1.1) rotate(140deg);opacity:0}}
+.mm-banner{margin-top:16px;border-radius:16px;padding:13px 16px;background:linear-gradient(120deg,var(--ink-2),var(--ink));color:#fff;font-weight:700;text-align:center;box-shadow:var(--shadow);transform:translateY(8px);opacity:0;transition:.45s;pointer-events:none}
+.mm-banner.show{transform:none;opacity:1}
+.mm-banner.x3{background:linear-gradient(120deg,#f5a623,var(--fire))}
+
+/* stack explainer + tiers */
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+@media(max-width:900px){.steps{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.steps{grid-template-columns:1fr}}
+.stepc{border:1.5px solid var(--line);border-radius:20px;padding:20px;background:rgba(255,255,255,.6);backdrop-filter:blur(8px);transition:.25s;position:relative;overflow:hidden}
+.stepc:hover{transform:translateY(-5px);border-color:var(--line-2);box-shadow:var(--shadow-sm)}
+.stepc .ic{font-size:1.7rem}
+.stepc h4{font-family:'Fraunces',serif;font-size:1.05rem;color:var(--ink-deep);margin:10px 0 4px;font-weight:600}
+.stepc .v{font-family:'Fraunces',serif;font-weight:700;color:var(--ink-2);font-size:1.3rem}
+.stepc p{font-size:.84rem;color:var(--muted);margin-top:6px}
+.pools{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+@media(max-width:880px){.pools{grid-template-columns:1fr}}
+.pool{border:1.5px solid var(--line);border-radius:var(--r);padding:28px;background:rgba(255,255,255,.55);backdrop-filter:blur(8px);transition:.28s;position:relative;overflow:hidden}
+.pool:hover{transform:translateY(-7px);border-color:var(--ink-2);box-shadow:var(--shadow)}
+.pool .tag{font-family:'Caveat',cursive;font-size:1.5rem;color:var(--ink-2);font-weight:700}
+.pool h3{font-family:'Fraunces',serif;font-size:1.5rem;color:var(--ink-deep);font-weight:600;margin:2px 0 16px}
+.pool .apy{font-family:'Fraunces',serif;font-size:3rem;font-weight:700;color:var(--ink-deep);line-height:1}
+.pool .apy small{font-size:1rem;color:var(--muted);font-weight:600;font-family:'Plus Jakarta Sans'}
+.pool ul{list-style:none;margin:20px 0 4px}
+.pool li{display:flex;gap:10px;align-items:center;padding:7px 0;font-size:.94rem;border-bottom:1px dashed var(--line)}
+.pool li:last-child{border:none}.pool li::before{content:"✦";color:var(--sky);font-size:.8rem}
+.pool.feat{border-color:var(--ink-2);box-shadow:var(--shadow)}
+.pool.feat::before{content:"Tops to 3×";position:absolute;top:18px;right:-34px;background:var(--ink-2);color:#fff;font-size:.7rem;font-weight:700;letter-spacing:.06em;padding:5px 40px;transform:rotate(38deg)}
+
+/* faq */
+.faq{max-width:780px;margin:0 auto}
+.qa{border:1.5px solid var(--line);border-radius:18px;background:rgba(255,255,255,.6);margin-bottom:12px;overflow:hidden}
+.qa summary{list-style:none;cursor:pointer;padding:18px 20px;font-weight:700;color:var(--ink-deep);display:flex;justify-content:space-between;align-items:center;gap:14px}
+.qa summary::-webkit-details-marker{display:none}
+.qa summary::after{content:"+";font-family:'Fraunces',serif;font-size:1.4rem;color:var(--ink-2);transition:.25s}
+.qa[open] summary::after{transform:rotate(45deg)}
+.qa .ans{padding:0 20px 18px;color:var(--muted);font-size:.95rem}
+
+/* cta band */
+.band{position:relative;overflow:hidden;border-radius:var(--r);background:linear-gradient(150deg,var(--ink-2),var(--ink));color:#fff;padding:54px 40px;text-align:center;box-shadow:var(--shadow)}
+.band h2{font-family:'Fraunces',serif;font-size:clamp(1.8rem,3.6vw,2.6rem);font-weight:600;color:#fff}
+.band p{opacity:.9;margin:12px auto 26px;max-width:520px}
+.band .spk{position:absolute;font-family:'Fraunces',serif;color:rgba(255,255,255,.5);pointer-events:none}
+
+/* footer */
+footer{padding:60px 0 40px;border-top:1.5px solid var(--line);margin-top:30px;position:relative;z-index:2}
+.foot{display:grid;grid-template-columns:1.4fr 2fr;gap:40px}
+@media(max-width:760px){.foot{grid-template-columns:1fr}}
+.foot p{color:var(--muted);font-size:.92rem;margin-top:14px;max-width:340px}
+.fcols{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.fcol h5{font-size:.78rem;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-deep);margin-bottom:12px}
+.fcol a{display:block;color:var(--muted);font-size:.92rem;padding:5px 0;transition:.2s;cursor:pointer}
+.fcol a:hover{color:var(--ink-2)}
+.disclaim{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:36px;padding-top:24px;border-top:1px solid var(--line);color:var(--muted);font-size:.82rem}
+
+#toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(140%);z-index:99;background:var(--ink-deep);color:#fff;padding:14px 24px;border-radius:14px;font-weight:600;font-size:.92rem;box-shadow:var(--shadow);transition:.4s cubic-bezier(.2,.8,.2,1);display:flex;align-items:center;gap:10px;max-width:90vw}
+#toast.show{transform:translateX(-50%) translateY(0)}
+/* layering + a11y polish */
+.lab-hero .aurora,.lab-hero .mm-bubbles,.lab-hero .starfield{z-index:0}
+@media(max-width:900px){.nav-right .btn{padding:10px 14px;font-size:.85rem}}
+@media(prefers-reduced-motion:reduce){
+  .shine,.aurora i,.sheen::after,.glow::before,.starfield .st,.mm-dial::after,.mm-bubbles i,.mm-mile.lit::after{animation:none!important}
+  .shine{-webkit-text-fill-color:var(--ink-deep);color:var(--ink-deep);background:none}
+}
+</style>
+</head>
+<body>
+
+<nav id="nav">
+  <div class="bar">
+    <a class="brand" href="/"><img src="/glove.png" alt="CLEAN"/><span class="lock"><b>CLEAN</b><span class="sub">clean hands</span></span></a>
+    <div class="navlinks" id="navlinks">
+      <a href="/#/wash">Wash</a>
+      <a href="/boost" class="cur">Boost</a>
+      <a href="/bridge">Bridge</a>
+      <a href="/#/shop">Shop</a>
+      <a href="/#/faq">FAQ</a>
+      <a href="/whitepaper" target="_blank" rel="noopener">Paper</a>
+    </div>
+    <div class="nav-right">
+      <a class="btn btn-solid" href="https://app.cleanhands.fun/" target="_blank" rel="noopener">Open app ↗</a>
+      <button class="hamb" id="hamb" aria-label="Open menu">☰</button>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO + INTERACTIVE BOOST LAB -->
+<section class="pad">
+  <div class="wrap">
+    <div class="lab-hero rv">
+      <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="mm-bubbles" id="mmBubbles" aria-hidden="true"></div>
+      <div class="starfield" id="heroStars" aria-hidden="true"></div>
+      <span class="tagpill"><span class="dot"></span>Liquidity · Market Maker</span>
+      <h1 class="h2" style="font-size:clamp(2.4rem,5.4vw,3.7rem)"><span class="shine">The Boost Lab</span></h1>
+      <p style="color:var(--muted);max-width:600px;margin-top:12px;font-size:1.06rem">Stack your booster the honest way — add <b>$CLEAN + SOL</b> to the market-maker pool, burn to crank it, and watch your APR climb. Tiers <b>add up</b>: line them all up for a clean <b style="color:var(--ink-2)">3× ✦</b>. Tokens never leave your wallet.</p>
+
+      <div class="lab-grid">
+        <div class="panel">
+          <div class="lab-dialwrap">
+            <div class="mm-dial" id="mmDial"><span class="mm-mult" id="mmMult">1.00×</span><em>booster</em></div>
+            <div style="flex:1;min-width:200px">
+              <div class="boost" style="margin:0 0 14px">
+                <div class="top"><span class="lbl">Effective APR</span><span class="mul" id="mmApr">40%</span></div>
+                <div class="gauge"><i id="mmAprBar" style="width:13%"></i></div>
+                <div class="note">Base 40% × booster <b id="mmMultNote">1.00×</b><span id="mmBurnNote"></span></div>
+              </div>
+              <div class="mm-miles" id="mmMiles">
+                <div class="mm-mile" data-m="1.5"><b>1.5×</b><small>Warm</small></div>
+                <div class="mm-mile" data-m="2"><b>2×</b><small>Clean</small></div>
+                <div class="mm-mile" data-m="3"><b>3×</b><small>Spotless</small></div>
+              </div>
+            </div>
+          </div>
+
+          <hr style="border:none;border-top:1px dashed var(--line);margin:22px 0">
+
+          <div class="field">
+            <div class="row"><span>🪣 Staked $CLEAN — holdings tier</span><span id="mmHoldTier">+0.25</span></div>
+            <div class="input"><input id="mmHold" type="text" inputmode="decimal" placeholder="1,000,000" value="1,000,000"><span class="coin">CLEAN</span></div>
+          </div>
+
+          <div class="boost">
+            <div class="top"><span class="lbl">💧 Market-maker liquidity</span><span class="mul" id="mmLpBoost">+0.00</span></div>
+            <div class="gauge"><i id="mmLpBar"></i></div>
+            <div class="mm-two" style="margin-top:12px">
+              <div class="field" style="margin:0"><div class="row"><span>You add</span></div><div class="input"><input id="mmLpClean" type="text" inputmode="decimal" placeholder="500,000"><span class="coin">CLEAN</span></div></div>
+              <div class="field" style="margin:0"><div class="row"><span>+ pair</span></div><div class="input"><input id="mmLpSol" type="text" inputmode="decimal" placeholder="2.0"><span class="coin">SOL</span></div></div>
+            </div>
+            <button class="btn btn-solid full glow" id="mmAddLp" style="margin-top:14px">💧 Add to MM pool</button>
+            <div class="note">Provide both sides → earn up to <b>+0.70×</b>. Real liquidity, real swap fees, real IL risk.</div>
+          </div>
+
+          <div class="boost" style="margin-bottom:0">
+            <div class="top"><span class="lbl">🔥 Burn to boost</span><span class="mul" id="mmBurnApr">+0% APR</span></div>
+            <div class="burn-row" id="mmBurnRow">
+              <button class="burn-chip" data-burn="25000">🔥 25K</button>
+              <button class="burn-chip" data-burn="100000">🔥 100K</button>
+              <button class="burn-chip" data-burn="500000">🔥 500K</button>
+              <button class="burn-chip" data-burn="1000000">🔥 1M</button>
+            </div>
+            <div class="note">+0.05 APR per 100k burned — <b>permanent</b>, on-chain, stacks on top of your multiplier.</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="rewards">
+            <div class="mm-burst" id="mmBurst" aria-hidden="true"></div>
+            <div class="lbl">The wash cycle</div>
+            <div style="display:flex;gap:16px;align-items:center;margin:14px 0">
+              <div class="mm-machine" id="mmMachine"><div class="mm-porthole"><div class="mm-drum" id="mmDrum">💵</div></div></div>
+              <div>
+                <div class="big" id="mmStatBig" style="font-size:2.2rem">1.00×</div>
+                <div class="usd"><span id="mmStatApr">40%</span> effective APR · accruing live</div>
+              </div>
+            </div>
+            <button class="btn btn-claim glow" id="mmWash">🫧 Wash &amp; Burn</button>
+            <div class="mm-banner" id="mmBanner"><span id="mmBannerTxt">Spotless ✦</span></div>
+            <hr>
+            <div class="mini"><span>🪣 Holdings</span><b id="mmBdHold">+0.25</b></div>
+            <div class="mini"><span>⏳ Loyalty</span><b id="mmBdLoy">+0.50</b></div>
+            <div class="mini"><span>🤝 Referrals</span><b id="mmBdRef">+0.30</b></div>
+            <div class="mini"><span>💧 Liquidity</span><b id="mmBdLp">+0.00</b></div>
+            <div class="mini"><span>🔥 Burn bonus</span><b id="mmBdBurn">+0% APR</b></div>
+          </div>
+          <p style="font-size:.78rem;color:var(--muted);text-align:center;margin-top:10px">Live preview — every action is non-custodial in the <a href="https://app.cleanhands.fun/" target="_blank" rel="noopener" style="color:var(--ink-2);font-weight:700">CLEAN app ↗</a>. Boosters are <b>additive</b> and tied to real on-chain actions.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW THE STACK WORKS -->
+<section style="padding-top:10px">
+  <div class="wrap">
+    <div class="sec-head rv"><span class="eyebrow">Additive, not multiplicative</span><h2 class="h2">How the stack works</h2><p>Five honest levers. Each one adds to your booster — line them all up and your base 40% APR rides up to <b style="color:var(--ink-2)">3×</b>, with burn stacking flat APR on top.</p></div>
+    <div class="steps">
+      <div class="stepc rv"><div class="ic">🪣</div><h4>Holdings</h4><div class="v">+0.50</div><p>The bigger your washed bag, the higher the tier.</p></div>
+      <div class="stepc rv"><div class="ic">⏳</div><h4>Loyalty</h4><div class="v">+0.50</div><p>Time in the machine. Diamond gloves get paid.</p></div>
+      <div class="stepc rv"><div class="ic">🤝</div><h4>Referrals</h4><div class="v">+0.30</div><p>Bring friends to the laundromat.</p></div>
+      <div class="stepc rv"><div class="ic">💧</div><h4>Liquidity</h4><div class="v">+0.70</div><p>Provide CLEAN + SOL — the tier that tops you to 3×.</p></div>
+      <div class="stepc rv"><div class="ic">🔥</div><h4>Burn</h4><div class="v">+200% APR</div><p>Permanent, on-chain, deflationary. Stacks on top.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- MM TIERS -->
+<section>
+  <div class="wrap">
+    <div class="sec-head rv" style="margin-bottom:24px"><span class="eyebrow">Pick your depth</span><h2 class="h2" style="font-size:clamp(1.7rem,3.4vw,2.4rem)">Market-maker tiers</h2></div>
+    <div class="pools">
+      <div class="pool rv"><span class="tag">Splash</span><h3>Dip a toe</h3><div class="apy">+0.35<small>× boost</small></div><ul><li>Light CLEAN + SOL position</li><li>Earn a share of swap fees</li><li>Exit any time — non-custodial</li></ul></div>
+      <div class="pool rv feat sheen"><span class="tag">Current</span><h3>Ride the current</h3><div class="apy">+0.55<small>× boost</small></div><ul><li>Balanced market-maker depth</li><li>Bigger fee share</li><li>Stacks with your burn bonus</li></ul></div>
+      <div class="pool rv"><span class="tag">Deep pool</span><h3>Go spotless</h3><div class="apy">+0.70<small>× boost</small></div><ul><li>Maximum liquidity tier</li><li>Tops your stack to a clean 3×</li><li>Real depth = healthier chart</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section style="padding-top:10px">
+  <div class="wrap">
+    <div class="sec-head rv" style="text-align:center;margin:0 auto 36px"><span class="eyebrow">Spot checks</span><h2 class="h2">Boosting, answered clean</h2></div>
+    <div class="faq">
+      <details class="qa rv"><summary>Is my CLEAN ever custodied?</summary><div class="ans">No. Staking is soft — tokens stay in your wallet. Liquidity is provided directly to the pool from your wallet, and burns are on-chain transactions you sign. Nothing is ever held by us.</div></details>
+      <details class="qa rv"><summary>What does “additive” mean for boosters?</summary><div class="ans">Each lever (holdings, loyalty, referrals, liquidity) adds a fixed amount to your booster — they don’t multiply each other. Maxing all four reaches a 3× multiplier on your base APR. Burning then adds flat bonus APR on top of that.</div></details>
+      <details class="qa rv"><summary>How does the liquidity (MM) booster work?</summary><div class="ans">Add $CLEAN + SOL to the market-maker pool and you earn up to <b>+0.70×</b> — the tier that tops your stack to 3×. You collect a share of real swap fees and carry real impermanent-loss risk, like any LP.</div></details>
+      <details class="qa rv"><summary>Is burning really permanent?</summary><div class="ans">Yes. Burns are irreversible on-chain transactions that shrink supply for everyone and permanently raise your APR (+0.05 per 100k, up to +200%). The bonus never decays.</div></details>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section style="padding-top:10px">
+  <div class="wrap">
+    <div class="band rv glow">
+      <h2>Stack it to spotless.</h2>
+      <p>Open the app, connect your wallet, and run a real wash cycle — every booster here is live and non-custodial.</p>
+      <a class="btn btn-claim" style="display:inline-flex;width:auto;padding:14px 30px" href="https://app.cleanhands.fun/" target="_blank" rel="noopener">Open the Boost Lab in-app ↗</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div><a class="brand" href="/"><img src="/glove.png" alt="CLEAN"/><span class="lock"><b>CLEAN</b><span class="sub">clean hands</span></span></a>
+        <p>Clean hands. Dirty money. The only place your bags come out fresher than they went in.</p></div>
+      <div class="fcols">
+        <div class="fcol"><h5>Protocol</h5><a href="/#/wash">Wash &amp; Cycles</a><a href="/boost">Boost &amp; MM</a><a href="/bridge">No Stains Bridge</a><a href="/#/shop">Shop</a><a href="/whitepaper" target="_blank" rel="noopener">White Paper</a></div>
+        <div class="fcol"><h5>Community</h5><a href="https://t.me/CLEANHANDSDIRTYMONEY" target="_blank" rel="noopener">Telegram</a><a href="https://x.com/Cleanhandscoin" target="_blank" rel="noopener">X / Twitter</a><a href="https://dexscreener.com/solana/bdcc5xbzdmyfnybnzyb4aasnyamqczpnlnqhzbn1rupu" target="_blank" rel="noopener">DexScreener</a></div>
+        <div class="fcol"><h5>Trust</h5><a href="/#/faq">FAQ</a><a href="https://app.cleanhands.fun/" target="_blank" rel="noopener">Open app</a></div>
+      </div>
+    </div>
+    <div class="disclaim"><span>© 2026 CLEAN. A meme. Not financial advice — never stake more than you can lose.</span><span>Made with gloves on ✦</span></div>
+  </div>
+</footer>
+
+<div id="toast">✦ <span id="toastMsg"></span></div>
+
+<script>
+const $=id=>document.getElementById(id);
+/* nav */
+const nav=$('nav');addEventListener('scroll',()=>nav.classList.toggle('scrolled',scrollY>30));
+nav.classList.toggle('scrolled',scrollY>30);
+const hb=$('hamb'),nl=$('navlinks');
+if(hb)hb.onclick=()=>{const o=nl.classList.toggle('open');hb.textContent=o?'✕':'☰';};
+if(nl)nl.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{nl.classList.remove('open');if(hb)hb.textContent='☰';}));
+/* reveal */
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.14});
+document.querySelectorAll('.rv').forEach(el=>io.observe(el));
+/* toast */
+const toast=$('toast'),toastMsg=$('toastMsg');let tT;
+function say(m){toastMsg.textContent=m;toast.classList.add('show');clearTimeout(tT);tT=setTimeout(()=>toast.classList.remove('show'),2600);}
+/* starfield (hero shine) */
+(function(){const host=$('heroStars');if(!host)return;for(let i=0;i<26;i++){const s=document.createElement('span');s.className='st';s.textContent='✦';s.style.left=(Math.random()*100).toFixed(2)+'%';s.style.top=(Math.random()*100).toFixed(2)+'%';s.style.fontSize=(0.5+Math.random()*1.4).toFixed(2)+'rem';s.style.setProperty('--td',(2.4+Math.random()*3.4).toFixed(2)+'s');s.style.setProperty('--to',(0.45+Math.random()*0.45).toFixed(2));s.style.animationDelay=(-Math.random()*4).toFixed(2)+'s';host.appendChild(s);}})();
+/* sparkle burst on click */
+function starBurst(x,y){if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;for(let i=0;i<22;i++){const s=document.createElement('div');s.className='burst';s.textContent='✦';const ang=Math.random()*Math.PI*2,dist=60+Math.random()*150;s.style.left=x+'px';s.style.top=y+'px';s.style.fontSize=(0.7+Math.random()*1.4).toFixed(2)+'rem';s.style.setProperty('--dx',(Math.cos(ang)*dist).toFixed(0)+'px');s.style.setProperty('--dy',(Math.sin(ang)*dist).toFixed(0)+'px');s.style.setProperty('--dr',(Math.random()*180-90).toFixed(0)+'deg');s.style.animation='burstfly '+(0.7+Math.random()*0.5).toFixed(2)+'s cubic-bezier(.2,.7,.3,1) forwards';document.body.appendChild(s);setTimeout(()=>s.remove(),1300);}}
+function burstAt(el){if(!el)return;const r=el.getBoundingClientRect();starBurst(r.left+r.width/2,r.top+r.height/2);}
+
+/* =====================================================================
+   BOOST LAB — interactive preview. Dev plugs real infra via window.CLEAN_MM:
+     window.CLEAN_MM = {
+       addLiquidity(cleanAmt, solAmt){ ...return {boost:0..0.70} },
+       submitBurn(amount){ ...return {signature, burned} }
+     }
+   ===================================================================== */
+(function(){
+  var MM = window.CLEAN_MM = window.CLEAN_MM || {};
+  MM.TIERS = MM.TIERS || {base:0.40, holdCap:0.50, loyCap:0.50, refCap:0.30, lpCap:0.70, burnUnit:100000, burnPerUnit:0.05, burnCapApr:2.00};
+  MM.addLiquidity = MM.addLiquidity || function(clean,sol){ return Promise.resolve({boost: Math.min(MM.TIERS.lpCap, (clean/1500000)*MM.TIERS.lpCap)}); };
+  MM.submitBurn   = MM.submitBurn   || function(amount){ return Promise.resolve({signature:'preview', burned:amount}); };
+  var T=MM.TIERS;
+  /* loyalty + referral are account-derived (shown maxed in this preview). */
+  var S={hold:0.25, loy:0.50, ref:0.30, lp:0, burnApr:0};
+
+  function num(v){ return parseFloat(String(v==null?'':v).replace(/[^0-9.]/g,''))||0; }
+  function holdTier(n){ n=num(n); if(n>=1e7)return .50; if(n>=1e6)return .25; if(n>=1e5)return .10; return 0; }
+  function mult(){ return 1 + Math.min(S.hold,T.holdCap) + Math.min(S.loy,T.loyCap) + Math.min(S.ref,T.refCap) + Math.min(S.lp,T.lpCap); }
+  function apr(){ return T.base*mult() + S.burnApr; }
+  function pct(x){ return Math.round(x*100); }
+  function f2(x){ return (x>=0?'+':'')+Number(x).toFixed(2); }
+  function set(id,v){ var e=$(id); if(e)e.textContent=v; }
+  function w(id,v){ var e=$(id); if(e)e.style.width=Math.max(0,Math.min(100,v))+'%'; }
+
+  function render(){
+    var m=mult(), a=apr();
+    var d=$('mmDial'); if(d)d.style.setProperty('--mmp', Math.max(0,Math.min(100,(m-1)/2*100)));
+    set('mmMult', m.toFixed(2)+'×'); set('mmMultNote', m.toFixed(2)+'×');
+    set('mmApr', pct(a)+'%'); w('mmAprBar', a/3*100<8?8:a/3*100);
+    set('mmBurnNote', S.burnApr>0 ? ' + '+pct(S.burnApr)+'% burn' : '');
+    set('mmHoldTier', f2(S.hold));
+    set('mmLpBoost', f2(S.lp)); w('mmLpBar', S.lp/T.lpCap*100);
+    set('mmBurnApr', '+'+pct(S.burnApr)+'% APR');
+    set('mmStatBig', m.toFixed(2)+'×'); set('mmStatApr', pct(a)+'%');
+    set('mmBdHold', f2(S.hold)); set('mmBdLoy', f2(S.loy)); set('mmBdRef', f2(S.ref));
+    set('mmBdLp', f2(S.lp)); set('mmBdBurn', '+'+pct(S.burnApr)+'% APR');
+    var miles=document.querySelectorAll('#mmMiles .mm-mile');
+    Array.prototype.forEach.call(miles,function(el){ el.classList.toggle('lit', m>=parseFloat(el.getAttribute('data-m'))-1e-9); });
+  }
+  function popDial(){var d=$('mmDial');if(d){d.classList.remove('pop');void d.offsetWidth;d.classList.add('pop');}}
+
+  /* rising soap bubbles */
+  (function(){ var box=$('mmBubbles'); if(!box)return;
+    for(var i=0;i<14;i++){ var b=document.createElement('i'); var s=8+Math.random()*30;
+      b.style.width=b.style.height=s+'px'; b.style.left=(Math.random()*100)+'%';
+      b.style.animationDuration=(7+Math.random()*9)+'s'; b.style.animationDelay=(-Math.random()*12)+'s';
+      box.appendChild(b);} })();
+
+  /* in-card sparkle burst */
+  function burst(n){ var box=$('mmBurst'); if(!box)return; n=n||22;
+    for(var i=0;i<n;i++){ var s=document.createElement('span'); s.className='mm-spark'; s.textContent='✦';
+      s.style.left=(35+Math.random()*30)+'%'; s.style.top=(40+Math.random()*20)+'%';
+      s.style.fontSize=(10+Math.random()*22)+'px';
+      var ang=Math.random()*6.283, dist=60+Math.random()*120;
+      s.style.setProperty('--dx',(Math.cos(ang)*dist).toFixed(0)+'px');
+      s.style.setProperty('--dy',(Math.sin(ang)*dist).toFixed(0)+'px');
+      box.appendChild(s); (function(el){ setTimeout(function(){ if(el&&el.parentNode)el.parentNode.removeChild(el); },950); })(s); } }
+
+  var hi=$('mmHold'); if(hi){ hi.oninput=function(){ S.hold=holdTier(hi.value); render(); }; S.hold=holdTier(hi.value); }
+
+  var lp=$('mmAddLp'); if(lp){ lp.onclick=function(){
+    lp.disabled=true;
+    var c=num($('mmLpClean')&&$('mmLpClean').value)||500000;
+    var so=num($('mmLpSol')&&$('mmLpSol').value)||2;
+    Promise.resolve(MM.addLiquidity(c,so)).then(function(r){
+      S.lp=Math.min(T.lpCap, (r&&typeof r.boost==='number')?r.boost:T.lpCap);
+      render(); popDial(); burst(14); burstAt(lp); lp.disabled=false; lp.textContent='💧 Liquidity added ✦'; say('Liquidity added — booster up ✦');
+      setTimeout(function(){ lp.textContent='💧 Add more to pool'; },1600);
+    },function(){ lp.disabled=false; });
+  }; }
+
+  Array.prototype.forEach.call(document.querySelectorAll('#mmBurnRow .burn-chip'),function(ch){
+    ch.onclick=function(){
+      S.burnApr=Math.min(T.burnCapApr, S.burnApr + (num(ch.getAttribute('data-burn'))/T.burnUnit)*T.burnPerUnit);
+      render(); popDial(); burst(8);
+    };
+  });
+
+  var washing=false; var wb=$('mmWash');
+  if(wb){ wb.onclick=function(){
+    if(washing)return; washing=true; wb.disabled=true;
+    var mach=$('mmMachine'), drum=$('mmDrum'), ban=$('mmBanner'), bt=$('mmBannerTxt');
+    if(ban)ban.classList.remove('show','x3');
+    if(mach)mach.classList.add('spin'); if(drum)drum.textContent='💵';
+    if(S.burnApr<=0){ S.burnApr=Math.min(T.burnCapApr,(100000/T.burnUnit)*T.burnPerUnit); }
+    Promise.resolve(MM.submitBurn(100000)).then(function(){
+      setTimeout(function(){ if(drum)drum.textContent='🫧'; },700);
+      setTimeout(function(){
+        if(mach)mach.classList.remove('spin'); if(drum)drum.textContent='✨';
+        render(); popDial(); burst(30); burstAt(wb);
+        var m=mult(), spotless=m>=3-1e-9;
+        if(ban){ ban.classList.toggle('x3',spotless);
+          bt.textContent = spotless ? '✦ SPOTLESS — '+m.toFixed(2)+'× BOOSTER ✦' : 'Boosted — '+m.toFixed(2)+'× · '+pct(apr())+'% APR ✦';
+          ban.classList.add('show'); }
+        wb.disabled=false; washing=false;
+      },1900);
+    },function(){ if(mach)mach.classList.remove('spin'); wb.disabled=false; washing=false; });
+  }; }
+
+  render();
+})();
+</script>
+</body>
+</html>
