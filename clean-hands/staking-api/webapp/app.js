@@ -190,7 +190,11 @@
       if (v && !v.querySelector('.inv-card')) {
         const d = document.createElement('div');
         d.innerHTML = tpl;
-        if (d.firstChild) v.appendChild(d.firstChild);
+        const card = d.firstChild;
+        if (!card) return;
+        // on TOP for the leaderboard (board), at the BOTTOM for every other tab
+        if (n === 'board') v.insertBefore(card, v.firstChild);
+        else v.appendChild(card);
       }
     });
   }
