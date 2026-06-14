@@ -137,7 +137,7 @@
     renderWallets();
   }
   function show(v) {
-    ['stake', 'trade', 'bridge', 'boost', 'game', 'meme', 'board', 'invite', 'folio'].forEach((n) => {
+    ['stake', 'trade', 'boost', 'game', 'meme', 'board', 'invite', 'folio'].forEach((n) => {
       const el = $('view-' + n);
       if (el) el.hidden = n !== v;
     });
@@ -157,7 +157,7 @@
         sc.scrollTop = 0;
       }
     }
-    if (v === 'bridge') loadBridge();
+    if (v === 'trade') loadBridge(); // bridge now lives inside the Trade tab
     else stopBridgePoll(); // don't keep polling order status off-tab
     if (v === 'game') loadGame();
     haptic();
@@ -173,6 +173,26 @@
     if (open && !open.getAttribute('href')) open.setAttribute('href', url);
     const f = $('game-frame');
     if (f && !f.getAttribute('src')) f.setAttribute('src', url);
+  }
+
+  // Invite lives in EVERY tab (no standalone invite section): clone a compact
+  // referral card into each view. Class-based so there are no duplicate IDs;
+  // paint() fills .inv-link / .inv-count.
+  function injectInvite() {
+    const tpl =
+      '<div class="card panel inv-card"><h3>🤝 Invite &amp; earn</h3>' +
+      '<p class="desc">Each active referral adds <b>+2% APR</b> (up to +30%). You have <b class="inv-count">0</b> active.</p>' +
+      '<div class="ca"><span class="lab">REF</span><code class="inv-link">—</code>' +
+      '<span class="cp" onclick="App.copyLink()">copy</span></div>' +
+      '<button class="btn btn-solid" style="margin-top:10px" onclick="App.invite()">Share invite ✦</button></div>';
+    ['stake', 'board', 'boost', 'trade', 'game'].forEach((n) => {
+      const v = $('view-' + n);
+      if (v && !v.querySelector('.inv-card')) {
+        const d = document.createElement('div');
+        d.innerHTML = tpl;
+        if (d.firstChild) v.appendChild(d.firstChild);
+      }
+    });
   }
 
   function addBtn(el, label, onclick, ghost) {
@@ -316,6 +336,10 @@
     if (chip) chip.classList.toggle('connected', !!pk);
     if (MINT) $('ca-text').textContent = MINT;
     $('ref-text').textContent = inviteLink().replace(/^https?:\/\//, '');
+    // invite cards injected into every tab (class-based, no duplicate IDs)
+    const _invl = inviteLink().replace(/^https?:\/\//, '');
+    document.querySelectorAll('.inv-link').forEach((e) => (e.textContent = _invl));
+    document.querySelectorAll('.inv-count').forEach((e) => (e.textContent = fmt(p.active_referrals)));
     updatePortfolio();
     startTicker();
   }
@@ -1044,6 +1068,7 @@
     wireBurnChips();
     wirePctRow();
     initBoostLab();
+    injectInvite();
 
     // Live wallet detection: extensions inject asynchronously on desktop, so
     // re-render the connect screen whenever a new wallet announces itself.
