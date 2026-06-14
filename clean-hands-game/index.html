@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Clean Hands, Dirty Money</title>
+    <meta name="theme-color" content="#bfe1ff" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="game.css" />
+  </head>
+  <body>
+    <div class="phone" id="app">
+      <!-- ===================== SCENE (parallax background) ===================== -->
+      <div class="scene" id="scene" aria-hidden="true">
+        <div class="sky"></div>
+        <div class="sun"></div>
+        <svg class="skyline" viewBox="0 0 420 240" preserveAspectRatio="xMidYMax meet">
+          <defs>
+            <linearGradient id="tower" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#cfe6fb" />
+              <stop offset="1" stop-color="#9cc4ee" />
+            </linearGradient>
+            <linearGradient id="towerHi" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#eaf5ff" />
+              <stop offset="1" stop-color="#b6d6f5" />
+            </linearGradient>
+          </defs>
+          <!-- back row -->
+          <g fill="url(#tower)" opacity="0.7">
+            <rect x="6" y="150" width="26" height="90" rx="3" />
+            <rect x="38" y="120" width="20" height="120" rx="3" />
+            <rect x="64" y="160" width="30" height="80" rx="3" />
+            <rect x="330" y="140" width="24" height="100" rx="3" />
+            <rect x="360" y="120" width="22" height="120" rx="3" />
+            <rect x="388" y="158" width="26" height="82" rx="3" />
+          </g>
+          <!-- front row -->
+          <g fill="url(#towerHi)">
+            <rect x="100" y="120" width="30" height="120" rx="4" />
+            <rect x="136" y="96" width="24" height="144" rx="4" />
+            <rect x="266" y="104" width="26" height="136" rx="4" />
+            <rect x="296" y="128" width="30" height="112" rx="4" />
+            <!-- Burj-like spire -->
+            <path d="M196 240 L205 40 L214 240 Z" />
+            <rect x="201" y="20" width="8" height="36" rx="3" />
+          </g>
+          <!-- window dots -->
+          <g fill="#ffffff" opacity="0.5">
+            <rect x="142" y="110" width="3" height="6" />
+            <rect x="150" y="124" width="3" height="6" />
+            <rect x="272" y="118" width="3" height="6" />
+            <rect x="305" y="142" width="3" height="6" />
+          </g>
+        </svg>
+        <div class="lagoon"></div>
+        <div class="floor"></div>
+        <div class="mullions"></div>
+        <svg class="palm palm-l" viewBox="0 0 120 160">
+          <g fill="#3f9d6b">
+            <path d="M60 160 C58 110 56 80 60 60 C64 80 66 110 64 160 Z" fill="#2f7d54" />
+            <path d="M60 64 C30 50 12 56 0 70 C26 60 44 64 60 78 Z" />
+            <path d="M60 64 C40 36 20 30 6 30 C30 38 44 50 60 76 Z" />
+            <path d="M60 64 C60 30 70 14 84 6 C72 30 66 44 62 74 Z" />
+            <path d="M60 64 C92 50 110 56 120 70 C96 60 78 64 62 78 Z" />
+          </g>
+        </svg>
+        <svg class="palm palm-r" viewBox="0 0 120 160">
+          <g fill="#3f9d6b">
+            <path d="M60 160 C58 110 56 80 60 60 C64 80 66 110 64 160 Z" fill="#2f7d54" />
+            <path d="M60 64 C30 50 12 56 0 70 C26 60 44 64 60 78 Z" />
+            <path d="M60 64 C40 36 20 30 6 30 C30 38 44 50 60 76 Z" />
+            <path d="M60 64 C60 30 70 14 84 6 C72 30 66 44 62 74 Z" />
+            <path d="M60 64 C92 50 110 56 120 70 C96 60 78 64 62 78 Z" />
+          </g>
+        </svg>
+      </div>
+
+      <!-- ===================== HUD (top) ===================== -->
+      <header class="hud">
+        <div class="pills">
+          <div class="pill"><span class="pk">LEVEL</span><span class="pv" id="ui-level">1</span></div>
+          <button class="pill loc" id="ui-loc-btn" type="button">
+            <svg viewBox="0 0 24 24" class="pin"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5Z"/></svg>
+            <span id="ui-loc">DUBAI</span>
+          </button>
+          <div class="pill"><span class="pk">GOAL</span><span class="pv" id="ui-goal">10K</span></div>
+        </div>
+
+        <div class="heat card">
+          <div class="heat-line">
+            <span class="heat-k">HEAT</span>
+            <div class="heat-track"><i class="heat-fill" id="ui-heatfill"></i></div>
+            <span class="heat-v" id="ui-heatpct">0%</span>
+          </div>
+          <div class="heat-sub" id="ui-heatsub">all quiet for now.</div>
+        </div>
+
+        <div class="counter">
+          <div class="cash" id="ui-cash">$0</div>
+          <div class="rate">laundering <b id="ui-rate">$0/s</b></div>
+        </div>
+
+        <button class="clean" id="ui-buy" type="button">
+          <span class="clean-ico">$</span>
+          <span class="clean-name">$CLEAN</span>
+          <span class="clean-price" id="ui-price">$0.000023</span>
+          <span class="clean-go">BUY</span>
+        </button>
+      </header>
+
+      <!-- ===================== STAGE ===================== -->
+      <main class="stage">
+        <section class="view view-launder" id="view-launder">
+          <button class="tap" id="ui-tap" type="button" aria-label="Launder money">
+            <span class="tap-glow"></span>
+            <span class="tap-card">
+              <svg class="hands" viewBox="0 0 300 220">
+                <!-- cash fan -->
+                <g class="cash-stack">
+                  <rect x="92" y="66" width="116" height="70" rx="8" fill="#e7f3e8" stroke="#b7d8bb" transform="rotate(-7 150 100)"/>
+                  <rect x="92" y="66" width="116" height="70" rx="8" fill="#eef8ef" stroke="#b7d8bb" transform="rotate(6 150 100)"/>
+                  <rect x="96" y="70" width="108" height="64" rx="8" fill="#dff0e1" stroke="#9fc9a5"/>
+                  <circle cx="150" cy="102" r="20" fill="#cfe9d4" stroke="#9fc9a5"/>
+                  <text x="150" y="110" text-anchor="middle" font-size="22" font-weight="800" fill="#2f7d54">$</text>
+                  <text x="112" y="86" font-size="11" font-weight="800" fill="#3f9d6b">100</text>
+                  <text x="172" y="128" font-size="11" font-weight="800" fill="#3f9d6b">100</text>
+                </g>
+                <!-- gloved hands -->
+                <g class="glove glove-l">
+                  <path d="M40 220 C40 150 64 120 96 124 C120 127 124 150 120 170 C118 182 100 188 92 186 C108 196 110 210 104 220 Z" fill="#bfe0fb" stroke="#7db4ea" stroke-width="3"/>
+                </g>
+                <g class="glove glove-r">
+                  <path d="M260 220 C260 150 236 120 204 124 C180 127 176 150 180 170 C182 182 200 188 208 186 C192 196 190 210 196 220 Z" fill="#bfe0fb" stroke="#7db4ea" stroke-width="3"/>
+                </g>
+                <!-- sparkles -->
+                <g class="sparks" fill="#ffffff">
+                  <path d="M70 60 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4 Z"/>
+                  <path d="M232 78 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 Z"/>
+                  <path d="M150 40 l3 7 7 3 -7 3 -3 7 -3 -7 -7 -3 7 -3 Z"/>
+                </g>
+              </svg>
+            </span>
+            <span class="tap-hint">TAP · SWIPE TO RIFFLE</span>
+            <span class="floaters" id="ui-floaters"></span>
+          </button>
+        </section>
+
+        <section class="view panel" id="view-perks" hidden><div class="list" id="list-perks"></div></section>
+        <section class="view panel" id="view-bribes" hidden><div class="list" id="list-bribes"></div></section>
+        <section class="view panel" id="view-rep" hidden><div class="list" id="list-rep"></div></section>
+        <section class="view panel" id="view-escape" hidden><div class="list" id="list-escape"></div></section>
+      </main>
+
+      <!-- ===================== DOCK (featured upgrade + stats) ===================== -->
+      <div class="dock" id="ui-dock">
+        <button class="feat" id="ui-feat" type="button">
+          <span class="feat-ico" id="ui-feat-ico">🧤</span>
+          <span class="feat-meta">
+            <b id="ui-feat-name">Extra Hands</b>
+            <i id="ui-feat-cost">$50</i>
+          </span>
+          <span class="feat-cta" id="ui-feat-cta">BUY</span>
+        </button>
+        <div class="stats">
+          <div class="stat"><b id="ui-s1">$0/s</b><span>income</span></div>
+          <div class="stat"><b id="ui-s2">×1</b><span>mult</span></div>
+          <div class="stat"><b id="ui-s3">0/3</b><span>perks</span></div>
+          <div class="stat"><b id="ui-s4">0</b><span>taps</span></div>
+        </div>
+      </div>
+
+      <!-- ===================== BOTTOM NAV ===================== -->
+      <nav class="nav" id="ui-nav">
+        <button class="nav-btn on" data-tab="launder" type="button">
+          <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="13" r="4.4"/><circle cx="7.5" cy="6.5" r="1.1"/></svg>
+          <span>LAUNDER</span>
+        </button>
+        <button class="nav-btn" data-tab="perks" type="button">
+          <svg viewBox="0 0 24 24"><path d="M6 3h12l3 6-9 12L3 9z"/></svg>
+          <span>PERKS</span>
+        </button>
+        <button class="nav-btn" data-tab="bribes" type="button">
+          <svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/></svg>
+          <span>BRIBES</span>
+        </button>
+        <button class="nav-btn" data-tab="rep" type="button">
+          <svg viewBox="0 0 24 24"><path d="M12 3l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 21l1.1-6.5L2.6 9.8l6.5-.9z"/></svg>
+          <span>REP</span>
+          <i class="badge" id="ui-repbadge">0/8</i>
+        </button>
+        <button class="nav-btn" data-tab="escape" type="button">
+          <svg viewBox="0 0 24 24"><circle cx="13.5" cy="4.5" r="2"/><path d="M5 21l4-7 3 2 1 5M13 9l-3 3-4 1M13 9l3 1 3 4"/></svg>
+          <span>ESCAPE</span>
+        </button>
+      </nav>
+
+      <!-- ===================== OVERLAYS ===================== -->
+      <div class="bust" id="ui-bust"><div class="bust-card"><b>BUSTED</b><span id="ui-bust-sub">the feds took a cut.</span></div></div>
+      <div class="hype" id="ui-hype"></div>
+      <div class="toast" id="ui-toast"></div>
+    </div>
+
+    <script src="game.js"></script>
+  </body>
+</html>
