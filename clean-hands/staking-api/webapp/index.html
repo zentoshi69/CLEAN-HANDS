@@ -983,8 +983,16 @@
         padding: 0;
         margin: -16px -16px 0; /* break out of .scroll's top + side padding (full-bleed) */
         height: calc(100% + 16px);
+      }
+      /* Only flex-fill when actually visible. An #id `display` would otherwise
+         out-rank .tab[hidden]{display:none} and render the game over every tab. */
+      #view-game:not([hidden]) {
         display: flex;
         flex-direction: column;
+      }
+      /* Full-screen game: hide our app header (the embedded game has its own). */
+      body.game-mode .top {
+        display: none;
       }
       .game-wrap {
         flex: 1 1 auto;
@@ -1709,6 +1717,11 @@
             </p>
             <div id="bridge-host" class="bridge-host"></div>
             <p class="lbl" id="bridge-note" style="margin-top:10px"></p>
+            <div class="btn-row" style="margin-top: 14px">
+              <button class="btn btn-ghost" onclick="App.chart()">📈 Chart</button>
+              <button class="btn btn-ghost" onclick="App.birdeye()">🦅 Birdeye</button>
+              <button class="btn btn-ghost" onclick="App.buy()">🪐 Jupiter</button>
+            </div>
           </div>
         </section>
 
@@ -1871,7 +1884,6 @@
               referrerpolicy="no-referrer"
               loading="lazy"
             ></iframe>
-            <a class="game-open" id="game-open" target="_blank" rel="noopener">Game not loading? Open in browser ↗</a>
           </div>
         </section>
 
@@ -1967,6 +1979,6 @@
     <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <script src="/wallet.js?v=10"></script>
-    <script src="/app.js?v=17"></script>
+    <script src="/app.js?v=18"></script>
   </body>
 </html>

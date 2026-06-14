@@ -144,6 +144,8 @@
     document
       .querySelectorAll('.tabbtn')
       .forEach((b) => b.classList.toggle('on', b.dataset.tab === v));
+    // Full-screen game: hide our app header (the embedded game brings its own).
+    document.body.classList.toggle('game-mode', v === 'game');
     // Portfolio lives in the header (not the tab bar), so light its chip here.
     const fc = $('folio-chip');
     if (fc) fc.classList.toggle('on', v === 'folio');
