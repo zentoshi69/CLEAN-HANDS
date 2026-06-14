@@ -981,18 +981,31 @@
       /* embedded game tab */
       #view-game {
         padding: 0;
+        margin: -16px -16px 0; /* break out of .scroll's top + side padding (full-bleed) */
+        height: calc(100% + 16px);
       }
-      .game-wrap {
+      /* Only flex-fill when actually visible. An #id `display` would otherwise
+         out-rank .tab[hidden]{display:none} and render the game over every tab. */
+      #view-game:not([hidden]) {
         display: flex;
         flex-direction: column;
-        min-height: 72vh;
+      }
+      /* Full-screen game: hide our app header (the embedded game has its own). */
+      body.game-mode .top {
+        display: none;
+      }
+      .game-wrap {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
       }
       .game-frame {
         flex: 1 1 auto;
         width: 100%;
         border: 0;
         display: block;
-        min-height: 72vh;
+        min-height: 0;
         background: #0b1220;
       }
       .game-open {
@@ -1704,6 +1717,11 @@
             </p>
             <div id="bridge-host" class="bridge-host"></div>
             <p class="lbl" id="bridge-note" style="margin-top:10px"></p>
+            <div class="btn-row" style="margin-top: 14px">
+              <button class="btn btn-ghost" onclick="App.chart()">📈 Chart</button>
+              <button class="btn btn-ghost" onclick="App.birdeye()">🦅 Birdeye</button>
+              <button class="btn btn-ghost" onclick="App.buy()">🪐 Jupiter</button>
+            </div>
           </div>
         </section>
 
@@ -1744,6 +1762,9 @@
             </div>
             <div class="row">
               <span class="name">💧 Liquidity (MM)</span><span class="v zero" id="bl-lp">—</span>
+            </div>
+            <div class="row">
+              <span class="name">✦ VIP deposit</span><span class="v zero" id="bl-vip">—</span>
             </div>
             <div class="row">
               <span class="name">🔥 Burn bonus</span><span class="v zero" id="bl-burn">—</span>
@@ -1866,7 +1887,6 @@
               referrerpolicy="no-referrer"
               loading="lazy"
             ></iframe>
-            <a class="game-open" id="game-open" target="_blank" rel="noopener">Game not loading? Open in browser ↗</a>
           </div>
         </section>
 
@@ -1962,6 +1982,6 @@
     <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <script src="/wallet.js?v=10"></script>
-    <script src="/app.js?v=16"></script>
+    <script src="/app.js?v=19"></script>
   </body>
 </html>

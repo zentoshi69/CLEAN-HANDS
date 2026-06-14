@@ -148,6 +148,8 @@
     document
       .querySelectorAll('.tabbtn')
       .forEach((b) => b.classList.toggle('on', b.dataset.tab === v));
+    // Full-screen game: hide our app header (the embedded game brings its own).
+    document.body.classList.toggle('game-mode', v === 'game');
     // Portfolio lives in the header (not the tab bar), so light its chip here.
     const fc = $('folio-chip');
     if (fc) fc.classList.toggle('on', v === 'folio');
@@ -190,7 +192,7 @@
       '<div class="ca"><span class="lab">REF</span><code class="inv-link">—</code>' +
       '<span class="cp" onclick="App.copyLink()">copy</span></div>' +
       '<button class="btn btn-solid" style="margin-top:10px" onclick="App.invite()">Share invite ✦</button></div>';
-    ['stake', 'board', 'boost', 'trade', 'game'].forEach((n) => {
+    ['stake', 'board', 'boost', 'trade'].forEach((n) => {
       const v = $('view-' + n);
       if (v && !v.querySelector('.inv-card')) {
         const d = document.createElement('div');
@@ -912,7 +914,8 @@
       (Number(a.wallet_boost) || 0) +
       (Number(a.loyalty_boost) || 0) +
       (Number(a.referral_boost) || 0) +
-      (Number(a.liquidity_boost) || 0);
+      (Number(a.liquidity_boost) || 0) +
+      (Number(a.vip_boost) || 0);
     const mult = 1 + add;
     const set = (id, v) => {
       const e = $(id);
@@ -932,6 +935,7 @@
     set('bl-loyalty', pct(a.loyalty_boost));
     set('bl-ref', pct(a.referral_boost));
     set('bl-lp', a.liquidity_boost ? pct(a.liquidity_boost) : 'soon');
+    set('bl-vip', a.vip_boost ? '3× locked ✦' : '—');
     set('bl-burn', pct(a.burn_bonus_apr));
     [
       ['bl-amount', a.amount_boost],
@@ -939,6 +943,7 @@
       ['bl-loyalty', a.loyalty_boost],
       ['bl-ref', a.referral_boost],
       ['bl-lp', a.liquidity_boost],
+      ['bl-vip', a.vip_boost],
       ['bl-burn', a.burn_bonus_apr],
     ].forEach(([id, v]) => {
       const e = $(id);

@@ -143,6 +143,11 @@ def wallet_balance_boost(sol_usd: float, clean_usd: float) -> float:
     return BAL_BOOST_AT_MIN + frac * (BAL_BOOST_AT_MAX - BAL_BOOST_AT_MIN)
 
 
+# VIP: a verified market-maker deposit permanently locks the wallet to at least
+# this total multiplier (and adds it to the VIP airdrop list). Default a clean 3x.
+VIP_MULT = _f("STAKE_VIP_MULT", 3.0)
+
+
 @dataclass
 class Apr:
     base: float
@@ -153,6 +158,7 @@ class Apr:
     burn_bonus_apr: float
     effective_apr: float
     wallet_boost: float = 0.0
+    vip_boost: float = 0.0
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -169,6 +175,7 @@ def effective_apr(
     liquidity_usd: float = 0.0,
     sol_usd: float = 0.0,
     clean_usd: float = 0.0,
+    vip: bool = False,
 ) -> Apr:
     ab = amount_boost(staked_tokens)
     lb = loyalty_boost(seconds_staked)
@@ -176,8 +183,11 @@ def effective_apr(
     qb = liquidity_boost(liquidity_usd)
     bb = burn_bonus_apr(total_burned_tokens)
     wb = wallet_balance_boost(sol_usd, clean_usd)
-    eff = BASE_APR * (1 + ab + lb + rb + qb + wb) + bb
-    return Apr(BASE_APR, ab, lb, rb, qb, bb, eff, wb)
+    mult = 1 + ab + lb + rb + qb + wb
+    # A VIP deposit permanently tops the multiplier up to VIP_MULT (a clean 3x).
+    vipb = max(0.0, VIP_MULT - mult) if vip else 0.0
+    eff = BASE_APR * (mult + vipb) + bb
+    return Apr(BASE_APR, ab, lb, rb, qb, bb, eff, wb, vipb)
 
 
 def accrue(staked_effective: float, apr: float, dt_seconds: float) -> float:

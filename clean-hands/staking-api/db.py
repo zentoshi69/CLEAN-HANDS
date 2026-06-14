@@ -18,7 +18,7 @@ DB_PATH = os.environ.get("STAKE_DB", os.path.join(os.path.dirname(__file__), "st
 # --------------------------------------------------------------------------- #
 DECIMALS = int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
 BASE = 10**DECIMALS
-SCHEMA_VERSION = 7  # bumped by migrations
+SCHEMA_VERSION = 8  # bumped by migrations
 
 
 def to_base(ui_amount: float) -> int:
@@ -107,13 +107,14 @@ CREATE TABLE IF NOT EXISTS stakers (
     balance_ts BIGINT NOT NULL DEFAULT 0, stake_start_ts BIGINT NOT NULL DEFAULT 0,
     last_accrual_ts BIGINT NOT NULL DEFAULT 0, accrued BIGINT NOT NULL DEFAULT 0,
     claimed_total BIGINT NOT NULL DEFAULT 0, total_burned BIGINT NOT NULL DEFAULT 0,
-    mm_liquidity_cents BIGINT NOT NULL DEFAULT 0,
+    mm_liquidity_cents BIGINT NOT NULL DEFAULT 0, mm_vip BIGINT NOT NULL DEFAULT 0,
     referred_by TEXT, ref_code TEXT UNIQUE, payout_wallet TEXT,
     payout_confirmed_ts BIGINT NOT NULL DEFAULT 0, created_at BIGINT NOT NULL);
 ALTER TABLE stakers ADD COLUMN IF NOT EXISTS ref_code TEXT UNIQUE;
 ALTER TABLE stakers ADD COLUMN IF NOT EXISTS payout_wallet TEXT;
 ALTER TABLE stakers ADD COLUMN IF NOT EXISTS payout_confirmed_ts BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE stakers ADD COLUMN IF NOT EXISTS mm_liquidity_cents BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE stakers ADD COLUMN IF NOT EXISTS mm_vip BIGINT NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS burns (
     signature TEXT PRIMARY KEY, wallet TEXT NOT NULL, amount BIGINT NOT NULL, ts BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS mm_deposits (
@@ -360,6 +361,13 @@ def _migrate(conn) -> None:
         )
         conn.execute("PRAGMA user_version = 7")
         conn.commit()
+        ver = 7
+    if ver < 8:
+        # v8: VIP — a verified MM deposit permanently locks the 3x booster and
+        # marks the wallet for the VIP airdrop snapshot.
+        conn.execute("ALTER TABLE stakers ADD COLUMN mm_vip INTEGER NOT NULL DEFAULT 0")
+        conn.execute("PRAGMA user_version = 8")
+        conn.commit()
 
 
 def get_staker(conn, wallet: str):
@@ -447,6 +455,17 @@ def burn_seen(conn, signature: str) -> bool:
 
 def mm_seen(conn, signature: str) -> bool:
     return conn.execute("SELECT 1 FROM mm_deposits WHERE signature=?", (signature,)).fetchone() is not None
+
+
+def list_vips(conn) -> list[dict]:
+    """Every VIP wallet (verified MM depositor) for airdrop snapshots, biggest first."""
+    rows = conn.execute(
+        "SELECT wallet, mm_liquidity_cents FROM stakers WHERE mm_vip=1 ORDER BY mm_liquidity_cents DESC"
+    ).fetchall()
+    return [
+        {"wallet": r["wallet"], "deposit_usd": round((r["mm_liquidity_cents"] or 0) / 100.0, 2)}
+        for r in rows
+    ]
 
 
 def create_claim(conn, wallet: str, amount_base: int, status: str = "requested") -> None:

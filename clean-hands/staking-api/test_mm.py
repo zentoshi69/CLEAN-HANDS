@@ -27,6 +27,21 @@ def test_effective_apr_includes_liquidity():
     assert abs(b.effective_apr - (econ.BASE_APR * (1 + 0.25 + econ.MM_LP_CAP) + 0.10)) < 1e-9
 
 
+def test_vip_locks_the_3x_booster():
+    # A VIP deposit floors the multiplier at VIP_MULT (a clean 3x) even with no
+    # other boosters — and tops it up via vip_boost.
+    a = econ.effective_apr(0, 0, 0, 0, vip=True)
+    assert abs(a.effective_apr - econ.BASE_APR * econ.VIP_MULT) < 1e-9
+    assert a.vip_boost > 0
+    # non-VIP with nothing staked stays at base APR, no vip_boost
+    b = econ.effective_apr(0, 0, 0, 0, vip=False)
+    assert abs(b.effective_apr - econ.BASE_APR) < 1e-9
+    assert b.vip_boost == 0.0
+    # VIP never *reduces* a wallet that already exceeds 3x on its own merits
+    big = econ.effective_apr(10_000_000, 0, 0, 0, vip=True)  # amount tier alone is high
+    assert big.effective_apr >= econ.BASE_APR * econ.VIP_MULT - 1e-9
+
+
 def test_verify_mm_deposit_parses_sol_and_clean(monkeypatch):
     WALLET = "Wa11et1111111111111111111111111111111111111"
     MM = "MMreserve111111111111111111111111111111111"
