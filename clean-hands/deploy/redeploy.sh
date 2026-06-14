@@ -18,6 +18,7 @@ cp "$APP/deploy/site-index.html" /var/www/clean-site/index.html
 # standalone landing pages (pretty URLs /boost and /bridge via nginx try_files)
 cp "$APP/deploy/boost.html" /var/www/clean-site/boost.html
 cp "$APP/deploy/bridge.html" /var/www/clean-site/bridge.html
+cp "$APP/deploy/brand.html" /var/www/clean-site/brand.html
 
 echo "== shop product photos =="
 mkdir -p /var/www/clean-site/shop
