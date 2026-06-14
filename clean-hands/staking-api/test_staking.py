@@ -61,7 +61,62 @@ def test_economics():
     assert approx(econ.accrue(1_000_000, 0.50, econ.SECONDS_PER_YEAR), 500_000)
     # anti-gaming: earn only on what you still hold
     assert econ.effective_staked(1_000_000, 400_000) == 400_000
+    # wallet-balance booster: SOL mandatory, CLEAN optional, $50–$500 band
+    assert econ.wallet_balance_boost(0, 300) == 0.0       # never CLEAN-only
+    assert econ.wallet_balance_boost(49, 400) == 0.0      # SOL below $50 floor
+    assert approx(econ.wallet_balance_boost(50, 0), 0.10)   # SOL-only at floor
+    assert approx(econ.wallet_balance_boost(500, 0), 0.50)  # cap
+    assert approx(econ.wallet_balance_boost(9999, 0), 0.50)  # clamped to cap
+    assert approx(econ.wallet_balance_boost(275, 0), 0.30)  # linear midpoint
+    assert approx(econ.wallet_balance_boost(50, 49), 0.10)  # CLEAN <$50 not counted
+    assert approx(econ.wallet_balance_boost(100, 9999), 0.50)  # CLEAN clamps total to cap
+    # composition: $500 SOL adds +0.50x to the multiplier
+    assert approx(econ.effective_apr(0, 0, 0, 0, sol_usd=500).effective_apr, 0.40 * 1.50)
+    assert econ.effective_apr(0, 0, 0, 0).wallet_boost == 0.0  # backward-compatible default
     print("economics ✓")
+
+
+def test_price_guards():
+    """C-1 regression: a thin/manipulated $CLEAN pool must not feed the booster.
+    SOL/USD comes from an independent deep pool and is clamped to a sane band."""
+    import asyncio
+    import market
+
+    orig_bp, orig_ind = market.best_pair, market._independent_sol_usd
+    try:
+        async def run():
+            # thin CLEAN pool (below the liquidity floor) + healthy independent SOL
+            async def thin():
+                return {"priceUsd": "0.00001", "priceNative": "1e-10",
+                        "quoteToken": {"symbol": "SOL"}, "liquidity": {"usd": 500}}
+
+            async def ind150():
+                return 150.0
+
+            market.best_pair, market._independent_sol_usd = thin, ind150
+            market._last_prices.update(clean_usd=0, sol_usd=0, ts=0)
+            pr = await market.refresh_prices()
+            assert pr["clean_usd"] == 0.0      # thin CLEAN price rejected
+            assert pr["sol_usd"] == 150.0      # independent SOL price used
+
+            # liquid pool but absurd priceNative -> SOL/USD explodes -> band rejects
+            async def garbage():
+                return {"priceUsd": "0.0004", "priceNative": "1e-11",
+                        "quoteToken": {"symbol": "SOL"}, "liquidity": {"usd": 50000}}
+
+            async def ind0():
+                return 0.0
+
+            market.best_pair, market._independent_sol_usd = garbage, ind0
+            market._last_prices.update(clean_usd=0, sol_usd=0, ts=0)
+            pr = await market.refresh_prices()
+            assert pr["sol_usd"] == 0.0        # implausible SOL/USD rejected
+
+        asyncio.run(run())
+    finally:
+        market.best_pair, market._independent_sol_usd = orig_bp, orig_ind
+        market._last_prices.update(clean_usd=0, sol_usd=0, ts=0)
+    print("price guards ✓")
 
 
 def test_auth_signature():

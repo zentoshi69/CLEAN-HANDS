@@ -1,16 +1,14 @@
 [Unit]
-Description=CLEAN staking reconciliation (money-invariant check)
-After=network-online.target
-OnFailure=degen-reconcile-alert.service
+Description=Alert admins when CLEAN reconciliation detects money drift
 
 [Service]
 Type=oneshot
 WorkingDirectory=/home/youruser/bots/staking-api
 EnvironmentFile=/home/youruser/bots/.env
-ExecStart=/home/youruser/bots/staking-api/venv/bin/python reconcile.py
+ExecStart=/home/youruser/bots/staking-api/venv/bin/python ops_alert.py "❌ degen-reconcile FAILED on %H — money-invariant drift detected. Inspect now: journalctl -u degen-reconcile -n 50"
 User=youruser
 
-# Hardening (read-only job)
+# --- Hardening (read-only; net for the Telegram send) ---
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

@@ -148,9 +148,48 @@ def _require(token: str) -> dict:
     return sess
 
 
+# Per-worker, in-memory cache of native SOL balances for the wallet-balance
+# booster (best-effort; the booster fails safe to 0 when cold or on RPC error,
+# so this never blocks or corrupts the $CLEAN accrual path).
+_sol_cache: dict[str, tuple[float, float]] = {}  # wallet -> (ts, sol_ui_balance)
+
+
+async def _refresh_wallet_usd(wallet: str, force: bool = False) -> None:
+    """Refresh the wallet's SOL balance + CLEAN/SOL USD prices used by the
+    wallet-balance booster. Never raises; on any hiccup we keep last-known."""
+    if not econ.BAL_BOOST_ENABLED:
+        return
+    try:
+        await market.refresh_prices()  # internally cached (~MARKET_TTL)
+    except Exception:  # noqa: BLE001
+        pass
+    now = time.time()
+    hit = _sol_cache.get(wallet)
+    if hit and not force and (now - hit[0]) < BALANCE_TTL:
+        return
+    try:
+        _sol_cache[wallet] = (now, await solana.sol_balance(wallet))
+    except Exception:  # noqa: BLE001 — RPC hiccup: keep last known SOL balance
+        pass
+
+
+def _wallet_usd(wallet: str, row) -> tuple[float, float]:
+    """(sol_usd, clean_usd) from cached balances + last-known prices. Pure/sync
+    and safe to call from the accrual path; returns (0, 0) when disabled/cold."""
+    if not econ.BAL_BOOST_ENABLED:
+        return 0.0, 0.0
+    pr = market.last_prices()
+    sol_ui = _sol_cache.get(wallet, (0.0, 0.0))[1]
+    sol_usd = sol_ui * float(pr.get("sol_usd") or 0.0)
+    clean_usd = db.to_ui(row["cached_balance"]) * float(pr.get("clean_usd") or 0.0)
+    return sol_usd, clean_usd
+
+
 async def _refresh_balance(conn, row, force: bool = False) -> int:
     """Returns the wallet's $CLEAN balance in integer base units (cached)."""
     now = int(time.time())
+    # opportunistically refresh SOL + prices for the wallet-balance booster
+    await _refresh_wallet_usd(row["wallet"], force=force)
     if not force and (now - row["balance_ts"]) < BALANCE_TTL:
         return row["cached_balance"]
     try:
@@ -172,9 +211,10 @@ def _apr_for(conn, wallet: str, row):
     eff_base = econ.effective_staked(row["recorded_staked"], row["cached_balance"])
     secs = now - row["stake_start_ts"] if (eff_base > 0 and row["stake_start_ts"]) else 0
     refs = db.active_referrals(conn, wallet)
+    sol_usd, clean_usd = _wallet_usd(wallet, row)
     apr = econ.effective_apr(
         db.to_ui(eff_base), secs, refs, db.to_ui(row["total_burned"]),
-        (row["mm_liquidity_cents"] or 0) / 100.0,
+        (row["mm_liquidity_cents"] or 0) / 100.0, sol_usd, clean_usd,
     )
     return eff_base, secs, refs, apr
 

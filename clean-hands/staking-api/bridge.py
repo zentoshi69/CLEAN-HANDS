@@ -72,6 +72,10 @@ FEE_USD = _f("BRIDGE_FEE_USD", 5.0)
 MIN_ORDER_USD = _f("BRIDGE_MIN_ORDER_USD", 55.0)
 MAX_FEE_PCT = _f("BRIDGE_EXTRA_FEE_MAX_PCT", 10.0)
 MIN_FEE_PCT = _f("BRIDGE_EXTRA_FEE_MIN_PCT", 0.0)
+# Defense-in-depth: a misconfigured env must never produce a negative or >100%
+# partner fee, nor an inverted band. Clamp to [0, 100] with MIN <= MAX at load.
+MIN_FEE_PCT = max(0.0, MIN_FEE_PCT)
+MAX_FEE_PCT = min(100.0, max(MIN_FEE_PCT, MAX_FEE_PCT))
 # Decimal places kept on the fee PERCENTAGE. This must be fine enough that the
 # flat $5 holds on big orders: the fee on a $1M order is 0.0005%, which 2 dp
 # would round to 0.00% ($0!) — so we keep 6 dp (accurate to <1¢ up to ~$2M

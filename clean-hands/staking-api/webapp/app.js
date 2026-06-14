@@ -904,6 +904,7 @@
   function paintBoostLab(a, prevBurn) {
     const add =
       (Number(a.amount_boost) || 0) +
+      (Number(a.wallet_boost) || 0) +
       (Number(a.loyalty_boost) || 0) +
       (Number(a.referral_boost) || 0) +
       (Number(a.liquidity_boost) || 0);
@@ -922,12 +923,14 @@
         : Math.round((a.effective_apr || 0) * 100)) + '%',
     );
     set('bl-amount', pct(a.amount_boost));
+    set('bl-wallet', pct(a.wallet_boost));
     set('bl-loyalty', pct(a.loyalty_boost));
     set('bl-ref', pct(a.referral_boost));
     set('bl-lp', a.liquidity_boost ? pct(a.liquidity_boost) : 'soon');
     set('bl-burn', pct(a.burn_bonus_apr));
     [
       ['bl-amount', a.amount_boost],
+      ['bl-wallet', a.wallet_boost],
       ['bl-loyalty', a.loyalty_boost],
       ['bl-ref', a.referral_boost],
       ['bl-lp', a.liquidity_boost],

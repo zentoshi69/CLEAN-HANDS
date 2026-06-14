@@ -485,6 +485,12 @@
       .btn + .btn {
         margin-top: 10px;
       }
+      /* …but buttons sharing a .btn-row are side-by-side grid cells (spaced by
+         `gap`), so the stacked-button margin above would shove the 2nd one down
+         and misalign them. Cancel it inside rows. */
+      .btn-row > .btn + .btn {
+        margin-top: 0;
+      }
       /* compact button — for secondary/utility actions (e.g. link a wallet)
          so they don't read as heavy as the primary stake/claim CTAs. */
       .btn-sm {
@@ -1742,6 +1748,9 @@
             </p>
             <div class="row">
               <span class="name">🪣 Holdings</span><span class="v zero" id="bl-amount">—</span>
+            </div>
+            <div class="row">
+              <span class="name">🤲 Wallet (SOL+CLEAN)</span><span class="v zero" id="bl-wallet">—</span>
             </div>
             <div class="row">
               <span class="name">⏳ Loyalty</span><span class="v zero" id="bl-loyalty">—</span>

@@ -42,9 +42,26 @@ async def token_balance(wallet: str, mint: str | None = None) -> float:
     )
     total = 0.0
     for acc in (res or {}).get("value", []):
-        info = acc["account"]["data"]["parsed"]["info"]
-        total += float(info["tokenAmount"].get("uiAmount") or 0)
+        # Defensive .get() chain: skip any account the RPC didn't return as
+        # jsonParsed (e.g. token-2022 / unusual accounts) rather than throwing —
+        # one unparsable account must not freeze the wallet's balance refresh.
+        data = ((acc or {}).get("account") or {}).get("data")
+        info = (data.get("parsed") or {}).get("info") if isinstance(data, dict) else None
+        if not isinstance(info, dict):
+            continue
+        ta = info.get("tokenAmount") or {}
+        total += float(ta.get("uiAmount") or 0)
     return total
+
+
+async def sol_balance(wallet: str) -> float:
+    """The wallet's native SOL balance (in whole SOL, not lamports)."""
+    if not wallet:
+        return 0.0
+    res = await _rpc("getBalance", [wallet])
+    # getBalance returns {"context": ..., "value": <lamports>}; tolerate a bare int.
+    lamports = res.get("value") if isinstance(res, dict) else res
+    return float(lamports or 0) / 1_000_000_000
 
 
 async def verify_burn(signature: str, wallet: str, mint: str | None = None) -> float:
@@ -89,22 +106,15 @@ async def verify_burn(signature: str, wallet: str, mint: str | None = None) -> f
         if isinstance(ta, dict) and ta.get("uiAmount") is not None:
             burned += float(ta["uiAmount"])
         elif info.get("amount") is not None:
-            # raw `burn` without decimals — caller should set DEFAULT_TOKEN_DECIMALS
-            decimals = int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
+            # raw `burn` carries no uiAmount; prefer on-chain decimals when the
+            # instruction provides them, else fall back to the configured value.
+            dec = info.get("decimals")
+            decimals = int(dec) if dec is not None else int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
             burned += float(info["amount"]) / (10**decimals)
     return burned
 
 
 SOL_MINT = "So11111111111111111111111111111111111111112"
-
-
-async def sol_balance(wallet: str) -> float:
-    """Wallet's native SOL balance in whole SOL."""
-    if not wallet:
-        return 0.0
-    res = await _rpc("getBalance", [wallet, {"commitment": "processed"}])
-    lamports = res.get("value") if isinstance(res, dict) else res
-    return float(lamports or 0) / 1e9
 
 
 async def verify_mm_deposit(
