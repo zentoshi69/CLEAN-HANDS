@@ -638,6 +638,20 @@ async def api_mm_add(body: MmBody, request: Request):
         }
 
 
+@app.get("/api/mm/quote")
+async def api_mm_quote():
+    """Live SOL/$CLEAN prices + deposit limits so the UI can validate a deposit
+    before the user signs (the /api/mm/add path re-checks authoritatively)."""
+    return {
+        "enabled": bool(os.environ.get("CLEAN_MM_WALLET", "").strip()),
+        "wallet": os.environ.get("CLEAN_MM_WALLET", "").strip(),
+        "sol_usd": await market.sol_price_usd(),
+        "clean_usd": await market.clean_price_usd(),
+        "min_usd": econ.MM_MIN_USD,
+        "max_usd": econ.MM_MAX_USD,
+    }
+
+
 # --------------------------------------------------------------------------- #
 #  READS                                                                       #
 # --------------------------------------------------------------------------- #

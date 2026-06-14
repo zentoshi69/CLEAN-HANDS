@@ -945,13 +945,68 @@
     }
   }
 
-  // Liquidity (market-maker) booster. The real CLEAN+SOL deposit + on-chain
-  // position verification is wired server-side; until that lands this is the
-  // documented hook the dev replaces (mirror the burn flow: submit, then credit).
+  // Market-maker liquidity. After the wallet signs+sends the deposit, the
+  // on-chain signature returns via onTx -> afterMmTx, which credits the booster.
+  async function afterMmTx(sig, ctx) {
+    try {
+      const r = await api('/api/mm/add', authedBody({ signature: sig }));
+      paint(r.profile);
+      if (typeof celebrateBoost === 'function') celebrateBoost();
+      toast('💧 Liquidity credited: +$' + fmt(r.added_usd));
+    } catch (e) {
+      toast('Liquidity submit failed: ' + String(e.message));
+    }
+  }
+
+  // Deposit SOL (+ optional $CLEAN) to the MM reserve. SOL is required; $CLEAN is
+  // optional but never SOL-less. Server enforces the USD min/max; we pre-check
+  // with a live quote so we don't make the user sign a deposit it would reject.
   async function addLiquidity() {
-    // DEV: build the CLEAN+SOL pool deposit, submit it, then POST the position
-    // to your liquidity-verify endpoint so the server credits the additive boost.
-    toast('💧 Liquidity booster — coming soon ✦');
+    if (!CONFIG.mmEnabled || !CONFIG.mmWallet) return toast('Liquidity booster — coming soon ✦');
+    const pk = CleanWallet.currentPubkey();
+    if (!pk) return toast('Connect your wallet first');
+    const solAmt = parseFloat(($('bl-lp-sol') || {}).value) || 0;
+    const cleanAmt = parseFloat(($('bl-lp-clean') || {}).value) || 0;
+    const min = CONFIG.mmMinUsd || 50, max = CONFIG.mmMaxUsd || 500;
+    if (solAmt <= 0) return toast('Add SOL — the SOL leg is required (min $' + min + ')');
+    try {
+      const q = await fetch('/api/mm/quote').then((r) => r.json());
+      const solUsd = solAmt * (q.sol_usd || 0);
+      const cleanUsd = cleanAmt * (q.clean_usd || 0);
+      if (q.sol_usd && solUsd < min) return toast('SOL leg must be ≥ $' + min + ' (≈ $' + solUsd.toFixed(0) + ')');
+      if (cleanAmt > 0 && q.clean_usd) {
+        if (cleanUsd < min) return toast('If you add $CLEAN it must be ≥ $' + min);
+        if (cleanUsd >= max) return toast('$CLEAN leg must be under $' + max);
+      }
+    } catch (e) {}
+    toast('Building deposit…');
+    try {
+      const web3 = await import('https://esm.sh/@solana/web3.js@1.95');
+      const owner = new web3.PublicKey(pk);
+      const reserve = new web3.PublicKey(CONFIG.mmWallet);
+      const conn = new web3.Connection(safeRpc());
+      const tx = new web3.Transaction();
+      tx.add(web3.SystemProgram.transfer({
+        fromPubkey: owner, toPubkey: reserve, lamports: Math.round(solAmt * 1e9),
+      }));
+      if (cleanAmt > 0 && MINT) {
+        const splt = await import('https://esm.sh/@solana/spl-token@0.4');
+        const mint = new web3.PublicKey(MINT);
+        const dec = (CONFIG && CONFIG.decimals) || 6;
+        const fromAta = await splt.getAssociatedTokenAddress(mint, owner);
+        const toAta = await splt.getAssociatedTokenAddress(mint, reserve, true);
+        tx.add(splt.createAssociatedTokenAccountIdempotentInstruction(owner, toAta, reserve, mint));
+        tx.add(splt.createTransferCheckedInstruction(
+          fromAta, mint, toAta, owner, BigInt(Math.round(cleanAmt * 10 ** dec)), dec,
+        ));
+      }
+      tx.feePayer = owner;
+      tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+      const ser = tx.serialize({ requireAllSignatures: false, verifySignatures: false });
+      CleanWallet.signAndSendTransaction(CleanWallet.b58encode(new Uint8Array(ser)), { kind: 'mm' });
+    } catch (e) {
+      toast('Deposit build failed: ' + (e.message || e));
+    }
   }
 
   // ---- boot ------------------------------------------------------------- //
@@ -998,7 +1053,9 @@
     const step = CleanWallet.init({
       onConnect: afterConnect,
       onSign: afterSign,
-      onTx: afterBurnTx,
+      onTx: function (s, c) {
+        return c && c.kind === 'mm' ? afterMmTx(s, c) : afterBurnTx(s, c);
+      },
       onError: (e) => {
         toast('Wallet: ' + (e.message || e));
         showConnect();
