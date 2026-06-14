@@ -911,6 +911,10 @@ def api_economics():
             "mmMaxUsd": econ.MM_MAX_USD,
             "mmLpCap": econ.MM_LP_CAP,
             "solMint": solana.SOL_MINT,
+            # Embedded Game tab — defaults to the live build; override per-deploy.
+            "gameUrl": os.environ.get(
+                "MINIAPP_GAME_URL", "https://clean-hands-dirty-money.vercel.app/"
+            ).strip(),
         }
     )
 

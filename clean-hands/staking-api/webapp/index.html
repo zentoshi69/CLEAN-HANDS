@@ -972,6 +972,34 @@
         stroke: var(--ink-2);
       }
 
+      /* embedded game tab */
+      #view-game {
+        padding: 0;
+        height: 100%;
+      }
+      .game-wrap {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 72vh;
+      }
+      .game-frame {
+        flex: 1 1 auto;
+        width: 100%;
+        border: 0;
+        display: block;
+        min-height: 72vh;
+        background: #0b1220;
+      }
+      .game-open {
+        flex: 0 0 auto;
+        text-align: center;
+        padding: 10px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--ink-2);
+      }
+
       #toast {
         position: fixed;
         left: 50%;
@@ -1836,6 +1864,21 @@
         </section>
 
         <!-- BOARD -->
+        <!-- GAME -->
+        <section class="tab" id="view-game" hidden>
+          <div class="game-wrap">
+            <iframe
+              id="game-frame"
+              class="game-frame"
+              title="Clean Hands, Dirty Money — game"
+              allow="autoplay; fullscreen; gamepad; accelerometer; gyroscope; clipboard-write"
+              referrerpolicy="no-referrer"
+              loading="lazy"
+            ></iframe>
+            <a class="game-open" id="game-open" target="_blank" rel="noopener">Game not loading? Open in browser ↗</a>
+          </div>
+        </section>
+
         <section class="tab" id="view-board" hidden>
           <div class="card panel">
             <h3>🏆 Leaderboard</h3>
@@ -1903,6 +1946,13 @@
           </svg>
           Boost
         </button>
+        <button class="tabbtn" data-tab="game" onclick="App.show('game')">
+          <svg viewBox="0 0 24 24">
+            <rect x="2.5" y="8" width="19" height="10" rx="3.5" />
+            <path d="M7 13H5M6 12v2M15.5 12.5h.01M18 14h.01" />
+          </svg>
+          Game
+        </button>
         <button class="tabbtn hide" data-tab="meme" onclick="App.show('meme')">
           <svg viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="9" />
@@ -1931,6 +1981,6 @@
     <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <script src="/wallet.js?v=10"></script>
-    <script src="/app.js?v=11"></script>
+    <script src="/app.js?v=12"></script>
   </body>
 </html>

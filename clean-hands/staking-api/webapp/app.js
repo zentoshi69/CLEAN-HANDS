@@ -137,7 +137,7 @@
     renderWallets();
   }
   function show(v) {
-    ['stake', 'trade', 'bridge', 'boost', 'meme', 'board', 'invite', 'folio'].forEach((n) => {
+    ['stake', 'trade', 'bridge', 'boost', 'game', 'meme', 'board', 'invite', 'folio'].forEach((n) => {
       const el = $('view-' + n);
       if (el) el.hidden = n !== v;
     });
@@ -159,9 +159,20 @@
     }
     if (v === 'bridge') loadBridge();
     else stopBridgePoll(); // don't keep polling order status off-tab
+    if (v === 'game') loadGame();
     haptic();
     if (v === 'board') loadBoard();
     if (v === 'trade') loadPrice();
+  }
+
+  // GAME: lazy-load the embedded game on first open (so it never costs anything
+  // until tapped), with an external fallback link if the host refuses framing.
+  function loadGame() {
+    const url = (CONFIG && CONFIG.gameUrl) || 'https://clean-hands-dirty-money.vercel.app/';
+    const open = $('game-open');
+    if (open && !open.getAttribute('href')) open.setAttribute('href', url);
+    const f = $('game-frame');
+    if (f && !f.getAttribute('src')) f.setAttribute('src', url);
   }
 
   function addBtn(el, label, onclick, ghost) {
