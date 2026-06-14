@@ -1008,13 +1008,132 @@
         min-height: 0;
         background: #0b1220;
       }
-      .game-open {
-        flex: 0 0 auto;
-        text-align: center;
-        padding: 10px;
-        font-size: 0.78rem;
-        font-weight: 700;
-        color: var(--ink-2);
+      /* ---- Game loading intro: glove logo, a glow sweeping the ring once,
+         then a single shine across the whole logo, then the game opens. ---- */
+      .game-intro {
+        position: absolute;
+        inset: 0;
+        z-index: 4;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 22px;
+        background: radial-gradient(70% 55% at 50% 38%, #f4faff 0%, #d9ecfd 55%, #c7e2fb 100%);
+        transition: opacity 0.55s ease;
+      }
+      .game-intro.done {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .gi-stage {
+        position: relative;
+        width: min(64vw, 260px);
+        aspect-ratio: 1 / 1;
+      }
+      /* the bright arc that travels all the way around the circle, once */
+      .gi-ring {
+        position: absolute;
+        inset: -10px;
+        border-radius: 50%;
+        background: conic-gradient(
+          from 0deg,
+          rgba(134, 191, 248, 0) 0deg,
+          rgba(134, 191, 248, 0) 205deg,
+          rgba(134, 191, 248, 0.65) 300deg,
+          #ffffff 348deg,
+          rgba(134, 191, 248, 0) 360deg
+        );
+        -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 13px), #000 calc(100% - 12px));
+        mask: radial-gradient(farthest-side, transparent calc(100% - 13px), #000 calc(100% - 12px));
+        filter: drop-shadow(0 0 10px rgba(134, 191, 248, 0.85));
+        animation: gi-spin 1.25s cubic-bezier(0.45, 0.05, 0.2, 1) both;
+      }
+      @keyframes gi-spin {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .gi-logo {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        object-fit: cover;
+        box-shadow: 0 20px 55px -22px rgba(27, 93, 166, 0.6);
+        animation: gi-pop 0.6s ease both;
+      }
+      @keyframes gi-pop {
+        from {
+          transform: scale(0.92);
+          opacity: 0;
+        }
+        to {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+      /* one diagonal shine swept across the whole logo after the ring finishes */
+      .gi-shine {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        overflow: hidden;
+        pointer-events: none;
+      }
+      .gi-shine::before {
+        content: '';
+        position: absolute;
+        top: -60%;
+        left: -70%;
+        width: 55%;
+        height: 220%;
+        transform: rotate(22deg);
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9) 50%, transparent);
+        filter: blur(2px);
+        animation: gi-shine-sweep 0.85s ease-in 1.2s both;
+      }
+      @keyframes gi-shine-sweep {
+        from {
+          left: -70%;
+          opacity: 0;
+        }
+        25% {
+          opacity: 1;
+        }
+        to {
+          left: 170%;
+          opacity: 0;
+        }
+      }
+      .gi-cap {
+        font-family: 'Fraunces', serif;
+        font-size: 1rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: var(--ink-deep);
+        animation: gi-cap 1.5s ease-in-out infinite;
+      }
+      @keyframes gi-cap {
+        0%,
+        100% {
+          opacity: 0.5;
+        }
+        50% {
+          opacity: 0.95;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .gi-ring,
+        .gi-logo,
+        .gi-cap,
+        .gi-shine::before {
+          animation: none;
+        }
       }
 
       #toast {
@@ -1884,6 +2003,14 @@
               referrerpolicy="no-referrer"
               loading="lazy"
             ></iframe>
+            <div class="game-intro" id="game-intro">
+              <div class="gi-stage">
+                <span class="gi-ring"></span>
+                <img class="gi-logo" src="/glove.png" alt="Clean Hands" />
+                <span class="gi-shine"></span>
+              </div>
+              <div class="gi-cap">Gloving up…</div>
+            </div>
           </div>
         </section>
 
@@ -1979,6 +2106,6 @@
     <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <script src="/wallet.js?v=10"></script>
-    <script src="/app.js?v=18"></script>
+    <script src="/app.js?v=19"></script>
   </body>
 </html>

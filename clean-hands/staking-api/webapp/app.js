@@ -171,10 +171,17 @@
   // until tapped), with an external fallback link if the host refuses framing.
   function loadGame() {
     const url = (CONFIG && CONFIG.gameUrl) || 'https://clean-hands-dirty-money.vercel.app/';
-    const open = $('game-open');
-    if (open && !open.getAttribute('href')) open.setAttribute('href', url);
     const f = $('game-frame');
-    if (f && !f.getAttribute('src')) f.setAttribute('src', url);
+    if (f && !f.getAttribute('src')) {
+      f.setAttribute('src', url); // game loads behind the intro
+      // Play the loading intro once: the glow rings the circle (~1.25s), the
+      // logo shines once (~0.85s @1.2s), then we reveal the game.
+      const intro = $('game-intro');
+      if (intro) {
+        intro.classList.remove('done');
+        setTimeout(() => intro.classList.add('done'), 2150);
+      }
+    }
   }
 
   // Invite lives in EVERY tab (no standalone invite section): clone a compact
