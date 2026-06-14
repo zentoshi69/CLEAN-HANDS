@@ -54,11 +54,9 @@ async def handle_image(message: Message, bot: Bot, settings: Settings, store: Lo
         await _run_glove_job(message, bot, settings, store, source_message=message, mode=mode)
         return
 
-    # No command: remember the image so a following /meme can use it.
-    file_id = _file_id_from(message)
-    if file_id:
-        session.pending_file_id = file_id
-        await message.reply("Got it. Reply with /meme to glove the hands.")
+    # Any image, no command needed: glove it immediately. The upload itself is
+    # auto-deleted inside _run_glove_job the instant it's safely downloaded.
+    await _run_glove_job(message, bot, settings, store, source_message=message, mode=mode)
 
 
 @router.message(Command("meme"))
@@ -175,6 +173,15 @@ async def _run_glove_job(
         await message.reply(copy.MSG_FAILURE)
         return
 
+    # Privacy: the moment the image is safely on disk, delete the user's upload
+    # so the original never lingers in the chat. Bots can delete incoming
+    # messages in private chats; in groups this needs admin, so it's best-effort.
+    if source_message is not None:
+        try:
+            await source_message.delete()
+        except Exception:
+            logger.debug("could not delete upload for user=%d", user_id)
+
     await _process_and_reply(message, settings, store, input_path=input_path, mode=mode)
 
 
@@ -189,7 +196,9 @@ async def _process_and_reply(
     """Run the pipeline in a worker thread and deliver the result."""
     assert message.from_user is not None
     user_id = message.from_user.id
-    status = await message.reply(copy.MSG_PROCESSING)
+    # `answer` (not `reply`): the user's upload was just deleted, so there's no
+    # message left to reply to — send fresh into the chat instead.
+    status = await message.answer(copy.MSG_PROCESSING)
     started = time.monotonic()
 
     try:
@@ -223,7 +232,7 @@ async def _process_and_reply(
     )
 
     if result.success and result.output_path:
-        await message.reply_photo(
+        await message.answer_photo(
             FSInputFile(result.output_path), caption=copy.MSG_SUCCESS_CAPTION
         )
         await status.delete()

@@ -1,0 +1,24 @@
+[Unit]
+Description=CLEAN glove bot — Telegram: auto-gloves uploaded images, deletes the upload
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/clean/CLEAN-HANDS/clean-hands-bot
+EnvironmentFile=/home/clean/CLEAN-HANDS/clean-hands-bot/.env
+ExecStart=/home/clean/CLEAN-HANDS/clean-hands-bot/venv/bin/python -m src.bot.main
+Restart=always
+RestartSec=5
+User=clean
+
+# Light hardening only. MediaPipe/OpenCV pull in native libraries that a strict
+# SystemCallFilter or ProtectSystem=strict tends to break — keep it permissive
+# enough to run, tighten later if you want.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/clean/CLEAN-HANDS/clean-hands-bot
+
+[Install]
+WantedBy=multi-user.target
