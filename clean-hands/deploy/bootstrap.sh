@@ -181,11 +181,17 @@ for svc in staking notifier guardian scanner community alerts; do
     c_yel "    ⚠ degen-$svc installed but OFF (missing: ${NEED[$svc]//|/ or })"
   fi
 done
-sed -e "s#/home/youruser/bots#$STACK#g" -e "s#User=youruser#User=$RUN_USER#g" \
-    "$STACK/systemd/degen-reconcile.service" > /etc/systemd/system/degen-reconcile.service
+# reconcile (money-invariant check) + its drift alert, daily DB backup + its
+# failure alert. The *-alert units are OnFailure= targets (not enabled directly).
+for unit in degen-reconcile.service degen-reconcile-alert.service \
+            degen-backup.service degen-backup-alert.service; do
+  sed -e "s#/home/youruser/bots#$STACK#g" -e "s#User=youruser#User=$RUN_USER#g" \
+      "$STACK/systemd/$unit" > "/etc/systemd/system/$unit"
+done
 cp "$STACK/systemd/degen-reconcile.timer" /etc/systemd/system/degen-reconcile.timer
+cp "$STACK/systemd/degen-backup.timer" /etc/systemd/system/degen-backup.timer
 systemctl daemon-reload
-systemctl enable --now "${enable_list[@]}" degen-reconcile.timer
+systemctl enable --now "${enable_list[@]}" degen-reconcile.timer degen-backup.timer
 systemctl restart "${enable_list[@]}"
 
 if ! command -v caddy >/dev/null 2>&1; then
