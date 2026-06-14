@@ -93,3 +93,70 @@ async def verify_burn(signature: str, wallet: str, mint: str | None = None) -> f
             decimals = int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
             burned += float(info["amount"]) / (10**decimals)
     return burned
+
+
+SOL_MINT = "So11111111111111111111111111111111111111112"
+
+
+async def sol_balance(wallet: str) -> float:
+    """Wallet's native SOL balance in whole SOL."""
+    if not wallet:
+        return 0.0
+    res = await _rpc("getBalance", [wallet, {"commitment": "processed"}])
+    lamports = res.get("value") if isinstance(res, dict) else res
+    return float(lamports or 0) / 1e9
+
+
+async def verify_mm_deposit(
+    signature: str, wallet: str, mm_wallet: str, mint: str | None = None
+) -> tuple[float, float]:
+    """Return (sol, clean) that `wallet` transferred TO `mm_wallet` in `signature`.
+
+    SOL is summed from System-program transfers (source -> destination, which is
+    unambiguous). CLEAN is read from the meta token-balance deltas: any account
+    OWNED BY mm_wallet holding `mint` whose balance increased over the tx — this
+    is robust to associated-token-account indirection. (0.0, 0.0) if the tx
+    failed or moved nothing to the reserve."""
+    mint = mint or MINT
+    if not (signature and wallet and mm_wallet):
+        return (0.0, 0.0)
+    tx = await _rpc(
+        "getTransaction",
+        [
+            signature,
+            {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0, "commitment": "finalized"},
+        ],
+    )
+    if not tx or (tx.get("meta") or {}).get("err") is not None:
+        return (0.0, 0.0)
+
+    msg = (tx.get("transaction") or {}).get("message") or {}
+    instrs = list(msg.get("instructions") or [])
+    for inner in (tx.get("meta") or {}).get("innerInstructions") or []:
+        instrs.extend(inner.get("instructions") or [])
+
+    sol = 0.0
+    for ix in instrs:
+        if ix.get("program") != "system":
+            continue
+        parsed = ix.get("parsed") or {}
+        if parsed.get("type") != "transfer":
+            continue
+        info = parsed.get("info") or {}
+        if info.get("source") == wallet and info.get("destination") == mm_wallet:
+            sol += float(info.get("lamports") or 0) / 1e9
+
+    clean = 0.0
+    if mint:
+        meta = tx.get("meta") or {}
+        pre = {}
+        for b in meta.get("preTokenBalances") or []:
+            if b.get("owner") == mm_wallet and b.get("mint") == mint:
+                pre[b.get("accountIndex")] = float((b.get("uiTokenAmount") or {}).get("uiAmount") or 0)
+        for b in meta.get("postTokenBalances") or []:
+            if b.get("owner") == mm_wallet and b.get("mint") == mint:
+                before = pre.get(b.get("accountIndex"), 0.0)
+                after = float((b.get("uiTokenAmount") or {}).get("uiAmount") or 0)
+                if after > before:
+                    clean += after - before
+    return (sol, clean)

@@ -74,3 +74,18 @@ def summary(p: dict | None) -> dict | None:
         "url": p.get("url"),
         "pair_address": p.get("pairAddress"),
     }
+
+
+SOL_MINT = "So11111111111111111111111111111111111111112"
+
+
+async def clean_price_usd() -> float:
+    """$CLEAN spot price in USD (0.0 if unknown)."""
+    s = summary(await best_pair())
+    return float((s or {}).get("price_usd") or 0.0)
+
+
+async def sol_price_usd() -> float:
+    """SOL spot price in USD via its deepest wrapped-SOL pool (0.0 if unknown)."""
+    s = summary(await best_pair(SOL_MINT))
+    return float((s or {}).get("price_usd") or 0.0)

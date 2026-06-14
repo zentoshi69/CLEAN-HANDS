@@ -172,7 +172,10 @@ def _apr_for(conn, wallet: str, row):
     eff_base = econ.effective_staked(row["recorded_staked"], row["cached_balance"])
     secs = now - row["stake_start_ts"] if (eff_base > 0 and row["stake_start_ts"]) else 0
     refs = db.active_referrals(conn, wallet)
-    apr = econ.effective_apr(db.to_ui(eff_base), secs, refs, db.to_ui(row["total_burned"]))
+    apr = econ.effective_apr(
+        db.to_ui(eff_base), secs, refs, db.to_ui(row["total_burned"]),
+        (row["mm_liquidity_cents"] or 0) / 100.0,
+    )
     return eff_base, secs, refs, apr
 
 
@@ -220,6 +223,7 @@ def _profile(conn, wallet: str) -> dict:
         "pending_rewards": db.to_ui(row["accrued"]),
         "claimed_total": db.to_ui(row["claimed_total"]),
         "total_burned": db.to_ui(row["total_burned"]),
+        "mm_liquidity_usd": round((row["mm_liquidity_cents"] or 0) / 100.0, 2),
         "active_referrals": refs,
         "days_staked": round(secs / 86400, 2),
         "rank": rank,
@@ -274,6 +278,11 @@ class StakeBody(Tok):
 
 
 class BurnBody(BaseModel):
+    token: str
+    signature: str
+
+
+class MmBody(BaseModel):
     token: str
     signature: str
 
@@ -571,6 +580,64 @@ async def api_burn(body: BurnBody, request: Request):
         return {"burned": round(burned, 6), "profile": _profile(conn, wallet)}
 
 
+@app.post("/api/mm/add")
+async def api_mm_add(body: MmBody, request: Request):
+    """Credit the market-maker liquidity booster after a wallet deposits SOL
+    (+ optional $CLEAN) to the configured reserve. Mirrors /api/burn: verify the
+    on-chain transfer, value it in USD, enforce the deposit rules, credit once."""
+    mm_wallet = os.environ.get("CLEAN_MM_WALLET", "").strip()
+    if not mm_wallet:
+        raise HTTPException(503, "market-maker liquidity is not configured")
+    wallet = _require(body.token)["w"]
+    ratelimit.hit(request, "mm", extra_key=wallet)
+    with db.db() as conn:
+        if not db.get_staker(conn, wallet):
+            raise HTTPException(404, "unknown wallet")
+        if db.mm_seen(conn, body.signature):
+            raise HTTPException(409, "deposit already credited")
+    sol, clean = await solana.verify_mm_deposit(body.signature, wallet, mm_wallet)
+    if sol <= 0 and clean <= 0:
+        raise HTTPException(400, "no SOL/$CLEAN transfer to the MM reserve found in that transaction")
+    # value each leg at current prices
+    sol_usd = sol * (await market.sol_price_usd())
+    clean_usd = clean * (await market.clean_price_usd())
+    # rules: SOL mandatory (>= MIN); $CLEAN optional but if present in [MIN, MAX);
+    # never $CLEAN-only; total credited capped at MAX.
+    if sol_usd < econ.MM_MIN_USD:
+        raise HTTPException(400, f"the SOL leg must be at least ${econ.MM_MIN_USD:.0f} (got ${sol_usd:.2f})")
+    if clean_usd > 0 and clean_usd < econ.MM_MIN_USD:
+        raise HTTPException(400, f"if you add $CLEAN it must be at least ${econ.MM_MIN_USD:.0f} (got ${clean_usd:.2f})")
+    if clean_usd >= econ.MM_MAX_USD:
+        raise HTTPException(400, f"the $CLEAN leg must be under ${econ.MM_MAX_USD:.0f} (got ${clean_usd:.2f})")
+    total_usd = min(sol_usd + clean_usd, econ.MM_MAX_USD)
+    cents = int(round(total_usd * 100))
+    now = int(time.time())
+    with db.db() as conn:
+        if not db.get_staker(conn, wallet):
+            raise HTTPException(404, "unknown wallet")
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO mm_deposits (signature, wallet, usd_cents, lamports, clean_base, ts) "
+            "VALUES (?,?,?,?,?,?)",
+            (body.signature, wallet, cents, int(round(sol * 1e9)), db.to_base(clean), now),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(409, "deposit already credited")
+        _accrue(conn, wallet)
+        # cumulative, but capped at MAX so the boost can never exceed MM_LP_CAP
+        conn.execute(
+            "UPDATE stakers SET mm_liquidity_cents = MIN(?, mm_liquidity_cents + ?) WHERE wallet=?",
+            (int(round(econ.MM_MAX_USD * 100)), cents, wallet),
+        )
+        conn.commit()
+        db.record(conn, wallet, "mm_liquidity", cents, body.signature)
+        return {
+            "added_usd": round(total_usd, 2),
+            "sol": round(sol, 6),
+            "clean": round(clean, 6),
+            "profile": _profile(conn, wallet),
+        }
+
+
 # --------------------------------------------------------------------------- #
 #  READS                                                                       #
 # --------------------------------------------------------------------------- #
@@ -821,6 +888,15 @@ def api_economics():
             # In-app burn (signs a real burn tx in the wallet). OFF by default —
             # burn is irreversible; enable only after on-device QA.
             "inAppBurn": os.environ.get("MINIAPP_INAPP_BURN", "").strip() in ("1", "true", "yes"),
+            # Market-maker liquidity booster. OFF until CLEAN_MM_WALLET (the reserve
+            # that receives deposits) is set. mmMinUsd/mmMaxUsd mirror the rules the
+            # server enforces so the UI can validate identically before signing.
+            "mmEnabled": bool(os.environ.get("CLEAN_MM_WALLET", "").strip()),
+            "mmWallet": os.environ.get("CLEAN_MM_WALLET", "").strip(),
+            "mmMinUsd": econ.MM_MIN_USD,
+            "mmMaxUsd": econ.MM_MAX_USD,
+            "mmLpCap": econ.MM_LP_CAP,
+            "solMint": solana.SOL_MINT,
         }
     )
 

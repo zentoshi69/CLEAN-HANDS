@@ -62,6 +62,14 @@ BURN_UNIT = _f("STAKE_BURN_UNIT", 100_000)
 BURN_APR_PER_UNIT = _f("STAKE_BURN_APR_PER_UNIT", 0.05)
 BURN_CAP_APR = _f("STAKE_BURN_CAP_APR", 2.00)
 
+# Market-maker liquidity: a USD deposit (SOL + optional CLEAN) to the MM reserve
+# grants an ADDITIVE multiplier boost (like the amount/loyalty/referral tiers),
+# scaled with the dollar size — a floor (MM_MIN_USD) to qualify and a cap
+# (MM_LP_CAP) reached at MM_MAX_USD. All tunable via env.
+MM_MIN_USD = _f("MM_MIN_USD", 50.0)
+MM_MAX_USD = _f("MM_MAX_USD", 500.0)
+MM_LP_CAP = _f("MM_LP_CAP", 0.70)
+
 
 # --------------------------------------------------------------------------- #
 #  BOOSTERS (pure)                                                             #
@@ -87,12 +95,22 @@ def burn_bonus_apr(total_burned_tokens: float) -> float:
     return min(BURN_CAP_APR, units * BURN_APR_PER_UNIT)
 
 
+def liquidity_boost(usd: float) -> float:
+    """Market-maker liquidity deposit (USD) -> additive multiplier boost. Below
+    MM_MIN_USD it doesn't qualify (0); above, it scales with size up to MM_LP_CAP."""
+    usd = max(0.0, float(usd or 0.0))
+    if usd < MM_MIN_USD or MM_MAX_USD <= 0:
+        return 0.0
+    return min(MM_LP_CAP, (usd / MM_MAX_USD) * MM_LP_CAP)
+
+
 @dataclass
 class Apr:
     base: float
     amount_boost: float
     loyalty_boost: float
     referral_boost: float
+    liquidity_boost: float
     burn_bonus_apr: float
     effective_apr: float
 
@@ -108,13 +126,15 @@ def effective_apr(
     seconds_staked: float,
     active_referrals: int,
     total_burned_tokens: float,
+    liquidity_usd: float = 0.0,
 ) -> Apr:
     ab = amount_boost(staked_tokens)
     lb = loyalty_boost(seconds_staked)
     rb = referral_boost(active_referrals)
+    qb = liquidity_boost(liquidity_usd)
     bb = burn_bonus_apr(total_burned_tokens)
-    eff = BASE_APR * (1 + ab + lb + rb) + bb
-    return Apr(BASE_APR, ab, lb, rb, bb, eff)
+    eff = BASE_APR * (1 + ab + lb + rb + qb) + bb
+    return Apr(BASE_APR, ab, lb, rb, qb, bb, eff)
 
 
 def accrue(staked_effective: float, apr: float, dt_seconds: float) -> float:
