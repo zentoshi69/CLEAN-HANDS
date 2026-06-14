@@ -33,6 +33,12 @@ def validate_config() -> dict:
     if _missing("STAKE_SERVER_SECRET"):
         msg = "STAKE_SERVER_SECRET is unset — sessions won't survive a restart and break across workers."
         (hard if is_prod() else warn).append(msg)
+    _secret = os.environ.get("STAKE_SERVER_SECRET", "").strip()
+    if _secret and len(_secret) < 32:
+        msg = "STAKE_SERVER_SECRET is shorter than 32 chars — generate one with `openssl rand -hex 32`."
+        (hard if is_prod() else warn).append(msg)
+    if _missing("STAKE_ADMIN_TOKEN"):
+        warn.append("STAKE_ADMIN_TOKEN unset — admin/payout endpoints are disabled (they fail closed).")
     if _missing("DEFAULT_TOKEN_MINT"):
         msg = "DEFAULT_TOKEN_MINT is unset — wallet balances and burns will read as 0."
         (hard if is_prod() else warn).append(msg)

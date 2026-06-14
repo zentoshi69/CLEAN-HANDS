@@ -547,8 +547,15 @@ async def api_claim(body: Tok, request: Request):
         fee_base = 0
         fee_usd = _claim_fee_usd()
         if fee_usd > 0:
-            p = market.summary(await market.best_pair())
-            price = float(p["price_usd"]) if p and p.get("price_usd") else 0.0
+            # Prefer the hardened (liquidity-floored) CLEAN price so the fee can't
+            # be shrunk by pumping a thin pool; fall back to spot only when the
+            # hardened price isn't available, so a genuinely thin pool never
+            # bricks claims.
+            await market.refresh_prices()
+            price = float(market.last_prices().get("clean_usd") or 0)
+            if price <= 0:
+                p = market.summary(await market.best_pair())
+                price = float(p["price_usd"]) if p and p.get("price_usd") else 0.0
             if price <= 0:
                 raise HTTPException(503, "claim fee pricing unavailable — try again shortly")
             fee_base = int(-(-(fee_usd / price) * db.BASE // 1))  # ceil in base units
@@ -640,9 +647,19 @@ async def api_mm_add(body: MmBody, request: Request):
     sol, clean = await solana.verify_mm_deposit(body.signature, wallet, mm_wallet)
     if sol <= 0 and clean <= 0:
         raise HTTPException(400, "no SOL/$CLEAN transfer to the MM reserve found in that transaction")
-    # value each leg at current prices
-    sol_usd = sol * (await market.sol_price_usd())
-    clean_usd = clean * (await market.clean_price_usd())
+    # Value each leg with the HARDENED prices (liquidity floor + SOL/USD clamp +
+    # independent SOL pool), NEVER raw spot — otherwise an attacker who moves
+    # their own thin CLEAN/SOL pool could mint max LP boost + permanent VIP for
+    # negligible real value. SOL must be priceable (it is the real-money gate);
+    # the CLEAN leg is valued at 0 when its pool is too thin to trust.
+    await market.refresh_prices()
+    px = market.last_prices()
+    sol_px = float(px.get("sol_usd") or 0)
+    clean_px = float(px.get("clean_usd") or 0)
+    if sol_px <= 0:
+        raise HTTPException(503, "can't price SOL safely right now — try again shortly")
+    sol_usd = sol * sol_px
+    clean_usd = clean * clean_px
     # rules: SOL mandatory (>= MIN); $CLEAN optional but if present in [MIN, MAX);
     # never $CLEAN-only; total credited capped at MAX.
     if sol_usd < econ.MM_MIN_USD:
@@ -687,11 +704,15 @@ async def api_mm_add(body: MmBody, request: Request):
 async def api_mm_quote():
     """Live SOL/$CLEAN prices + deposit limits so the UI can validate a deposit
     before the user signs (the /api/mm/add path re-checks authoritatively)."""
+    # Quote with the SAME hardened prices /api/mm/add credits with, so the UI
+    # validates identically to the authoritative server-side check.
+    await market.refresh_prices()
+    px = market.last_prices()
     return {
         "enabled": bool(os.environ.get("CLEAN_MM_WALLET", "").strip()),
         "wallet": os.environ.get("CLEAN_MM_WALLET", "").strip(),
-        "sol_usd": await market.sol_price_usd(),
-        "clean_usd": await market.clean_price_usd(),
+        "sol_usd": float(px.get("sol_usd") or 0),
+        "clean_usd": float(px.get("clean_usd") or 0),
         "min_usd": econ.MM_MIN_USD,
         "max_usd": econ.MM_MAX_USD,
     }
