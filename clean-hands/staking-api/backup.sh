@@ -30,6 +30,23 @@ sqlite3 "$DB" ".backup '$OUT'"
 gzip -f "$OUT"
 echo "Backed up -> $OUT.gz"
 
+# Off-box copy (STRONGLY recommended — a box loss must not lose the ledger).
+# Configure once:
+#   apt install rclone && rclone config           # create a remote, e.g. 'b2'
+#   echo 'BACKUP_RCLONE_REMOTE=b2:your-bucket/clean' >> ../.env
+# Then the daily degen-backup.timer pushes each snapshot off-box automatically.
+if [ -n "${BACKUP_RCLONE_REMOTE:-}" ]; then
+  if command -v rclone >/dev/null; then
+    rclone copy "$OUT.gz" "$BACKUP_RCLONE_REMOTE" --no-traverse
+    echo "Pushed off-box -> $BACKUP_RCLONE_REMOTE"
+  else
+    echo "BACKUP_RCLONE_REMOTE set but rclone not installed (apt install rclone)" >&2
+    exit 1
+  fi
+else
+  echo "NOTE: BACKUP_RCLONE_REMOTE unset — snapshot is LOCAL only (no off-box copy)." >&2
+fi
+
 # Retention: keep the newest $KEEP, delete older.
 ls -1t "$DEST"/staking-*.db.gz 2>/dev/null | tail -n +"$((KEEP + 1))" | xargs -r rm -f
 echo "Retained newest $KEEP backups in $DEST/"

@@ -1,21 +1,22 @@
 [Unit]
-Description=CLEAN staking reconciliation (money-invariant check)
+Description=CLEAN staking DB backup (timestamped snapshot + off-box copy)
 After=network-online.target
-OnFailure=degen-reconcile-alert.service
+Wants=network-online.target
+OnFailure=degen-backup-alert.service
 
 [Service]
 Type=oneshot
 WorkingDirectory=/home/youruser/bots/staking-api
 EnvironmentFile=/home/youruser/bots/.env
-ExecStart=/home/youruser/bots/staking-api/venv/bin/python reconcile.py
+ExecStart=/usr/bin/env bash backup.sh
 User=youruser
 
-# Hardening (read-only job)
+# --- Hardening (reads the DB, writes backups/ inside staking-api/, net for rclone) ---
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadOnlyPaths=/home/youruser/bots/staking-api
+ReadWritePaths=/home/youruser/bots/staking-api
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
