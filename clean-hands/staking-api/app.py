@@ -215,6 +215,7 @@ def _apr_for(conn, wallet: str, row):
     apr = econ.effective_apr(
         db.to_ui(eff_base), secs, refs, db.to_ui(row["total_burned"]),
         (row["mm_liquidity_cents"] or 0) / 100.0, sol_usd, clean_usd,
+        vip=bool(row["mm_vip"]),
     )
     return eff_base, secs, refs, apr
 
@@ -264,6 +265,7 @@ def _profile(conn, wallet: str) -> dict:
         "claimed_total": db.to_ui(row["claimed_total"]),
         "total_burned": db.to_ui(row["total_burned"]),
         "mm_liquidity_usd": round((row["mm_liquidity_cents"] or 0) / 100.0, 2),
+        "vip": bool(row["mm_vip"]),
         "active_referrals": refs,
         "days_staked": round(secs / 86400, 2),
         "rank": rank,
@@ -664,8 +666,10 @@ async def api_mm_add(body: MmBody, request: Request):
             raise HTTPException(409, "deposit already credited")
         _accrue(conn, wallet)
         # cumulative, but capped at MAX so the boost can never exceed MM_LP_CAP
+        # A qualifying deposit permanently locks VIP (the 3x booster) and adds the
+        # wallet to the VIP airdrop list (mm_deposits log + mm_vip flag).
         conn.execute(
-            "UPDATE stakers SET mm_liquidity_cents = MIN(?, mm_liquidity_cents + ?) WHERE wallet=?",
+            "UPDATE stakers SET mm_liquidity_cents = MIN(?, mm_liquidity_cents + ?), mm_vip = 1 WHERE wallet=?",
             (int(round(econ.MM_MAX_USD * 100)), cents, wallet),
         )
         conn.commit()
@@ -674,6 +678,7 @@ async def api_mm_add(body: MmBody, request: Request):
             "added_usd": round(total_usd, 2),
             "sol": round(sol, 6),
             "clean": round(clean, 6),
+            "vip": True,
             "profile": _profile(conn, wallet),
         }
 
@@ -883,6 +888,15 @@ def api_admin_pending(body: AdminTok):
                 for r in rows
             ]
         }
+
+
+@app.post("/api/admin/vip")
+def api_admin_vip(body: AdminTok):
+    """VIP airdrop snapshot — every wallet that made a qualifying MM deposit."""
+    _require_admin(body.admin_token)
+    with db.db() as conn:
+        vips = db.list_vips(conn)
+        return {"count": len(vips), "vips": vips}
 
 
 @app.post("/api/admin/mark_paid")
