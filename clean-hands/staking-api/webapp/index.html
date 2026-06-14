@@ -981,18 +981,23 @@
       /* embedded game tab */
       #view-game {
         padding: 0;
-      }
-      .game-wrap {
+        margin: -16px -16px 0; /* break out of .scroll's top + side padding (full-bleed) */
+        height: calc(100% + 16px);
         display: flex;
         flex-direction: column;
-        min-height: 72vh;
+      }
+      .game-wrap {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
       }
       .game-frame {
         flex: 1 1 auto;
         width: 100%;
         border: 0;
         display: block;
-        min-height: 72vh;
+        min-height: 0;
         background: #0b1220;
       }
       .game-open {
@@ -1962,6 +1967,6 @@
     <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <script src="/wallet.js?v=10"></script>
-    <script src="/app.js?v=16"></script>
+    <script src="/app.js?v=17"></script>
   </body>
 </html>

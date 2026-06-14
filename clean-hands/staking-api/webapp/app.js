@@ -185,7 +185,7 @@
       '<div class="ca"><span class="lab">REF</span><code class="inv-link">—</code>' +
       '<span class="cp" onclick="App.copyLink()">copy</span></div>' +
       '<button class="btn btn-solid" style="margin-top:10px" onclick="App.invite()">Share invite ✦</button></div>';
-    ['stake', 'board', 'boost', 'trade', 'game'].forEach((n) => {
+    ['stake', 'board', 'boost', 'trade'].forEach((n) => {
       const v = $('view-' + n);
       if (v && !v.querySelector('.inv-card')) {
         const d = document.createElement('div');
