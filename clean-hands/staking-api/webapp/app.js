@@ -137,7 +137,7 @@
     renderWallets();
   }
   function show(v) {
-    ['stake', 'trade', 'boost', 'game', 'meme', 'board', 'invite', 'folio'].forEach((n) => {
+    ['stake', 'trade', 'bridge', 'boost', 'game', 'meme', 'board', 'invite', 'folio'].forEach((n) => {
       const el = $('view-' + n);
       if (el) el.hidden = n !== v;
     });
@@ -157,7 +157,7 @@
         sc.scrollTop = 0;
       }
     }
-    if (v === 'trade') loadBridge(); // bridge now lives inside the Trade tab
+    if (v === 'bridge') loadBridge(); // dedicated No Stains Bridge tab
     else stopBridgePoll(); // don't keep polling order status off-tab
     if (v === 'game') loadGame();
     haptic();
@@ -1311,8 +1311,12 @@
   }
 
   function loadBridgeLink(host, note) {
-    const url = (CONFIG && CONFIG.bridgeUrl) || '';
-    const ok = url && /^https:\/\//.test(url);
+    // Always resolve to a working destination — never a "coming soon" dead-end.
+    // Defaults to the CLEAN EasyBit ref so the bridge works out of the box;
+    // operators override with MINIAPP_BRIDGE_URL (or set EASYBIT_API_KEY for the
+    // fully in-app white-label swap).
+    const url = (CONFIG && CONFIG.bridgeUrl) || 'https://easybit.com/?ref_id=d4RqwQRDBs';
+    const ok = /^https:\/\//.test(url);
     if (ok && CONFIG.bridgeEmbed) {
       const f = document.createElement('iframe');
       f.src = url;
@@ -1343,21 +1347,6 @@
       _bridgeLoaded = true;
       return;
     }
-
-    // Not configured yet (awaiting the EasyBit ref/widget URL): show a clean,
-    // branded "coming soon" to users — never the operator's env-var hint.
-    host.innerHTML =
-      '<div class="bridge-empty">' +
-      '<img class="glove" src="/glove.png" alt="">' +
-      '<span class="bridge-soon"><i></i>Coming soon</span>' +
-      '<div class="t">No Stains Bridge</div>' +
-      '<div class="d">Cross-chain swaps and bridging — wallet-to-wallet, never through us. ' +
-      'We’re plumbing in the cleanest route; it lands right here shortly.</div>' +
-      '<button class="btn btn-ghost" id="bridge-buy" style="margin-top:4px;min-width:180px">Get $CLEAN meanwhile →</button>' +
-      '</div>';
-    const buy = $('bridge-buy');
-    if (buy) buy.onclick = () => show('trade');
-    if (note) note.textContent = '';
   }
 
   // ---- No Stains Bridge — API mode (in-app swap) -------------------------- //
@@ -1805,6 +1794,7 @@
     linkWalletWC,
     copyAddr,
     changeWallet,
+    hideWalletMenu,
     refresh,
     buy,
     chart,
