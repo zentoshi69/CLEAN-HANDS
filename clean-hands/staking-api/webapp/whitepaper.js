@@ -1,81 +1,149 @@
-(function(){
+/* $CLEAN white paper — scroll-reactive FX engine.
+   Layered bubble parallax (with bursts), inward-curved twinkle stars, per-act
+   motion-gradient shines, and scroll-driven brightness/parallax. Pure
+   transform/opacity so it stays buttery; everything degrades to readable text
+   under prefers-reduced-motion or if this script never loads. */
+(function () {
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  /* populate every stage: shared base (orbs + stars) plus a THEMED recipe per
-     section, so the magic changes as you scroll — never the same stage twice */
-  var GLYPHS = ['✦','✧','✶','·','✷'];
-  var HUES = ['rgba(134,191,248,.55)','rgba(169,211,251,.5)','rgba(214,234,253,.65)','rgba(46,116,192,.28)'];
   var R = Math.random;
-  function el(sec, cls, css, txt){
-    var n = document.createElement('span'); n.className = cls; n.style.cssText = css;
-    if (txt) n.textContent = txt; sec.appendChild(n);
-  }
-  /* one recipe per section, cycling: dust → aurora → rings → comets → rain → bloom */
-  var RECIPES = [
-    function dust(s){ for (var i=0;i<22;i++) el(s,'mote','left:'+(R()*96)+'%;--sz:'+(3+R()*6)+'px;--d:'+(7+R()*7)+'s;--w:-'+(R()*9)+'s;--o:'+(0.5+R()*0.5)+';--sway:'+(10+R()*40)+'px'); },
-    function aurora(s){ for (var i=0;i<3;i++) el(s,'aur','top:'+(8+i*26+R()*8)+'%;--d:'+(9+R()*6)+'s;--w:-'+(R()*8)+'s'); },
-    function rings(s){ for (var i=0;i<5;i++){ var sz=90+R()*220; el(s,'ring','width:'+sz+'px;height:'+sz+'px;left:'+(R()*80)+'%;top:'+(R()*70)+'%;--d:'+(4+R()*4)+'s;--w:-'+(R()*5)+'s'); } },
-    function comets(s){ for (var i=0;i<6;i++) el(s,'comet','left:'+(R()*55)+'%;top:'+(R()*80)+'%;--d:'+(5+R()*5)+'s;--w:-'+(R()*7)+'s;--rot:'+(6+R()*14)+'deg'); },
-    function rain(s){ for (var i=0;i<18;i++) el(s,'fleck','left:'+(R()*97)+'%;--d:'+(6+R()*6)+'s;--w:-'+(R()*8)+'s;--o:'+(0.4+R()*0.5)); },
-    function blooms(s){ for (var i=0;i<4;i++) el(s,'bloom','left:'+(8+R()*78)+'%;top:'+(10+R()*70)+'%;--sz:'+(26+R()*40)+'px;--d:'+(5+R()*4)+'s;--w:-'+(R()*6)+'s', GLYPHS[i%GLYPHS.length]); }
-  ];
-  document.querySelectorAll('.s').forEach(function(sec, si){
-    for (var o = 0; o < 3; o++){
-      var orb = document.createElement('i'); orb.className = 'orb';
-      var sz = 140 + R()*220;
-      orb.style.cssText = 'width:'+sz+'px;height:'+sz+'px;left:'+(R()*85)+'%;top:'+(R()*70)+'%;'+
-        'background:'+HUES[(si+o)%HUES.length]+';animation-duration:'+(12+R()*10)+'s;animation-delay:-'+(R()*12)+'s';
-      sec.appendChild(orb);
+  var GLYPHS = ['✦', '✧', '✶', '✷'];
+
+  /* ---- generate bubbles into each parallax layer (small → medium) ---- */
+  document.querySelectorAll('.bubbles').forEach(function (layer) {
+    var back = layer.classList.contains('l-back');
+    var front = layer.classList.contains('l-front');
+    var n = back ? 11 : front ? 7 : 9;
+    var min = back ? 5 : front ? 14 : 9;
+    var span = back ? 9 : front ? 16 : 12;
+    for (var i = 0; i < n; i++) {
+      var b = document.createElement('i');
+      b.className = 'bub';
+      var sz = (min + R() * span).toFixed(1);
+      b.style.cssText =
+        'width:' + sz + 'px;height:' + sz + 'px;left:' + (R() * 98).toFixed(2) + '%;top:' +
+        (R() * 100).toFixed(2) + '%;--d:' + (9 + R() * 10).toFixed(1) + 's;--w:-' +
+        (R() * 14).toFixed(1) + 's;--o:' + (0.4 + R() * 0.45).toFixed(2);
+      layer.appendChild(b);
     }
-    var n = 18 + Math.floor(R()*12);
-    for (var i = 0; i < n; i++){
-      el(sec,'star','left:'+(R()*96)+'%;top:'+(R()*92)+'%;font-size:'+(7+R()*20)+'px;'+
-        '--d:'+(2.2+R()*4)+'s;--w:'+(R()*5)+'s;--o:'+(0.45+R()*0.55), GLYPHS[Math.floor(R()*GLYPHS.length)]);
-    }
-    /* this stage's signature effect + a hint of the next one for depth */
-    RECIPES[si % RECIPES.length](sec);
-    if (si % 2 === 1) RECIPES[(si + 3) % RECIPES.length](sec);
   });
 
-  /* reveal stages (starts twinkle + fires the shine sweep) */
-  var io = new IntersectionObserver(function(es){
-    es.forEach(function(e){ if (e.isIntersecting){ e.target.classList.add('in'); } });
-  }, { threshold: 0.25 });
-  document.querySelectorAll('.s').forEach(function(s){ io.observe(s); });
+  /* ---- inward-curved twinkle stars scattered around each headline ---- */
+  document.querySelectorAll('.act .stars').forEach(function (box) {
+    var n = 10 + Math.floor(R() * 6);
+    for (var i = 0; i < n; i++) {
+      var s = document.createElement('span');
+      s.className = 'cstar';
+      s.textContent = GLYPHS[Math.floor(R() * GLYPHS.length)];
+      var ang = R() * 6.283, dist = 28 + R() * 70;
+      s.style.cssText =
+        'left:' + (8 + R() * 84).toFixed(2) + '%;top:' + (6 + R() * 84).toFixed(2) +
+        '%;font-size:' + (9 + R() * 22).toFixed(1) + 'px;--fx:' +
+        (Math.cos(ang) * dist).toFixed(0) + 'px;--fy:' + (Math.sin(ang) * dist).toFixed(0) +
+        'px;--d:' + (2.6 + R() * 3.4).toFixed(1) + 's;--w:-' + (R() * 5).toFixed(1) +
+        's;--o:' + (0.55 + R() * 0.45).toFixed(2);
+      box.appendChild(s);
+    }
+  });
 
-  /* scroll-spy TOC */
-  var links = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
-  var secs = links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
-  var spy = new IntersectionObserver(function(es){
-    es.forEach(function(e){
-      if (e.isIntersecting){
-        var i = secs.indexOf(e.target);
-        links.forEach(function(l){ l.classList.remove('on'); });
-        if (links[i]) links[i].classList.add('on');
-      }
-    });
-  }, { rootMargin: '-40% 0px -55% 0px' });
-  secs.forEach(function(s){ if (s) spy.observe(s); });
+  /* ---- sparkle puff (used on bubble burst) ---- */
+  function sparkle(x, y) {
+    for (var i = 0; i < 6; i++) {
+      var s = document.createElement('div');
+      s.className = 'spark';
+      s.textContent = '✦';
+      var ang = R() * 6.283, d = 16 + R() * 34;
+      s.style.cssText =
+        'left:' + x + 'px;top:' + y + 'px;font-size:' + (8 + R() * 10).toFixed(0) +
+        'px;--dx:' + (Math.cos(ang) * d).toFixed(0) + 'px;--dy:' + (Math.sin(ang) * d).toFixed(0) + 'px';
+      document.body.appendChild(s);
+      (function (el) { setTimeout(function () { el.parentNode && el.parentNode.removeChild(el); }, 640); })(s);
+    }
+  }
 
-  /* progress bar + nav condense (same as landing) */
-  var prog = document.getElementById('prog');
-  var navEl = document.getElementById('nav');
-  addEventListener('scroll', function(){
-    var h = document.documentElement;
-    prog.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
-    if (navEl) navEl.classList.toggle('scrolled', h.scrollTop > 12);
-  }, { passive: true });
-
-  /* occasional shooting star */
-  if (!reduce){
-    var shoot = document.createElement('div'); shoot.className = 'shoot'; document.body.appendChild(shoot);
-    (function fire(){
-      setTimeout(function(){
-        shoot.style.setProperty('--sx', (5 + Math.random()*40) + 'vw');
-        shoot.style.setProperty('--sy', (5 + Math.random()*40) + 'vh');
-        shoot.classList.remove('go'); void shoot.offsetWidth; shoot.classList.add('go');
-        fire();
-      }, 3500 + Math.random()*6000);
+  /* ---- bubbles occasionally burst (only when on-screen) ---- */
+  if (!reduce) {
+    var bubs = Array.prototype.slice.call(document.querySelectorAll('.bub'));
+    (function pop() {
+      setTimeout(function () {
+        if (bubs.length && !document.hidden) {
+          var b = bubs[Math.floor(R() * bubs.length)];
+          var r = b.getBoundingClientRect();
+          if (r.width && r.top > -40 && r.top < innerHeight + 40 && !b.classList.contains('pop')) {
+            b.classList.add('pop');
+            sparkle(r.left + r.width / 2, r.top + r.height / 2);
+            (function (bb) {
+              setTimeout(function () {
+                bb.classList.remove('pop');
+                bb.style.left = (R() * 98).toFixed(2) + '%';
+                bb.style.top = (72 + R() * 36).toFixed(2) + '%';
+                bb.style.setProperty('--w', '-' + (R() * 6).toFixed(1) + 's');
+              }, 560);
+            })(b);
+          }
+        }
+        pop();
+      }, 650 + R() * 1300);
     })();
   }
+
+  /* ---- scroll-driven parallax + brightness (rAF) ---- */
+  var acts = Array.prototype.slice.call(document.querySelectorAll('.act'));
+  var layered = acts.map(function (a) {
+    return {
+      act: a,
+      inner: a.querySelector('.act-inner'),
+      depthEls: Array.prototype.slice.call(a.querySelectorAll('[data-depth]')),
+    };
+  });
+  var vh = innerHeight, ticking = false;
+  addEventListener('resize', function () { vh = innerHeight; schedule(); }, { passive: true });
+
+  function frame() {
+    ticking = false;
+    for (var i = 0; i < layered.length; i++) {
+      var L = layered[i];
+      var r = L.act.getBoundingClientRect();
+      var p = (r.top + r.height / 2 - vh / 2) / vh; // ~ -1..1, 0 at center
+      for (var j = 0; j < L.depthEls.length; j++) {
+        var el = L.depthEls[j];
+        var d = parseFloat(el.getAttribute('data-depth')) || 0;
+        el.style.transform = 'translate3d(0,' + (p * d * vh).toFixed(1) + 'px,0)';
+      }
+      if (L.inner) L.inner.style.opacity = Math.max(0, 1 - Math.abs(p)).toFixed(3);
+    }
+  }
+  function schedule() { if (!ticking) { ticking = true; requestAnimationFrame(frame); } }
+
+  if (!reduce) {
+    addEventListener('scroll', schedule, { passive: true });
+    frame();
+  }
+
+  /* ---- act activation: re-fire the shine sweep each time it enters ---- */
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { e.target.classList.toggle('lit', e.isIntersecting); });
+    }, { threshold: 0.4 });
+    acts.forEach(function (a) { io.observe(a); });
+
+    /* dots scroll-spy */
+    var spy = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (e.isIntersecting) {
+          document.querySelectorAll('.dots a').forEach(function (d) { d.classList.remove('on'); });
+          var t = document.querySelector('.dots a[href="#' + e.target.id + '"]');
+          if (t) t.classList.add('on');
+        }
+      });
+    }, { rootMargin: '-45% 0px -45% 0px' });
+    acts.forEach(function (a) { spy.observe(a); });
+  }
+
+  /* ---- progress bar + nav condense ---- */
+  var prog = document.getElementById('prog'), navEl = document.getElementById('nav');
+  addEventListener('scroll', function () {
+    var h = document.documentElement;
+    if (prog) prog.style.width = (h.scrollTop / (h.scrollHeight - h.clientHeight) * 100) + '%';
+    if (navEl) navEl.classList.toggle('scrolled', h.scrollTop > 12);
+  }, { passive: true });
 })();
