@@ -34,6 +34,9 @@ MINT = _addr_or("6jb4XWggYJjoo3fx7irPVxhNiuFbHUyVyKR8mBL8pump", os.environ.get("
 PAIR = _addr_or("", os.environ.get("DEFAULT_TOKEN_PAIR"))
 TTL = int(os.environ.get("MARKET_TTL", "60"))
 _cache: dict[str, tuple[float, dict | None]] = {}
+# Last-known CLEAN/SOL USD prices, so synchronous code (the staking accrual path)
+# can read a price without doing network I/O. Warmed by refresh_prices().
+_last_prices: dict[str, float] = {"clean_usd": 0.0, "sol_usd": 0.0, "ts": 0.0}
 
 
 async def _get(url: str):
@@ -91,3 +94,42 @@ def summary(p: dict | None) -> dict | None:
         "url": p.get("url"),
         "pair_address": p.get("pairAddress"),
     }
+
+
+def _sol_usd(p: dict | None) -> float:
+    """USD per SOL, derived for free from the pair: when the quote token is SOL,
+    priceUsd / priceNative = USD per SOL. 0.0 if it can't be derived."""
+    if not p:
+        return 0.0
+    quote = ((p.get("quoteToken") or {}).get("symbol") or "").upper()
+    if quote not in ("SOL", "WSOL"):
+        return 0.0
+    try:
+        pu = float(p.get("priceUsd") or 0)
+        pn = float(p.get("priceNative") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return pu / pn if (pu > 0 and pn > 0) else 0.0
+
+
+async def refresh_prices() -> dict:
+    """Refresh the cached CLEAN/SOL USD prices from DexScreener. Best-effort:
+    keeps the last-known value for anything it can't read this round."""
+    p = await best_pair()
+    try:
+        clean = float((p or {}).get("priceUsd") or 0)
+    except (TypeError, ValueError):
+        clean = 0.0
+    sol = _sol_usd(p)
+    if clean > 0:
+        _last_prices["clean_usd"] = clean
+    if sol > 0:
+        _last_prices["sol_usd"] = sol
+    if clean > 0 or sol > 0:
+        _last_prices["ts"] = time.time()
+    return dict(_last_prices)
+
+
+def last_prices() -> dict:
+    """Last-known CLEAN/SOL USD prices (synchronous, no network I/O)."""
+    return dict(_last_prices)

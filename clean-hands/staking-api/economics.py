@@ -62,6 +62,18 @@ BURN_UNIT = _f("STAKE_BURN_UNIT", 100_000)
 BURN_APR_PER_UNIT = _f("STAKE_BURN_APR_PER_UNIT", 0.05)
 BURN_CAP_APR = _f("STAKE_BURN_CAP_APR", 2.00)
 
+# Wallet-balance booster ("Clean Hands"): a wallet earns extra multiplier for
+# simply HOLDING value — non-custodial, nothing is sent anywhere. SOL is
+# mandatory; CLEAN is optional. The boost scales linearly across the USD band.
+# Disable instantly with STAKE_BAL_BOOST=0.
+BAL_BOOST_ENABLED = os.environ.get("STAKE_BAL_BOOST", "1").strip().lower() not in (
+    "0", "false", "no", "off", "",
+)
+BAL_MIN_USD = _f("STAKE_BAL_MIN_USD", 50.0)         # need >= this worth of SOL to qualify
+BAL_MAX_USD = _f("STAKE_BAL_MAX_USD", 500.0)        # qualifying USD is capped here
+BAL_BOOST_AT_MIN = _f("STAKE_BAL_BOOST_MIN", 0.10)  # +0.10x at the floor
+BAL_BOOST_AT_MAX = _f("STAKE_BAL_BOOST_MAX", 0.50)  # +0.50x at the cap
+
 
 # --------------------------------------------------------------------------- #
 #  BOOSTERS (pure)                                                             #
@@ -87,6 +99,33 @@ def burn_bonus_apr(total_burned_tokens: float) -> float:
     return min(BURN_CAP_APR, units * BURN_APR_PER_UNIT)
 
 
+def wallet_balance_boost(sol_usd: float, clean_usd: float) -> float:
+    """Extra multiplier for HOLDING value in your wallet (non-custodial).
+
+    Rules:
+      * SOL is MANDATORY — you need >= BAL_MIN_USD worth of SOL or you get
+        nothing. You can qualify on SOL alone, but NEVER on CLEAN alone.
+      * CLEAN is OPTIONAL — it only counts once it's itself >= BAL_MIN_USD, and
+        its contribution is capped at BAL_MAX_USD.
+      * Qualifying USD = SOL + counted CLEAN, clamped to BAL_MAX_USD.
+      * Boost scales linearly from BAL_BOOST_AT_MIN (at BAL_MIN_USD) up to
+        BAL_BOOST_AT_MAX (at BAL_MAX_USD).
+    """
+    if not BAL_BOOST_ENABLED:
+        return 0.0
+    sol_usd = max(0.0, float(sol_usd or 0.0))
+    clean_usd = max(0.0, float(clean_usd or 0.0))
+    if sol_usd < BAL_MIN_USD:  # SOL mandatory — never a CLEAN-only booster
+        return 0.0
+    counted_clean = clean_usd if clean_usd >= BAL_MIN_USD else 0.0
+    counted_clean = min(counted_clean, BAL_MAX_USD)
+    qualifying = min(sol_usd + counted_clean, BAL_MAX_USD)
+    span = BAL_MAX_USD - BAL_MIN_USD
+    frac = 1.0 if span <= 0 else (qualifying - BAL_MIN_USD) / span
+    frac = max(0.0, min(1.0, frac))
+    return BAL_BOOST_AT_MIN + frac * (BAL_BOOST_AT_MAX - BAL_BOOST_AT_MIN)
+
+
 @dataclass
 class Apr:
     base: float
@@ -95,6 +134,7 @@ class Apr:
     referral_boost: float
     burn_bonus_apr: float
     effective_apr: float
+    wallet_boost: float = 0.0
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -108,13 +148,16 @@ def effective_apr(
     seconds_staked: float,
     active_referrals: int,
     total_burned_tokens: float,
+    sol_usd: float = 0.0,
+    clean_usd: float = 0.0,
 ) -> Apr:
     ab = amount_boost(staked_tokens)
     lb = loyalty_boost(seconds_staked)
     rb = referral_boost(active_referrals)
     bb = burn_bonus_apr(total_burned_tokens)
-    eff = BASE_APR * (1 + ab + lb + rb) + bb
-    return Apr(BASE_APR, ab, lb, rb, bb, eff)
+    wb = wallet_balance_boost(sol_usd, clean_usd)
+    eff = BASE_APR * (1 + ab + lb + rb + wb) + bb
+    return Apr(BASE_APR, ab, lb, rb, bb, eff, wb)
 
 
 def accrue(staked_effective: float, apr: float, dt_seconds: float) -> float:
