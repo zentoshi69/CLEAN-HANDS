@@ -39,6 +39,22 @@ _cache: dict[str, tuple[float, dict | None]] = {}
 _last_prices: dict[str, float] = {"clean_usd": 0.0, "sol_usd": 0.0, "ts": 0.0}
 
 
+def _envf(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+# Anti-manipulation guards for the wallet booster: a price is only trusted from
+# a pool with real liquidity, and SOL/USD is clamped to a plausible band so a
+# thin/skewed $CLEAN pool (or a DexScreener glitch) can't inflate the booster.
+PRICE_MIN_LIQ_USD = _envf("STAKE_PRICE_MIN_LIQ_USD", 2_000.0)
+SOL_USD_MIN = _envf("STAKE_SOL_USD_MIN", 10.0)
+SOL_USD_MAX = _envf("STAKE_SOL_USD_MAX", 100_000.0)
+WSOL_MINT = "So11111111111111111111111111111111111111112"
+
+
 async def _get(url: str):
     async with httpx.AsyncClient(timeout=15) as c:
         return await c.get(url, headers={"User-Agent": "clean-market/1.0"})
@@ -112,15 +128,70 @@ def _sol_usd(p: dict | None) -> float:
     return pu / pn if (pu > 0 and pn > 0) else 0.0
 
 
+def _liq_usd(p: dict | None) -> float:
+    try:
+        return float(((p or {}).get("liquidity") or {}).get("usd") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+async def _independent_sol_usd() -> float:
+    """SOL/USD from the deepest wSOL/stablecoin pool — independent of the thin
+    $CLEAN pool, so the booster's SOL valuation can't be moved by skewing our
+    own token. TTL-cached; 0.0 when unavailable (booster then stays off)."""
+    now = time.time()
+    hit = _cache.get("solusd")
+    if hit and (now - hit[0]) < TTL:
+        return float(hit[1] or 0.0)
+    best = 0.0
+    best_liq = 0.0
+    try:
+        r = await _get(f"{DEXS_TOKENS}/{WSOL_MINT}")
+        pairs = (r.json() or {}).get("pairs") or [] if r.status_code == 200 else []
+        for p in pairs:
+            quote = ((p.get("quoteToken") or {}).get("symbol") or "").upper()
+            if quote not in ("USDC", "USDT"):
+                continue
+            liq = _liq_usd(p)
+            if liq > best_liq and liq >= PRICE_MIN_LIQ_USD:
+                try:
+                    px = float(p.get("priceUsd") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if px > 0:
+                    best, best_liq = px, liq
+    except Exception:  # noqa: BLE001 — best-effort; keep last good on a hiccup
+        return float(hit[1]) if hit else 0.0
+    _cache["solusd"] = (now, best)
+    return best
+
+
 async def refresh_prices() -> dict:
     """Refresh the cached CLEAN/SOL USD prices from DexScreener. Best-effort:
-    keeps the last-known value for anything it can't read this round."""
+    keeps the last-known value for anything it can't read this round.
+
+    Anti-manipulation (the wallet booster prices a wallet's SOL in USD):
+      * the CLEAN price is only trusted from a pool with real liquidity;
+      * SOL/USD is taken from an INDEPENDENT deep wSOL pool, falling back to the
+        $CLEAN/SOL pool only when that pool itself has real liquidity; and
+      * SOL/USD is clamped to a plausible band, so a thin/skewed $CLEAN pool
+        cannot inflate the booster. Any rejected value leaves the booster at 0.
+    """
     p = await best_pair()
+    liq = _liq_usd(p)
     try:
         clean = float((p or {}).get("priceUsd") or 0)
     except (TypeError, ValueError):
         clean = 0.0
-    sol = _sol_usd(p)
+    if liq < PRICE_MIN_LIQ_USD:  # CLEAN price only from a liquid pool
+        clean = 0.0
+    # SOL/USD: prefer an independent deep pool; only fall back to our own pool
+    # when it has real liquidity.
+    sol = await _independent_sol_usd()
+    if sol <= 0 and liq >= PRICE_MIN_LIQ_USD:
+        sol = _sol_usd(p)
+    if not (SOL_USD_MIN <= sol <= SOL_USD_MAX):  # reject implausible SOL/USD
+        sol = 0.0
     if clean > 0:
         _last_prices["clean_usd"] = clean
     if sol > 0:
