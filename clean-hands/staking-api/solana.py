@@ -47,6 +47,16 @@ async def token_balance(wallet: str, mint: str | None = None) -> float:
     return total
 
 
+async def sol_balance(wallet: str) -> float:
+    """The wallet's native SOL balance (in whole SOL, not lamports)."""
+    if not wallet:
+        return 0.0
+    res = await _rpc("getBalance", [wallet])
+    # getBalance returns {"context": ..., "value": <lamports>}; tolerate a bare int.
+    lamports = res.get("value") if isinstance(res, dict) else res
+    return float(lamports or 0) / 1_000_000_000
+
+
 async def verify_burn(signature: str, wallet: str, mint: str | None = None) -> float:
     """Return the amount of `mint` BURNED by `wallet` in transaction `signature`,
     or 0.0 if the tx isn't a successful burn by that wallet. Parses both

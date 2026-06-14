@@ -61,6 +61,18 @@ def test_economics():
     assert approx(econ.accrue(1_000_000, 0.50, econ.SECONDS_PER_YEAR), 500_000)
     # anti-gaming: earn only on what you still hold
     assert econ.effective_staked(1_000_000, 400_000) == 400_000
+    # wallet-balance booster: SOL mandatory, CLEAN optional, $50–$500 band
+    assert econ.wallet_balance_boost(0, 300) == 0.0       # never CLEAN-only
+    assert econ.wallet_balance_boost(49, 400) == 0.0      # SOL below $50 floor
+    assert approx(econ.wallet_balance_boost(50, 0), 0.10)   # SOL-only at floor
+    assert approx(econ.wallet_balance_boost(500, 0), 0.50)  # cap
+    assert approx(econ.wallet_balance_boost(9999, 0), 0.50)  # clamped to cap
+    assert approx(econ.wallet_balance_boost(275, 0), 0.30)  # linear midpoint
+    assert approx(econ.wallet_balance_boost(50, 49), 0.10)  # CLEAN <$50 not counted
+    assert approx(econ.wallet_balance_boost(100, 9999), 0.50)  # CLEAN clamps total to cap
+    # composition: $500 SOL adds +0.50x to the multiplier
+    assert approx(econ.effective_apr(0, 0, 0, 0, sol_usd=500).effective_apr, 0.40 * 1.50)
+    assert econ.effective_apr(0, 0, 0, 0).wallet_boost == 0.0  # backward-compatible default
     print("economics ✓")
 
 
