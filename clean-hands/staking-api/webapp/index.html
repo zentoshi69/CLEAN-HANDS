@@ -1252,27 +1252,6 @@
         background: #fff;
         object-fit: cover;
       }
-      .bridge-soon {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        font-size: 0.64rem;
-        font-weight: 800;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        color: var(--ink-2);
-        background: rgba(46, 116, 192, 0.1);
-        border: 1px solid rgba(27, 93, 166, 0.2);
-        border-radius: 100px;
-        padding: 5px 12px;
-      }
-      .bridge-soon i {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: #3fc77e;
-        box-shadow: 0 0 0 4px rgba(63, 199, 126, 0.18);
-      }
       .bridge-empty .t {
         font-family: 'Fraunces', serif;
         font-weight: 600;
@@ -1537,6 +1516,7 @@
               Change wallet
             </button>
             <button onclick="App.portfolio()">📊 All wallets</button>
+            <button onclick="App.show('trade');App.hideWalletMenu()">💸 Get $CLEAN</button>
             <div class="wmenu-sep"></div>
             <button class="wmenu-danger" onclick="App.logout()">
               <svg
@@ -1712,6 +1692,10 @@
             </button>
             <div id="jup-terminal" style="margin-top: 12px"></div>
           </div>
+        </section>
+
+        <!-- BRIDGE — No Stains Bridge (dedicated 5th tab) -->
+        <section class="tab" id="view-bridge" hidden>
           <div class="card panel">
             <h3>🧤 No Stains Bridge</h3>
             <p class="desc">
@@ -1955,9 +1939,12 @@
           </svg>
           Boost
         </button>
-        <button class="tabbtn" data-tab="trade" onclick="App.show('trade')">
-          <svg viewBox="0 0 24 24"><path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5" /></svg>
-          Trade
+        <button class="tabbtn" data-tab="bridge" onclick="App.show('bridge')">
+          <svg viewBox="0 0 24 24">
+            <path d="M3 16c3 0 3-4 6-4s3 4 6 4 3-4 6-4" />
+            <path d="M3 11V9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2" />
+          </svg>
+          Bridge
         </button>
         <button class="tabbtn hide" data-tab="meme" onclick="App.show('meme')">
           <svg viewBox="0 0 24 24">
@@ -1972,6 +1959,6 @@
     <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <script src="/wallet.js?v=10"></script>
-    <script src="/app.js?v=14"></script>
+    <script src="/app.js?v=15"></script>
   </body>
 </html>
