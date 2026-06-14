@@ -7,14 +7,31 @@ TTL cache so the app and alerts can read price/mcap/volume cheaply at scale.
 from __future__ import annotations
 
 import os
+import re
 import time
 import httpx
 
 DEXS_TOKENS = "https://api.dexscreener.com/latest/dex/tokens"
 DEXS_PAIRS = "https://api.dexscreener.com/latest/dex/pairs/solana"
-MINT = os.environ.get("DEFAULT_TOKEN_MINT", "").strip()
-# Pin price to a specific pool (the DexScreener pair address) for exactness.
-PAIR = os.environ.get("DEFAULT_TOKEN_PAIR", "").strip()
+
+# A base58 Solana address. Used to reject the .env.example placeholder
+# ("# the $CLEAN mint — your pump.fun CA …") and any other non-address value, so
+# a not-yet-filled .env can't leak that text into the UI or break the price.
+_ADDR_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+
+
+def _addr_or(default: str, raw: str | None) -> str:
+    """Return the env value only if it's a real address; otherwise the default."""
+    raw = (raw or "").strip()
+    return raw if _ADDR_RE.match(raw) else default
+
+
+# Built-in $CLEAN mint so the app shows live price/links out-of-the-box; a valid
+# address in DEFAULT_TOKEN_MINT still overrides it.
+MINT = _addr_or("6jb4XWggYJjoo3fx7irPVxhNiuFbHUyVyKR8mBL8pump", os.environ.get("DEFAULT_TOKEN_MINT"))
+# Optional: pin price to a specific pool. Empty default => auto-pick the
+# highest-liquidity pool for MINT (robust to pair-address casing).
+PAIR = _addr_or("", os.environ.get("DEFAULT_TOKEN_PAIR"))
 TTL = int(os.environ.get("MARKET_TTL", "60"))
 _cache: dict[str, tuple[float, dict | None]] = {}
 
