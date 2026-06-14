@@ -907,7 +907,8 @@
       (Number(a.wallet_boost) || 0) +
       (Number(a.loyalty_boost) || 0) +
       (Number(a.referral_boost) || 0) +
-      (Number(a.liquidity_boost) || 0);
+      (Number(a.liquidity_boost) || 0) +
+      (Number(a.vip_boost) || 0);
     const mult = 1 + add;
     const set = (id, v) => {
       const e = $(id);
@@ -927,6 +928,7 @@
     set('bl-loyalty', pct(a.loyalty_boost));
     set('bl-ref', pct(a.referral_boost));
     set('bl-lp', a.liquidity_boost ? pct(a.liquidity_boost) : 'soon');
+    set('bl-vip', a.vip_boost ? '3× locked ✦' : '—');
     set('bl-burn', pct(a.burn_bonus_apr));
     [
       ['bl-amount', a.amount_boost],
@@ -934,6 +936,7 @@
       ['bl-loyalty', a.loyalty_boost],
       ['bl-ref', a.referral_boost],
       ['bl-lp', a.liquidity_boost],
+      ['bl-vip', a.vip_boost],
       ['bl-burn', a.burn_bonus_apr],
     ].forEach(([id, v]) => {
       const e = $(id);
