@@ -35,6 +35,10 @@
 
   let TOKEN = SS.getItem('clw_token') || '';
   let PROFILE = null;
+  // Active-wallet balances for the MM liquidity form: SOL read live via RPC,
+  // $CLEAN from the profile the server already read on-chain. The form only ever
+  // deals in these two assets ($CLEAN CA + SOL).
+  const MM_BAL = { sol: 0, clean: 0 };
   let PRICE = null;
   let MINT = '';
   let CONFIG = {};
@@ -162,6 +166,7 @@
     if (v === 'game') loadGame();
     haptic();
     if (v === 'board') loadBoard();
+    if (v === 'boost') loadMmBalances();
     if (v === 'trade') loadPrice();
   }
 
@@ -993,6 +998,7 @@
     try {
       const r = await api('/api/mm/add', authedBody({ signature: sig }));
       paint(r.profile);
+      loadMmBalances();
       if (typeof celebrateBoost === 'function') celebrateBoost();
       toast('💧 Liquidity credited: +$' + fmt(r.added_usd));
     } catch (e) {
@@ -1011,6 +1017,13 @@
     const cleanAmt = parseFloat(($('bl-lp-clean') || {}).value) || 0;
     const min = CONFIG.mmMinUsd || 50, max = CONFIG.mmMaxUsd || 500;
     if (solAmt <= 0) return toast('Add SOL — the SOL leg is required (min $' + min + ')');
+    // Refresh the live wallet balance and never let the user sign a deposit
+    // bigger than they hold ($CLEAN + SOL only).
+    await loadMmBalances();
+    if (MM_BAL.sol && solAmt > MM_BAL.sol)
+      return toast('Not enough SOL — you have ' + MM_BAL.sol.toFixed(4));
+    if (MM_BAL.clean && cleanAmt > MM_BAL.clean)
+      return toast('Not enough $CLEAN — you have ' + fmt(MM_BAL.clean));
     try {
       const q = await fetch('/api/mm/quote').then((r) => r.json());
       const solUsd = solAmt * (q.sol_usd || 0);
@@ -1051,6 +1064,48 @@
     }
   }
 
+  // Read the active wallet's balances for the MM form: SOL live via RPC, $CLEAN
+  // from the profile the server already read on-chain for this wallet.
+  async function loadMmBalances() {
+    if (!CONFIG || !CONFIG.mmEnabled) return;
+    MM_BAL.clean = (PROFILE && Number(PROFILE.balance)) || 0;
+    const cb = $('bl-lp-clean-bal');
+    if (cb) cb.textContent = 'Balance: ' + fmt(MM_BAL.clean);
+    const pk = CleanWallet.currentPubkey() || (PROFILE && PROFILE.wallet) || '';
+    const sb = $('bl-lp-sol-bal');
+    if (!pk) {
+      if (sb) sb.textContent = '';
+      return;
+    }
+    try {
+      const web3 = await import('https://esm.sh/@solana/web3.js@1.95');
+      const conn = new web3.Connection(safeRpc());
+      const lamports = await conn.getBalance(new web3.PublicKey(pk));
+      MM_BAL.sol = lamports / 1e9;
+      if (sb) sb.textContent = 'Balance: ' + MM_BAL.sol.toFixed(4) + ' SOL';
+    } catch (e) {
+      if (sb) sb.textContent = '';
+    }
+  }
+  // "Max" fills each leg from the live balance: $CLEAN in full; SOL keeps a small
+  // ~0.01 SOL cushion for the network fee.
+  function wireMmMax() {
+    const cm = $('bl-lp-clean-max');
+    if (cm)
+      cm.onclick = () => {
+        const i = $('bl-lp-clean');
+        if (i) i.value = MM_BAL.clean > 0 ? String(MM_BAL.clean) : '';
+      };
+    const sm = $('bl-lp-sol-max');
+    if (sm)
+      sm.onclick = () => {
+        const i = $('bl-lp-sol');
+        if (!i) return;
+        const usable = Math.max(0, MM_BAL.sol - 0.01);
+        i.value = usable > 0 ? usable.toFixed(4) : '';
+      };
+  }
+
   // ---- boot ------------------------------------------------------------- //
   async function boot() {
     try {
@@ -1075,6 +1130,7 @@
     wireBurnChips();
     wirePctRow();
     initBoostLab();
+    wireMmMax();
     injectInvite();
 
     // Live wallet detection: extensions inject asynchronously on desktop, so

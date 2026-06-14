@@ -1777,18 +1777,21 @@
               your stack to a clean 3×. Real liquidity, real swap fees.
             </p>
             <div class="field">
-              <div class="top-l"><span>You add</span><span>+ pair</span></div>
+              <div class="top-l"><span>$CLEAN</span><span id="bl-lp-clean-bal">—</span></div>
               <div class="input">
-                <input id="bl-lp-clean" type="number" inputmode="decimal" placeholder="CLEAN amount" />
+                <input id="bl-lp-clean" type="number" inputmode="decimal" min="0" placeholder="CLEAN amount" />
+                <button type="button" class="max" id="bl-lp-clean-max" style="margin-left: 8px">Max</button>
               </div>
             </div>
             <div class="field">
+              <div class="top-l"><span>SOL · required</span><span id="bl-lp-sol-bal">—</span></div>
               <div class="input">
-                <input id="bl-lp-sol" type="number" inputmode="decimal" placeholder="SOL amount" />
+                <input id="bl-lp-sol" type="number" inputmode="decimal" min="0" placeholder="SOL amount" />
+                <button type="button" class="max" id="bl-lp-sol-max" style="margin-left: 8px">Max</button>
               </div>
             </div>
             <button class="btn btn-solid" onclick="App.addLiquidity()">💧 Add to MM pool</button>
-            <p class="bl-soon">Rolling out ✦ — boosters are additive; this tops your stack to 3×.</p>
+            <p class="bl-soon">$CLEAN + SOL only · boosters are additive — this tops your stack toward 3×.</p>
           </div>
           <div class="card panel">
             <h3>Credit a burn</h3>
@@ -1959,6 +1962,6 @@
     <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
     <script src="/wallet.js?v=10"></script>
-    <script src="/app.js?v=15"></script>
+    <script src="/app.js?v=16"></script>
   </body>
 </html>
