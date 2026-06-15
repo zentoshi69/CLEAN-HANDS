@@ -38,7 +38,10 @@
   // Active-wallet balances for the MM liquidity form: SOL read live via RPC,
   // $CLEAN from the profile the server already read on-chain. The form only ever
   // deals in these two assets ($CLEAN CA + SOL).
-  const MM_BAL = { sol: 0, clean: 0 };
+  const MM_BAL = { sol: 0, clean: 0, solLoaded: false };
+  // Guards the irreversible signing paths (burn / MM deposit) from an accidental
+  // double-tap during the async build window.
+  let SIGNING = false;
   let PRICE = null;
   let MINT = '';
   let CONFIG = {};
@@ -681,6 +684,7 @@
       paint(r.profile);
       showApp();
       show('stake');
+      CONNECTING = false;
     } catch (e) {
       CONNECTING = false;
       toast('Connect failed: ' + (e.message || e));
@@ -789,6 +793,7 @@
       paint(r.profile);
       showApp();
       show('stake');
+      CONNECTING = false;
     } catch (e) {
       CONNECTING = false;
       const msg = String(e.message || e);
@@ -841,6 +846,7 @@
       paint(r.profile);
       showApp();
       show('stake');
+      CONNECTING = false;
     } catch (e) {
       toast('Login failed: ' + e.message);
       showConnect('Login failed — try again.');
@@ -863,6 +869,8 @@
     if (!MINT) return toast('Token not loaded yet');
     const pk = CleanWallet.currentPubkey();
     if (!pk) return toast('Connect your wallet first');
+    if (SIGNING) return toast('Hold on — still finishing the last action…');
+    SIGNING = true;
     toast('Building burn…');
     try {
       // Pinned to a minor line (not a bare major) to shrink the moving-target
@@ -887,6 +895,8 @@
       });
     } catch (e) {
       toast('Burn build failed: ' + (e.message || e));
+    } finally {
+      SIGNING = false;
     }
   }
 
@@ -1032,10 +1042,16 @@
     // Refresh the live wallet balance and never let the user sign a deposit
     // bigger than they hold ($CLEAN + SOL only).
     await loadMmBalances();
-    if (MM_BAL.sol && solAmt > MM_BAL.sol)
-      return toast('Not enough SOL — you have ' + MM_BAL.sol.toFixed(4));
-    if (MM_BAL.clean && cleanAmt > MM_BAL.clean)
+    if (MM_BAL.solLoaded) {
+      if (solAmt > MM_BAL.sol)
+        return toast('Not enough SOL — you have ' + MM_BAL.sol.toFixed(4));
+      if (solAmt > MM_BAL.sol - 0.01)
+        return toast('Leave ~0.01 SOL in the wallet for the network fee');
+    }
+    if (PROFILE && cleanAmt > MM_BAL.clean)
       return toast('Not enough $CLEAN — you have ' + fmt(MM_BAL.clean));
+    if (SIGNING) return toast('Hold on — still finishing the last deposit…');
+    SIGNING = true;
     try {
       const q = await fetch('/api/mm/quote').then((r) => r.json());
       const solUsd = solAmt * (q.sol_usd || 0);
@@ -1073,6 +1089,8 @@
       CleanWallet.signAndSendTransaction(CleanWallet.b58encode(new Uint8Array(ser)), { kind: 'mm' });
     } catch (e) {
       toast('Deposit build failed: ' + (e.message || e));
+    } finally {
+      SIGNING = false;
     }
   }
 
@@ -1080,6 +1098,7 @@
   // from the profile the server already read on-chain for this wallet.
   async function loadMmBalances() {
     if (!CONFIG || !CONFIG.mmEnabled) return;
+    MM_BAL.solLoaded = false;
     MM_BAL.clean = (PROFILE && Number(PROFILE.balance)) || 0;
     const cb = $('bl-lp-clean-bal');
     if (cb) cb.textContent = 'Balance: ' + fmt(MM_BAL.clean);
@@ -1094,6 +1113,7 @@
       const conn = new web3.Connection(safeRpc());
       const lamports = await conn.getBalance(new web3.PublicKey(pk));
       MM_BAL.sol = lamports / 1e9;
+      MM_BAL.solLoaded = true;
       if (sb) sb.textContent = 'Balance: ' + MM_BAL.sol.toFixed(4) + ' SOL';
     } catch (e) {
       if (sb) sb.textContent = '';
@@ -1447,7 +1467,7 @@
     return r.json();
   }
 
-  function copyText(t) {
+  function bridgeCopy(t) {
     try {
       navigator.clipboard.writeText(t);
       toast('Copied');
@@ -1798,7 +1818,7 @@
       $('dep-tag').textContent = o.depositTag;
     }
     setStatusBadge($('dep-status'), o.status, o.phase);
-    $('dep-copy').addEventListener('click', () => copyText(o.depositAddress || ''));
+    $('dep-copy').addEventListener('click', () => bridgeCopy(o.depositAddress || ''));
     $('dep-new').addEventListener('click', resetBridge);
     wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
     if (o.orderId) pollStatus(o.orderId);

@@ -332,6 +332,8 @@ class MmBody(BaseModel):
 class PayoutBody(BaseModel):
     token: str
     address: str | None = None  # default: the staking wallet itself
+    nonce: str | None = None
+    signature: str | None = None
 
 
 class TgStart(BaseModel):
@@ -477,6 +479,14 @@ def api_payout(body: PayoutBody, request: Request):
     defaults to the staking wallet itself."""
     wallet = _require(body.token)["w"]
     ratelimit.hit(request, "write", extra_key=wallet)
+    # Redirecting payouts is high-value, so require a FRESH wallet signature (a
+    # stolen session token alone can't produce one) — not just the bearer token.
+    if not (body.nonce and body.signature):
+        raise HTTPException(401, "a fresh wallet signature is required to set the payout address")
+    if not auth.consume_nonce(wallet, body.nonce):
+        raise HTTPException(401, "bad or expired nonce — request a new one")
+    if not auth.verify_wallet_signature(wallet, auth.login_message(wallet, body.nonce), body.signature):
+        raise HTTPException(401, "bad wallet signature")
     with db.db() as conn:
         row = db.get_staker(conn, wallet)
         if not row:
@@ -547,8 +557,15 @@ async def api_claim(body: Tok, request: Request):
         fee_base = 0
         fee_usd = _claim_fee_usd()
         if fee_usd > 0:
-            p = market.summary(await market.best_pair())
-            price = float(p["price_usd"]) if p and p.get("price_usd") else 0.0
+            # Prefer the hardened (liquidity-floored) CLEAN price so the fee can't
+            # be shrunk by pumping a thin pool; fall back to spot only when the
+            # hardened price isn't available, so a genuinely thin pool never
+            # bricks claims.
+            await market.refresh_prices()
+            price = float(market.last_prices().get("clean_usd") or 0)
+            if price <= 0:
+                p = market.summary(await market.best_pair())
+                price = float(p["price_usd"]) if p and p.get("price_usd") else 0.0
             if price <= 0:
                 raise HTTPException(503, "claim fee pricing unavailable — try again shortly")
             fee_base = int(-(-(fee_usd / price) * db.BASE // 1))  # ceil in base units
@@ -622,6 +639,11 @@ async def api_burn(body: BurnBody, request: Request):
         return {"burned": round(burned, 6), "profile": _profile(conn, wallet)}
 
 
+# MM deposits are valued at the live price, so they must be recent (a stale
+# transfer could be credited against a price that no longer reflects it).
+MM_DEPOSIT_MAX_AGE_S = int(os.environ.get("MM_DEPOSIT_MAX_AGE_S", "1800"))
+
+
 @app.post("/api/mm/add")
 async def api_mm_add(body: MmBody, request: Request):
     """Credit the market-maker liquidity booster after a wallet deposits SOL
@@ -637,12 +659,28 @@ async def api_mm_add(body: MmBody, request: Request):
             raise HTTPException(404, "unknown wallet")
         if db.mm_seen(conn, body.signature):
             raise HTTPException(409, "deposit already credited")
-    sol, clean = await solana.verify_mm_deposit(body.signature, wallet, mm_wallet)
+    sol, clean = await solana.verify_mm_deposit(
+        body.signature, wallet, mm_wallet, max_age_s=MM_DEPOSIT_MAX_AGE_S
+    )
     if sol <= 0 and clean <= 0:
-        raise HTTPException(400, "no SOL/$CLEAN transfer to the MM reserve found in that transaction")
-    # value each leg at current prices
-    sol_usd = sol * (await market.sol_price_usd())
-    clean_usd = clean * (await market.clean_price_usd())
+        raise HTTPException(
+            400,
+            "no recent SOL/$CLEAN transfer to the MM reserve found — submit the deposit "
+            "within ~30 min of the on-chain transfer",
+        )
+    # Value each leg with the HARDENED prices (liquidity floor + SOL/USD clamp +
+    # independent SOL pool), NEVER raw spot — otherwise an attacker who moves
+    # their own thin CLEAN/SOL pool could mint max LP boost + permanent VIP for
+    # negligible real value. SOL must be priceable (it is the real-money gate);
+    # the CLEAN leg is valued at 0 when its pool is too thin to trust.
+    await market.refresh_prices()
+    px = market.last_prices()
+    sol_px = float(px.get("sol_usd") or 0)
+    clean_px = float(px.get("clean_usd") or 0)
+    if sol_px <= 0:
+        raise HTTPException(503, "can't price SOL safely right now — try again shortly")
+    sol_usd = sol * sol_px
+    clean_usd = clean * clean_px
     # rules: SOL mandatory (>= MIN); $CLEAN optional but if present in [MIN, MAX);
     # never $CLEAN-only; total credited capped at MAX.
     if sol_usd < econ.MM_MIN_USD:
@@ -687,11 +725,15 @@ async def api_mm_add(body: MmBody, request: Request):
 async def api_mm_quote():
     """Live SOL/$CLEAN prices + deposit limits so the UI can validate a deposit
     before the user signs (the /api/mm/add path re-checks authoritatively)."""
+    # Quote with the SAME hardened prices /api/mm/add credits with, so the UI
+    # validates identically to the authoritative server-side check.
+    await market.refresh_prices()
+    px = market.last_prices()
     return {
         "enabled": bool(os.environ.get("CLEAN_MM_WALLET", "").strip()),
         "wallet": os.environ.get("CLEAN_MM_WALLET", "").strip(),
-        "sol_usd": await market.sol_price_usd(),
-        "clean_usd": await market.clean_price_usd(),
+        "sol_usd": float(px.get("sol_usd") or 0),
+        "clean_usd": float(px.get("clean_usd") or 0),
         "min_usd": econ.MM_MIN_USD,
         "max_usd": econ.MM_MAX_USD,
     }

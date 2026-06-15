@@ -6,10 +6,27 @@ from __future__ import annotations
 
 import os
 import time
+import math
 import sqlite3
 from contextlib import contextmanager
 
 DB_PATH = os.environ.get("STAKE_DB", os.path.join(os.path.dirname(__file__), "staking.db"))
+
+# The ledger IS the money — keep it private (0600) so no other local account or
+# co-tenant process can read who's owed payouts. Best-effort, runs once/process.
+_DB_PERMS_SET = False
+
+
+def _harden_db_perms() -> None:
+    global _DB_PERMS_SET
+    if _DB_PERMS_SET:
+        return
+    _DB_PERMS_SET = True
+    for ext in ("", "-wal", "-shm"):
+        try:
+            os.chmod(DB_PATH + ext, 0o600)
+        except OSError:
+            pass
 
 # --------------------------------------------------------------------------- #
 #  MONEY UNITS — everything is stored & accrued in INTEGER base units          #
@@ -22,8 +39,13 @@ SCHEMA_VERSION = 8  # bumped by migrations
 
 
 def to_base(ui_amount: float) -> int:
-    """Human token amount -> integer base units (rounded to nearest unit)."""
-    return int(round(float(ui_amount) * BASE))
+    """Human token amount -> integer base units (rounded to nearest unit).
+    Rejects non-finite / negative inputs (e.g. a malformed or hostile RPC
+    balance) as 0 so NaN/Inf can never pollute the ledger."""
+    f = float(ui_amount)
+    if not math.isfinite(f) or f < 0:
+        return 0
+    return int(round(f * BASE))
 
 
 def to_ui(base_amount) -> float:
@@ -88,10 +110,15 @@ def db():
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
+        # Money ledger: fsync the WAL on every commit so an acknowledged claim/
+        # burn/stake survives a host crash or hard reboot (the WAL default is
+        # NORMAL, which can drop the last committed transactions on power loss).
+        conn.execute("PRAGMA synchronous=FULL")
         conn.execute("PRAGMA foreign_keys=ON")
         # Concurrent writers serialize under WAL; wait for the lock (up to 5s)
         # instead of raising SQLITE_BUSY and 500-ing a money request.
         conn.execute("PRAGMA busy_timeout=5000")
+        _harden_db_perms()
         try:
             yield conn
         finally:

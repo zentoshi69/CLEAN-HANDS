@@ -34,7 +34,9 @@ BOT_TOKEN = os.environ.get("TG_COMMUNITY_TOKEN", "")
 # within 48h instead of a week.
 SESSION_TTL = int(os.environ.get("STAKE_SESSION_TTL", "172800"))
 SESSION_REFRESH_AFTER = int(os.environ.get("STAKE_SESSION_REFRESH_AFTER", "21600"))  # 6h
-INITDATA_TTL = int(os.environ.get("STAKE_INITDATA_TTL", "86400"))
+# Telegram initData is single-launch and short-lived; a 1h window (Telegram's
+# own guidance) keeps a captured initData from being replayed for a full day.
+INITDATA_TTL = int(os.environ.get("STAKE_INITDATA_TTL", "3600"))
 LOGIN_PREFIX = "CLEAN soft-staking login"
 # Domain bound into the signed message (SIWS-style). A signature captured by a
 # look-alike clone over our nonce can't be relayed here, because the message
