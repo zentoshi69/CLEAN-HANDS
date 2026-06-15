@@ -12,6 +12,7 @@
 #   0 3 * * *  cd /home/youruser/bots/staking-api && bash backup.sh >> backup.log 2>&1
 #
 set -euo pipefail
+umask 077  # the snapshot is the full ledger — never world-readable
 cd "$(dirname "$0")"
 
 DB="${STAKE_DB:-staking.db}"
@@ -27,12 +28,22 @@ command -v sqlite3 >/dev/null || { echo "sqlite3 not installed (apt install sqli
 mkdir -p "$DEST"
 OUT="$DEST/staking-$(date +%Y%m%d-%H%M%S).db"
 sqlite3 "$DB" ".backup '$OUT'"
+# Verify the snapshot is sound BEFORE gzipping / pruning older good copies — a
+# corrupt snapshot must never silently replace a valid one.
+if ! sqlite3 "$OUT" "PRAGMA integrity_check" | grep -qx "ok"; then
+  echo "Snapshot FAILED integrity_check — discarding it, keeping prior backups." >&2
+  rm -f "$OUT"
+  exit 1
+fi
 gzip -f "$OUT"
+chmod 600 "$OUT.gz"
 echo "Backed up -> $OUT.gz"
 
 # Off-box copy (STRONGLY recommended — a box loss must not lose the ledger).
 # Configure once:
 #   apt install rclone && rclone config           # create a remote, e.g. 'b2'
+#   For cleartext protection off-box, make it an rclone CRYPT remote (or
+#   pre-encrypt with age/gpg) — each snapshot is the full money ledger.
 #   echo 'BACKUP_RCLONE_REMOTE=b2:your-bucket/clean' >> ../.env
 # Then the daily degen-backup.timer pushes each snapshot off-box automatically.
 if [ -n "${BACKUP_RCLONE_REMOTE:-}" ]; then

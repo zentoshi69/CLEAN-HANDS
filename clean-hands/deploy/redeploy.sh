@@ -9,7 +9,7 @@
 # diverged local history instead of force-merging.
 #
 # Idempotent. Never touches .env or the staker database.
-set -u
+set -euo pipefail
 APP=/home/clean/CLEAN-HANDS/clean-hands
 
 echo "== website (cleanhands.fun landing) =="
@@ -27,7 +27,13 @@ find "$APP/deploy/shop" -maxdepth 1 \( -name '*.jpg' -o -name '*.jpeg' -o -name 
   -exec cp {} /var/www/clean-site/shop/ \; 2>/dev/null || true
 
 echo "== root-domain nginx vhost (static site + same-origin API proxy) =="
-CERT=$(ls -d /etc/letsencrypt/live/cleanhands.fun* 2>/dev/null | head -1)
+# Prefer the canonical cert dir; only fall back to a renewed `-NNNN` variant.
+# (A bare `cleanhands.fun*` glob could splice in an unrelated cert dir.)
+if [ -d /etc/letsencrypt/live/cleanhands.fun ]; then
+  CERT=/etc/letsencrypt/live/cleanhands.fun
+else
+  CERT=$(ls -d /etc/letsencrypt/live/cleanhands.fun-* 2>/dev/null | sort | head -1 || true)
+fi
 if [ -n "$CERT" ]; then
   sed "s#/etc/letsencrypt/live/cleanhands.fun/#${CERT}/#g" "$APP/deploy/nginx-root.conf" \
     > /etc/nginx/sites-available/clean-site
@@ -35,7 +41,10 @@ if [ -n "$CERT" ]; then
 else
   echo "WARN: no cert for cleanhands.fun yet — run: certbot --nginx -d cleanhands.fun --redirect -n --agree-tos -m you@example.com"
 fi
-find /etc/nginx/sites-enabled -xtype l -print -delete
+# Drop ONLY our own symlink if it went stale — never sweep the whole dir, which
+# could delete an unrelated app's vhost on a shared box.
+[ -L /etc/nginx/sites-enabled/clean-site ] && [ ! -e /etc/nginx/sites-enabled/clean-site ] \
+  && rm -f /etc/nginx/sites-enabled/clean-site || true
 nginx -t && systemctl reload nginx || echo "WARN: nginx test failed; not reloaded"
 
 echo "== app =="
@@ -44,7 +53,7 @@ systemctl restart degen-staking && sleep 2
 
 echo "== VERIFY =="
 echo "app:       $(curl -s -o /dev/null -w '%{http_code}' https://app.cleanhands.fun/)"
-echo "wp(app):   $(curl -s https://app.cleanhands.fun/whitepaper | grep -oc data-act) acts"
+echo "wp(app):   $(curl -s https://app.cleanhands.fun/whitepaper | grep -oc data-act || true) acts"
 echo "website:   $(curl -s -o /dev/null -w '%{http_code}' https://cleanhands.fun/)"
 echo "wp(site):  $(curl -s -o /dev/null -w '%{http_code}' https://cleanhands.fun/whitepaper)"
-echo "site live: $(curl -s https://cleanhands.fun/ | grep -oc lv-staked) stat hooks"
+echo "site live: $(curl -s https://cleanhands.fun/ | grep -oc lv-staked || true) stat hooks"

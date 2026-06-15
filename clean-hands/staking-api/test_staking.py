@@ -682,7 +682,17 @@ def test_payout_and_fee():
                 (150_000_000, now - 30 * 86400, wallet),
             )
             conn.commit()
-        r = c.post("/api/payout", json={"token": token})
+        def _payout(address=None):
+            n = c.get("/api/nonce", params={"wallet": wallet}).json()["nonce"]
+            s = base58.b58encode(sk.sign(_auth.login_message(wallet, n).encode()).signature).decode()
+            body = {"token": token, "nonce": n, "signature": s}
+            if address is not None:
+                body["address"] = address
+            return c.post("/api/payout", json=body)
+
+        # a stolen session token alone (no fresh signature) cannot set the payout
+        assert c.post("/api/payout", json={"token": token, "address": "x"}).status_code == 401
+        r = _payout()
         assert r.status_code == 400 and "opens" in r.json()["detail"], r.text
         p = c.post("/api/profile", json={"token": token}).json()
         assert p["payout_setup_open"] is False and p["claim_fee_usd"] == 5.0
@@ -694,8 +704,8 @@ def test_payout_and_fee():
             conn.commit()
         p = c.post("/api/profile", json={"token": token}).json()
         assert p["payout_setup_open"] is True and p["payout_confirmed"] is False
-        assert c.post("/api/payout", json={"token": token, "address": "junk"}).status_code == 400
-        p = c.post("/api/payout", json={"token": token, "address": other}).json()
+        assert _payout("junk").status_code == 400  # invalid address (sig valid, window open)
+        p = _payout(other).json()
         assert p["payout_confirmed"] is True and p["payout_wallet"] == other
 
         # day 91: claim -> $5 fee at $0.05 = 100 $CLEAN deducted; net 50 paid

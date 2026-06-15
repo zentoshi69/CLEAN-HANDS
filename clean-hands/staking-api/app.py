@@ -332,6 +332,8 @@ class MmBody(BaseModel):
 class PayoutBody(BaseModel):
     token: str
     address: str | None = None  # default: the staking wallet itself
+    nonce: str | None = None
+    signature: str | None = None
 
 
 class TgStart(BaseModel):
@@ -477,6 +479,14 @@ def api_payout(body: PayoutBody, request: Request):
     defaults to the staking wallet itself."""
     wallet = _require(body.token)["w"]
     ratelimit.hit(request, "write", extra_key=wallet)
+    # Redirecting payouts is high-value, so require a FRESH wallet signature (a
+    # stolen session token alone can't produce one) — not just the bearer token.
+    if not (body.nonce and body.signature):
+        raise HTTPException(401, "a fresh wallet signature is required to set the payout address")
+    if not auth.consume_nonce(wallet, body.nonce):
+        raise HTTPException(401, "bad or expired nonce — request a new one")
+    if not auth.verify_wallet_signature(wallet, auth.login_message(wallet, body.nonce), body.signature):
+        raise HTTPException(401, "bad wallet signature")
     with db.db() as conn:
         row = db.get_staker(conn, wallet)
         if not row:
@@ -629,6 +639,11 @@ async def api_burn(body: BurnBody, request: Request):
         return {"burned": round(burned, 6), "profile": _profile(conn, wallet)}
 
 
+# MM deposits are valued at the live price, so they must be recent (a stale
+# transfer could be credited against a price that no longer reflects it).
+MM_DEPOSIT_MAX_AGE_S = int(os.environ.get("MM_DEPOSIT_MAX_AGE_S", "1800"))
+
+
 @app.post("/api/mm/add")
 async def api_mm_add(body: MmBody, request: Request):
     """Credit the market-maker liquidity booster after a wallet deposits SOL
@@ -644,9 +659,15 @@ async def api_mm_add(body: MmBody, request: Request):
             raise HTTPException(404, "unknown wallet")
         if db.mm_seen(conn, body.signature):
             raise HTTPException(409, "deposit already credited")
-    sol, clean = await solana.verify_mm_deposit(body.signature, wallet, mm_wallet)
+    sol, clean = await solana.verify_mm_deposit(
+        body.signature, wallet, mm_wallet, max_age_s=MM_DEPOSIT_MAX_AGE_S
+    )
     if sol <= 0 and clean <= 0:
-        raise HTTPException(400, "no SOL/$CLEAN transfer to the MM reserve found in that transaction")
+        raise HTTPException(
+            400,
+            "no recent SOL/$CLEAN transfer to the MM reserve found — submit the deposit "
+            "within ~30 min of the on-chain transfer",
+        )
     # Value each leg with the HARDENED prices (liquidity floor + SOL/USD clamp +
     # independent SOL pool), NEVER raw spot — otherwise an attacker who moves
     # their own thin CLEAN/SOL pool could mint max LP boost + permanent VIP for

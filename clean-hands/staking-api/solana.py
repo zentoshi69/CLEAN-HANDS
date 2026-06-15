@@ -10,6 +10,7 @@ Public RPC works for low volume; use a paid RPC (Helius/Triton) in production.
 from __future__ import annotations
 
 import os
+import time
 import httpx
 
 RPC_URL = os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
@@ -118,7 +119,8 @@ SOL_MINT = "So11111111111111111111111111111111111111112"
 
 
 async def verify_mm_deposit(
-    signature: str, wallet: str, mm_wallet: str, mint: str | None = None
+    signature: str, wallet: str, mm_wallet: str, mint: str | None = None,
+    max_age_s: int | None = None,
 ) -> tuple[float, float]:
     """Return (sol, clean) that `wallet` transferred TO `mm_wallet` in `signature`.
 
@@ -139,6 +141,12 @@ async def verify_mm_deposit(
     )
     if not tx or (tx.get("meta") or {}).get("err") is not None:
         return (0.0, 0.0)
+    # Reject stale deposits: legs are valued at the LIVE price, so an old transfer
+    # could be credited at a price that no longer reflects it — require recency.
+    if max_age_s is not None:
+        bt = tx.get("blockTime")
+        if not bt or (time.time() - float(bt)) > max_age_s:
+            return (0.0, 0.0)
 
     msg = (tx.get("transaction") or {}).get("message") or {}
     instrs = list(msg.get("instructions") or [])
