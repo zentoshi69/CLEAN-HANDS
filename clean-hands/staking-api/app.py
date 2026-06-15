@@ -353,34 +353,46 @@ class TgPoll(BaseModel):
 def api_nonce(wallet: str, request: Request):
     ratelimit.hit(request, "nonce")
     if not auth.is_valid_wallet(wallet):
+        print(f"[login] nonce REJECT bad_wallet ip={ratelimit.client_ip(request)}", flush=True)
         raise HTTPException(400, "invalid Solana wallet address")
     nonce = auth.issue_nonce(wallet)
+    print(f"[login] nonce wallet={wallet[:6]}… ip={ratelimit.client_ip(request)}", flush=True)
     return {"nonce": nonce, "message": auth.login_message(wallet, nonce)}
 
 
 @app.post("/api/login")
 async def api_login(body: LoginBody, request: Request):
     ratelimit.hit(request, "login", extra_key=body.wallet)
+    ip = ratelimit.client_ip(request)
+    w6 = (body.wallet or "")[:6]
+    # Instrument every branch — a mobile login must never fail invisibly again.
+    print(f"[login] attempt wallet={w6}… initData={'yes' if body.initData else 'no'} ip={ip}", flush=True)
     if not auth.is_valid_wallet(body.wallet):
+        print(f"[login] REJECT bad_wallet ip={ip}", flush=True)
         raise HTTPException(400, "invalid Solana wallet address")
     if not auth.consume_nonce(body.wallet, body.nonce):
+        print(f"[login] REJECT bad_nonce wallet={w6}…", flush=True)
         raise HTTPException(401, "bad or expired nonce — request a new one")
     msg = auth.login_message(body.wallet, body.nonce)
     if not auth.verify_wallet_signature(body.wallet, msg, body.signature):
+        print(f"[login] REJECT bad_signature wallet={w6}…", flush=True)
         raise HTTPException(401, "bad wallet signature")
 
     tg_id = username = None
     if body.initData:
         tg = auth.verify_init_data(body.initData)
         if not tg:
+            print(f"[login] REJECT bad_initData wallet={w6}… (expired/TTL or TG_COMMUNITY_TOKEN unset)", flush=True)
             raise HTTPException(401, "bad Telegram initData")
         try:
             tg_id = int(tg["id"])
         except (KeyError, ValueError, TypeError):
+            print(f"[login] REJECT bad_tg_user wallet={w6}…", flush=True)
             raise HTTPException(401, "bad Telegram user")
         username = tg.get("username") or tg.get("first_name")
 
     token, profile = await _complete_login(body.wallet, tg_id, body.ref, username)
+    print(f"[login] OK wallet={w6}… tg={tg_id if tg_id is not None else '-'}", flush=True)
     return {"token": token, "profile": profile}
 
 
@@ -1197,9 +1209,11 @@ def api_tg_connect(
     errorMessage: str | None = None,
 ):
     if not _SID_RE.match(sid):
+        _tg_log(sid, "connect REJECT", reason="bad_sid")
         return _tg_page("Invalid link", "<p>Reopen the app and connect again.</p>", err=True)
     st = _tg_get(sid)
     if not st:
+        _tg_log(sid, "connect REJECT", reason="no_session")
         return _tg_page("Session expired", "<p>Reopen the app and connect again.</p>", err=True)
     if errorCode:
         st.update(status="error", err=errorMessage or "wallet error")
@@ -1267,9 +1281,11 @@ async def api_tg_sign(
     errorMessage: str | None = None,
 ):
     if not _SID_RE.match(sid):
+        _tg_log(sid, "sign REJECT", reason="bad_sid")
         return _tg_page("Invalid link", "<p>Reopen the app and connect again.</p>", err=True)
     st = _tg_get(sid)
     if not st or st.get("status") not in ("connected", "done"):
+        _tg_log(sid, "sign REJECT", reason="no_session")
         return _tg_page("Session expired", "<p>Reopen the app and connect again.</p>", err=True)
     if errorCode:
         st.update(status="error", err=errorMessage or "wallet error")

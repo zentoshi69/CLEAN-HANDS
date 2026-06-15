@@ -295,10 +295,23 @@
       return;
     }
 
-    // CASE 3 — Telegram mobile / mobile browser with no injected wallet. Re-open
-    // the app INSIDE the wallet's browser, where its provider is injected and
-    // connect works without a deeplink round-trip. WalletConnect covers every
-    // other wallet app.
+    // CASE 3 — Telegram mobile / mobile browser with no injected wallet.
+    if (freshInitData()) {
+      // Inside Telegram: the SERVER-mediated handshake is the robust path — the
+      // wallet hop round-trips through our server and the webview just polls, so
+      // it survives Telegram's iOS webview relaunch (and logs every step).
+      Object.keys(TG_WALLETS).forEach((id) =>
+        addBtn(el, 'Connect ' + TG_WALLETS[id].name, () => loginTg(id)),
+      );
+      addWalletConnect(el);
+      CleanWallet.listWallets().forEach((w) =>
+        addBtn(el, 'Open in ' + w.name + ' instead', () => CleanWallet.openInWallet(w.id), true),
+      );
+      setNote('Tap your wallet — approve connect + sign, then you land back here automatically.');
+      return;
+    }
+    // Plain mobile browser (not Telegram): re-open the app INSIDE the wallet's
+    // browser, where its provider is injected; WalletConnect covers the rest.
     CleanWallet.listWallets().forEach((w) => {
       addBtn(el, 'Open in ' + w.name, () => CleanWallet.openInWallet(w.id), true);
     });
@@ -820,6 +833,7 @@
       const { nonce, message } = await getNonce(pubkey);
       CleanWallet.signMessage(message, { nonce: nonce, wallet: pubkey });
     } catch (e) {
+      CONNECTING = false;
       toast('Login failed: ' + e.message);
       showConnect();
     }
@@ -848,9 +862,104 @@
       show('stake');
       CONNECTING = false;
     } catch (e) {
+      CONNECTING = false;
       toast('Login failed: ' + e.message);
       showConnect('Login failed — try again.');
     }
+  }
+
+  // ---- Telegram server-mediated wallet handshake (mobile-robust) --------- //
+  // The wallet hop round-trips through OUR server (/api/tg/connect -> /api/tg/
+  // sign) and the webview just POLLS by its verified Telegram identity, so it
+  // completes no matter how often Telegram relaunches the iOS webview. The
+  // server logs every step ([tg-handshake]). This is the reliable mobile path.
+  const TG_WALLETS = {
+    phantom: { name: 'Phantom', base: 'https://phantom.app/ul/v1' },
+    solflare: { name: 'Solflare', base: 'https://solflare.com/ul/v1' },
+    backpack: { name: 'Backpack', base: 'https://backpack.app/ul/v1' },
+  };
+  let _tgPoll = null;
+  let _tgDeadline = 0;
+  function stopTgPoll() {
+    if (_tgPoll) {
+      clearTimeout(_tgPoll);
+      _tgPoll = null;
+    }
+  }
+  // Re-read initData on EVERY call — Telegram refreshes it on a webview relaunch,
+  // so a value cached at boot can age past the server's initData TTL mid-flow.
+  function freshInitData() {
+    return (tg && tg.initData) || initData || '';
+  }
+  async function loginTg(walletId) {
+    const w = TG_WALLETS[walletId];
+    if (!w) return loginWalletConnect();
+    const id = freshInitData();
+    if (!id) return toast('Open this inside Telegram to connect this way.');
+    CONNECTING = true;
+    $('connect-spin').classList.remove('hide');
+    setNote('Opening ' + w.name + ' — approve the connect, then the signature.');
+    try {
+      const r = await api('/api/tg/start', { initData: id, wallet: walletId });
+      SS.setItem('clw_tgsid', r.sid);
+      const params = new URLSearchParams({
+        dapp_encryption_public_key: r.dapp_pub,
+        cluster: 'mainnet-beta',
+        app_url: location.origin,
+        redirect_link: location.origin + '/api/tg/connect/' + r.sid,
+      });
+      const ul = w.base + '/connect?' + params.toString();
+      if (tg && tg.openLink) tg.openLink(ul);
+      else window.location.href = ul;
+      pollTg(true);
+    } catch (e) {
+      CONNECTING = false;
+      $('connect-spin').classList.add('hide');
+      toast('Couldn’t start sign-in: ' + (e.message || e));
+      diag('tg start err: ' + (e.message || e));
+    }
+  }
+  function pollTg(fresh) {
+    stopTgPoll();
+    if (fresh || Date.now() > _tgDeadline) _tgDeadline = Date.now() + 5 * 60 * 1000;
+    const tick = async () => {
+      if (Date.now() > _tgDeadline) {
+        stopTgPoll();
+        CONNECTING = false;
+        $('connect-spin').classList.add('hide');
+        setNote('Didn’t hear back from your wallet — tap your wallet to try again.');
+        return;
+      }
+      let r = null;
+      try {
+        r = await api('/api/tg/poll', { initData: freshInitData(), sid: SS.getItem('clw_tgsid') || '' });
+      } catch (e) {
+        /* transient network/429 — keep polling until the deadline */
+      }
+      if (r && r.status === 'done') {
+        stopTgPoll();
+        SS.removeItem('clw_tgsid');
+        TOKEN = r.token;
+        SS.setItem('clw_token', TOKEN);
+        CONNECTING = false;
+        try {
+          paint(r.profile);
+        } catch (_) {}
+        showApp();
+        show('stake');
+        return;
+      }
+      if (r && r.status === 'error') {
+        stopTgPoll();
+        SS.removeItem('clw_tgsid');
+        CONNECTING = false;
+        $('connect-spin').classList.add('hide');
+        setNote('Sign-in problem: ' + (r.detail || 'try again'));
+        return;
+      }
+      _tgPoll = setTimeout(tick, 2000);
+    };
+    _tgPoll = setTimeout(tick, 1500);
   }
 
   // ---- in-app burn (beta, flag-gated; burn is irreversible) ------------- //
@@ -1188,6 +1297,7 @@
         return c && c.kind === 'mm' ? afterMmTx(s, c) : afterBurnTx(s, c);
       },
       onError: (e) => {
+        CONNECTING = false;
         toast('Wallet: ' + (e.message || e));
         showConnect();
         diag('wallet err: ' + (e.message || e));
@@ -1195,6 +1305,43 @@
     });
 
     if (step) return; // a callback handler is driving the flow
+
+    // Resume / recover an in-flight Telegram wallet handshake after a webview
+    // relaunch. One poll: if it already completed server-side we log straight in
+    // (the server recovers a lost sid via its per-user pointer); if it's still
+    // in flight we keep polling; otherwise fall through to the normal connect.
+    if (!TOKEN && freshInitData()) {
+      try {
+        const r = await api('/api/tg/poll', {
+          initData: freshInitData(),
+          sid: SS.getItem('clw_tgsid') || '',
+        });
+        if (r.status === 'done') {
+          SS.removeItem('clw_tgsid');
+          TOKEN = r.token;
+          SS.setItem('clw_token', TOKEN);
+          try {
+            paint(r.profile);
+          } catch (_) {}
+          showApp();
+          show('stake');
+          return;
+        }
+        if (r.status === 'error' || SS.getItem('clw_tgsid')) {
+          showConnect();
+          if (r.status === 'error') {
+            setNote('Sign-in problem: ' + (r.detail || 'try again'));
+          } else {
+            $('connect-spin').classList.remove('hide');
+            setNote('Finishing sign-in…');
+            pollTg(true);
+          }
+          return;
+        }
+      } catch (e) {
+        /* not in Telegram, or transient — fall through to normal boot */
+      }
+    }
 
     // Returning user with a live token?
     if (TOKEN) {
