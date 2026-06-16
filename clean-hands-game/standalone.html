@@ -168,6 +168,12 @@ body{
 
 /* ============ PLAY AREA (hands) ============ */
 .play{flex:1 1 auto;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-height:0;margin-top:2px}
+/* soft wash directly behind the gloves — mutes the busy blue pool of the scene
+   photo so the hands read cleanly, while the villa/pool still show at the edges
+   and top. Sits between the scene and the hands. */
+.play::before{content:"";position:absolute;left:50%;bottom:0;transform:translateX(-50%);
+  width:120%;height:82%;z-index:0;pointer-events:none;
+  background:radial-gradient(62% 62% at 50% 76%,rgba(238,244,251,.88) 0%,rgba(238,244,251,.5) 40%,rgba(238,244,251,0) 72%)}
 .loc{position:absolute;left:6px;top:6px;z-index:3;display:flex;align-items:center;gap:6px;
   background:var(--card);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   border:1px solid var(--line);border-radius:99px;padding:7px 14px 7px 10px;box-shadow:var(--shadow);
@@ -187,6 +193,7 @@ body{
      percentages resolve against the container width and do NOT depend on flex
      content resolution, so the height is rock-solid through every re-layout. */
   height:0;padding-bottom:63.696%;   /* 293 / 460 — replaces aspect-ratio */
+  z-index:1;                         /* sit above the .play::before wash */
   transform-origin:center bottom;cursor:grab;user-select:none;-webkit-user-select:none;
   transition:transform .12s var(--ease);
 }
