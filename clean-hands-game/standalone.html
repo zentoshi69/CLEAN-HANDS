@@ -377,45 +377,39 @@ body{
 #gloveCorner:hover{transform:scale(1.08);box-shadow:0 4px 18px rgba(10,37,64,.4),0 0 0 2px rgba(133,191,248,.6)}
 #gloveCorner img{width:100%;height:100%;object-fit:cover;object-position:center 10%;display:block}
 
-/* ===== CITY CARD CRIT MORPH ===== */
-#scene.crit-flash{
-  filter:brightness(0.12) saturate(0);
-  transition:filter 0.28s ease,transform 1.2s var(--ease);
-}
-#scene-crit{
-  position:absolute;inset:14px;border-radius:34px;z-index:8;
-  overflow:hidden;pointer-events:none;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+/* ===== CITY HUD PILL → ACHIEVEMENT MORPH (the middle top-bar card) =====
+   The .tcard.mid pill keeps its exact shape & grid slot; on a crit its
+   contents morph in-place into the $CLEAN STREAK ×5! achievement, then back.
+   The achievement overlay is absolutely positioned so layout never shifts. */
+.tcard.mid .ic,.tcard.mid b{transition:opacity .22s ease}
+.tcard.mid.crit .ic,.tcard.mid.crit b{opacity:0}
+.tcard.mid::before{ /* navy→electric-blue gradient flood */
+  content:"";position:absolute;inset:0;z-index:0;border-radius:inherit;pointer-events:none;
   background:linear-gradient(140deg,#060d1e 0%,#091e4a 40%,#0449a8 75%,#0636e8 100%);
-  opacity:0;transform:scale(0.94);
-  transition:opacity .32s ease,transform .55s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease;
-}
-#scene-crit.active{
-  opacity:1;transform:scale(1);
-  animation:sceneBorderGlow 1.6s ease-in-out infinite;
-}
-#scene-crit::before{
-  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
-  background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.22) 50%,transparent 80%);
-  transform:translateX(-130%);
-}
-#scene-crit.active::before{
-  animation:streakShimmer 1.6s ease-in-out 2;
-}
-@keyframes sceneBorderGlow{
-  0%,100%{box-shadow:0 0 0 3px #00d4ff,0 0 0 7px rgba(0,79,255,.45),0 0 55px rgba(0,120,255,.5)}
-  33%   {box-shadow:0 0 0 3px #9000ff,0 0 0 7px rgba(144,0,255,.45),0 0 55px rgba(144,0,255,.5)}
-  66%   {box-shadow:0 0 0 3px #ff00c0,0 0 0 7px rgba(255,0,192,.4),0 0 55px rgba(255,0,192,.45)}
-}
-.sc-label{position:relative;z-index:1;font-size:11px;font-weight:800;letter-spacing:3.5px;
-  text-transform:uppercase;color:rgba(255,255,255,.55);font-family:inherit}
-.sc-title{position:relative;z-index:1;font-size:28px;font-weight:900;color:#fff;
-  text-shadow:0 0 20px rgba(90,180,255,.9),0 0 50px rgba(0,90,255,.6);letter-spacing:-.2px;font-family:inherit}
-.sc-mult{position:relative;z-index:1;font-size:76px;font-weight:900;line-height:1;
+  opacity:0;transition:opacity .3s ease}
+.tcard.mid::after{ /* shimmer sweep */
+  content:"";position:absolute;inset:0;z-index:1;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.28) 50%,transparent 80%);
+  transform:translateX(-130%);opacity:0}
+.tcard.mid.crit{border-color:transparent;animation:tcCritGlow 1.4s ease-in-out infinite}
+.tcard.mid.crit::before{opacity:1}
+.tcard.mid.crit::after{opacity:1;animation:streakShimmer 1.4s ease-in-out 1}
+.tc-crit{position:absolute;inset:0;z-index:2;pointer-events:none;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  opacity:0;transform:scale(.78);
+  transition:opacity .26s ease,transform .5s cubic-bezier(.34,1.56,.64,1)}
+.tcard.mid.crit .tc-crit{opacity:1;transform:scale(1)}
+.tc-crit .s{font-size:8.5px;font-weight:900;letter-spacing:1.6px;line-height:1;color:#fff;
+  text-shadow:0 0 10px rgba(90,180,255,.95),0 0 22px rgba(0,90,255,.6)}
+.tc-crit .m{font-size:21px;font-weight:900;line-height:1;
   background:linear-gradient(135deg,#ffe15c,#ffb200,#ff7400);
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
-  filter:drop-shadow(0 0 22px rgba(255,170,0,.9));font-family:inherit}
-.sc-stars{position:relative;z-index:1;font-size:22px;letter-spacing:8px;opacity:.8}
+  filter:drop-shadow(0 0 10px rgba(255,170,0,.95))}
+@keyframes tcCritGlow{
+  0%,100%{box-shadow:0 0 0 2px #00d4ff,0 0 18px rgba(0,120,255,.75)}
+  33%    {box-shadow:0 0 0 2px #9000ff,0 0 18px rgba(144,0,255,.75)}
+  66%    {box-shadow:0 0 0 2px #ff00c0,0 0 18px rgba(255,0,192,.7)}
+}
 
 /* bust flash */
 #bust{position:absolute;inset:0;z-index:40;background:radial-gradient(circle,rgba(255,40,40,.0),rgba(180,0,0,.55));
@@ -693,12 +687,6 @@ body{
 
   <div id="scene"></div>
   <div id="cardFrame" aria-hidden="true"></div>
-  <div id="scene-crit" aria-hidden="true">
-    <div class="sc-label">✦ critical hit ✦</div>
-    <div class="sc-title">$CLEAN STREAK</div>
-    <div class="sc-mult">×5!</div>
-    <div class="sc-stars">✦ ✦ ✦</div>
-  </div>
   <!-- corner $ watermark removed per request -->
   <div class="aura"><b></b><b></b></div>
 
@@ -709,6 +697,7 @@ body{
       <div class="tcard mid">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M12 21s-7-5.5-7-11a7 7 0 0114 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>
         <b id="cityName">Santorini</b>
+        <div class="tc-crit" aria-hidden="true"><span class="s">$CLEAN STREAK</span><span class="m">×5!</span></div>
       </div>
       <div class="tcard end"><span class="kk">GOAL</span><b id="goalAmt">10K</b></div>
     </div>
@@ -893,6 +882,15 @@ const CITIES=CITY_NAMES.map(name=>{
 function levelFromTotal(t){ let lv=1; for(let i=0;i<LEVELS.length;i++) if(t>=LEVELS[i].at) lv=i+1; return Math.min(lv,MAXLEVEL); }
 function cityIdxForLevel(lv){ return CITY_NAMES.indexOf(LEVELS[lv-1].city); }
 function nextGoal(lv){ return lv<MAXLEVEL ? LEVELS[lv].at : LEVELS[MAXLEVEL-1].at; }
+/* The player-facing city NAME must match the backdrop actually on screen.
+   Levels with sceneUrl:null reuse the default art (Santorini), so the label
+   must not advance to Dubai/Singapore until those levels ship real art.
+   Returns the city of the most-recent level (≤lv) that owns its own scene,
+   else the default backdrop's city. Auto-advances once sceneUrl is added. */
+function sceneCityForLevel(lv){
+  for(let i=lv-1;i>=0;i--){ if(LEVELS[i].sceneUrl) return LEVELS[i].city; }
+  return LEVELS[0].city;
+}
 
 /* ============ CAPS (hard limits — keep values finite & sane) ============ */
 const CAP={
@@ -1098,15 +1096,11 @@ function doRiffle(clientX,clientY,swipe){
   moneyPop(x,y, '+'+fmt(earn).replace('$','$'), crit?'crit':'');
   if(crit){ coinPop(x+18,y); coinPop(x-18,y+6);
     (function(){
-      var sc=document.getElementById('scene-crit'),bg=document.getElementById('scene');
-      if(!sc) return;
-      if(sc._ct) clearTimeout(sc._ct);
-      if(bg) bg.classList.add('crit-flash');
-      sc.classList.add('active');
-      sc._ct=setTimeout(function(){
-        sc.classList.remove('active');
-        if(bg) bg.classList.remove('crit-flash');
-      },1900);
+      var mid=document.querySelector('.tcard.mid');
+      if(!mid) return;
+      if(mid._ct) clearTimeout(mid._ct);
+      mid.classList.remove('crit');void mid.offsetWidth;mid.classList.add('crit');
+      mid._ct=setTimeout(function(){ mid.classList.remove('crit'); },1900);
     })();
   }
 
@@ -1194,13 +1188,15 @@ function applyLevelScene(){
 function checkLevel(){
   const newLv=levelFromTotal(S.total);
   if(newLv>S.level){
-    const prevCity=LEVELS[S.level-1].city;
+    const prevSceneCity=sceneCityForLevel(S.level);
     S.level=newLv;
     S.cityIdx=cityIdxForLevel(newLv);
     const L=LEVELS[newLv-1];
     toast('Level '+String(newLv).padStart(2,'0')+' · '+L.house,'📈','good');
-    if(L.city!==prevCity){
-      toast('New territory: '+L.city,'🌍','good');
+    const newSceneCity=sceneCityForLevel(newLv);
+    if(newSceneCity!==prevSceneCity){
+      // only announce "new territory" when the backdrop actually changes city
+      toast('New territory: '+newSceneCity,'🌍','good');
       $('#scene').animate([{filter:'brightness(1.6) saturate(1.4)'},{filter:'none'}],{duration:900});
     }
     applyLevelScene();
@@ -1226,12 +1222,12 @@ function bust(){
   if(S.cash>=pendingFine){
     isGameOver=false;
     $('#bustTitle').textContent='BUSTED!';
-    $('#bustText').textContent=`Heat maxed out. The feds raided ${CITIES[S.cityIdx].name}. Fine: ${fmt(pendingFine)}.`;
+    $('#bustText').textContent=`Heat maxed out. The feds raided ${sceneCityForLevel(S.level)}. Fine: ${fmt(pendingFine)}.`;
     $('#bustBtn').textContent='PAY THE FINE & LAY LOW';
   } else {
     isGameOver=true;
     $('#bustTitle').textContent='GAME OVER';
-    $('#bustText').textContent=`The feds raided ${CITIES[S.cityIdx].name}. Fine: ${fmt(pendingFine)} — and your wallet's empty. The operation is finished.`;
+    $('#bustText').textContent=`The feds raided ${sceneCityForLevel(S.level)}. Fine: ${fmt(pendingFine)} — and your wallet's empty. The operation is finished.`;
     $('#bustBtn').textContent='START OVER';
   }
   $('#bust').classList.add('show');
@@ -1328,7 +1324,7 @@ function refresh(light){
   D.heatFlav.textContent=heatFlav();
   app.classList.toggle('heaty',S.heat>60);
   // top bar — LEVEL n · CITY · GOAL n (no $ on goal, matches mockup "10K")
-  D.cityName.textContent=LEVELS[S.level-1].city;
+  D.cityName.textContent=sceneCityForLevel(S.level);
   D.lvlNum.textContent=S.level;
   D.goalAmt.textContent = S.level<MAXLEVEL ? fmt(nextGoal(S.level)).replace('$','') : 'MAX';
   // featured upgrade card — pops up only when affordable; gone forever once maxed
