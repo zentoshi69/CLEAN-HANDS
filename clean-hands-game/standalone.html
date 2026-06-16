@@ -1707,19 +1707,14 @@ function boot(){
   var MUSIC_BASE=0.34;
   function initMusic(){
     try{ musicMellow=new Audio('assets/music_mellow.mp3'); musicMellow.loop=true; musicMellow.preload='auto'; musicMellow.volume=MUSIC_BASE; }catch(e){}
-    try{ musicFunk  =new Audio('assets/music_funk.mp3');   musicFunk.loop=true;   musicFunk.preload='auto';   musicFunk.volume=0; }catch(e){}
   }
   function _playA(a){ if(!a) return; try{ var p=a.play(); if(p&&p.catch) p.catch(function(){}); }catch(e){} }
   function startMusic(){ if(META.mute) return; if(!musicMellow) initMusic();
-    if(!_musicOn){ _musicOn=true; _playA(musicMellow); _playA(musicFunk); } applyMusicMix(); }
-  function applyMusicMix(){ if(!musicMellow||!musicFunk) return;
-    if(META.mute){ try{ musicMellow.pause(); musicFunk.pause(); }catch(e){} musicMellow.volume=0; musicFunk.volume=0; return; }
-    var f=Math.max(0,Math.min(1,_mixFunk));
-    musicFunk.volume=MUSIC_BASE*f; musicMellow.volume=MUSIC_BASE*(1-f);
-    if(_musicOn){
-      if(f<=0.02){ if(!musicFunk.paused){ try{musicFunk.pause();}catch(e){} } } else if(musicFunk.paused) _playA(musicFunk);
-      if(f>=0.98){ if(!musicMellow.paused){ try{musicMellow.pause();}catch(e){} } } else if(musicMellow.paused) _playA(musicMellow);
-    }
+    if(!_musicOn){ _musicOn=true; _playA(musicMellow); } applyMusicMix(); }
+  function applyMusicMix(){ if(!musicMellow) return;   // single track — mellow only
+    if(META.mute){ try{ musicMellow.pause(); }catch(e){} musicMellow.volume=0; return; }
+    musicMellow.volume=MUSIC_BASE;
+    if(_musicOn && musicMellow.paused) _playA(musicMellow);
   }
   // intensity rises with tap/swipe activity and decays — drives mellow→funk (backbone rule)
   var _lastMusTick=performance.now();
