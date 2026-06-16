@@ -377,6 +377,46 @@ body{
 #gloveCorner:hover{transform:scale(1.08);box-shadow:0 4px 18px rgba(10,37,64,.4),0 0 0 2px rgba(133,191,248,.6)}
 #gloveCorner img{width:100%;height:100%;object-fit:cover;object-position:center 10%;display:block}
 
+/* ===== CITY CARD CRIT MORPH ===== */
+#scene.crit-flash{
+  filter:brightness(0.12) saturate(0);
+  transition:filter 0.28s ease,transform 1.2s var(--ease);
+}
+#scene-crit{
+  position:absolute;inset:14px;border-radius:34px;z-index:8;
+  overflow:hidden;pointer-events:none;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  background:linear-gradient(140deg,#060d1e 0%,#091e4a 40%,#0449a8 75%,#0636e8 100%);
+  opacity:0;transform:scale(0.94);
+  transition:opacity .32s ease,transform .55s cubic-bezier(.34,1.56,.64,1),box-shadow .3s ease;
+}
+#scene-crit.active{
+  opacity:1;transform:scale(1);
+  animation:sceneBorderGlow 1.6s ease-in-out infinite;
+}
+#scene-crit::before{
+  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.22) 50%,transparent 80%);
+  transform:translateX(-130%);
+}
+#scene-crit.active::before{
+  animation:streakShimmer 1.6s ease-in-out 2;
+}
+@keyframes sceneBorderGlow{
+  0%,100%{box-shadow:0 0 0 3px #00d4ff,0 0 0 7px rgba(0,79,255,.45),0 0 55px rgba(0,120,255,.5)}
+  33%   {box-shadow:0 0 0 3px #9000ff,0 0 0 7px rgba(144,0,255,.45),0 0 55px rgba(144,0,255,.5)}
+  66%   {box-shadow:0 0 0 3px #ff00c0,0 0 0 7px rgba(255,0,192,.4),0 0 55px rgba(255,0,192,.45)}
+}
+.sc-label{position:relative;z-index:1;font-size:11px;font-weight:800;letter-spacing:3.5px;
+  text-transform:uppercase;color:rgba(255,255,255,.55);font-family:inherit}
+.sc-title{position:relative;z-index:1;font-size:28px;font-weight:900;color:#fff;
+  text-shadow:0 0 20px rgba(90,180,255,.9),0 0 50px rgba(0,90,255,.6);letter-spacing:-.2px;font-family:inherit}
+.sc-mult{position:relative;z-index:1;font-size:76px;font-weight:900;line-height:1;
+  background:linear-gradient(135deg,#ffe15c,#ffb200,#ff7400);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 22px rgba(255,170,0,.9));font-family:inherit}
+.sc-stars{position:relative;z-index:1;font-size:22px;letter-spacing:8px;opacity:.8}
+
 /* bust flash */
 #bust{position:absolute;inset:0;z-index:40;background:radial-gradient(circle,rgba(255,40,40,.0),rgba(180,0,0,.55));
   opacity:0;pointer-events:none;transition:opacity .2s;display:grid;place-items:center}
@@ -653,6 +693,12 @@ body{
 
   <div id="scene"></div>
   <div id="cardFrame" aria-hidden="true"></div>
+  <div id="scene-crit" aria-hidden="true">
+    <div class="sc-label">✦ critical hit ✦</div>
+    <div class="sc-title">$CLEAN STREAK</div>
+    <div class="sc-mult">×5!</div>
+    <div class="sc-stars">✦ ✦ ✦</div>
+  </div>
   <!-- corner $ watermark removed per request -->
   <div class="aura"><b></b><b></b></div>
 
@@ -1050,7 +1096,19 @@ function doRiffle(clientX,clientY,swipe){
   const x=(clientX||r.left+r.width/2)-r.left;
   const y=(clientY||r.top+r.height*0.62)-r.top;
   moneyPop(x,y, '+'+fmt(earn).replace('$','$'), crit?'crit':'');
-  if(crit){ coinPop(x+18,y); coinPop(x-18,y+6); toast('$CLEAN STREAK','×5!','streak'); }
+  if(crit){ coinPop(x+18,y); coinPop(x-18,y+6);
+    (function(){
+      var sc=document.getElementById('scene-crit'),bg=document.getElementById('scene');
+      if(!sc) return;
+      if(sc._ct) clearTimeout(sc._ct);
+      if(bg) bg.classList.add('crit-flash');
+      sc.classList.add('active');
+      sc._ct=setTimeout(function(){
+        sc.classList.remove('active');
+        if(bg) bg.classList.remove('crit-flash');
+      },1900);
+    })();
+  }
 
   checkLevel(); refresh();
   if(navigator.vibrate&&!reduce) navigator.vibrate(crit?[8,20,8]:6);
