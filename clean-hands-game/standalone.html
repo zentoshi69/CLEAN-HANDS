@@ -337,6 +337,46 @@ body{
 .toast.good{background:linear-gradient(135deg,#0fae54,#18c964)}
 .toast.bad{background:linear-gradient(135deg,#e23,#ff5a5a)}
 
+/* ===== STREAK achievement card ===== */
+.toast.streak{background:none;border-radius:20px;padding:0;width:min(310px,88vw);min-height:0;overflow:visible;
+  box-shadow:none;gap:0;
+  transform:translateY(-32px) scale(0.72);opacity:0;
+  transition:transform .48s cubic-bezier(.34,1.56,.64,1),opacity .3s ease}
+.toast.streak.show{transform:translateY(0) scale(1);opacity:1}
+.streak-wrap{position:relative;border-radius:20px}
+.streak-glow{position:absolute;inset:-3px;border-radius:23px;z-index:0;
+  background:linear-gradient(135deg,#00d4ff,#004fff,#9000ff,#ff00c0,#00d4ff);
+  background-size:300% 100%;animation:streakBorder 2.2s linear infinite;opacity:.9}
+.streak-card{position:relative;z-index:1;overflow:hidden;border-radius:20px;
+  background:linear-gradient(140deg,#060d1e 0%,#091e4a 35%,#0449a8 70%,#0636e8 100%);
+  border:1.5px solid rgba(255,255,255,.14);padding:20px 24px 18px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  box-shadow:0 0 0 1px rgba(255,255,255,.05),0 12px 40px rgba(0,70,255,.55),0 0 70px rgba(0,150,255,.2)}
+.streak-card::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.2) 50%,transparent 80%);
+  animation:streakShimmer 1.6s ease-in-out infinite;border-radius:20px}
+.streak-label{position:relative;z-index:2;font-size:10px;font-weight:800;letter-spacing:3.5px;
+  text-transform:uppercase;color:rgba(255,255,255,.5)}
+.streak-title{position:relative;z-index:2;font-size:19px;font-weight:800;color:#fff;
+  text-shadow:0 0 20px rgba(90,180,255,.9),0 0 50px rgba(0,90,255,.6);letter-spacing:-.2px}
+.streak-mult{position:relative;z-index:2;font-size:44px;font-weight:900;line-height:1.05;
+  background:linear-gradient(135deg,#ffe15c,#ffb200,#ff7400);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 16px rgba(255,170,0,.9))}
+.streak-stars{position:relative;z-index:2;font-size:16px;letter-spacing:6px;opacity:.8}
+@keyframes streakShimmer{0%{transform:translateX(-130%)}100%{transform:translateX(230%)}}
+@keyframes streakBorder{0%{background-position:0% 50%}100%{background-position:300% 50%}}
+
+/* gloves corner badge — sits below the sound toggle */
+#gloveCorner{position:absolute;top:58px;right:8px;z-index:6;
+  width:44px;height:44px;border-radius:50%;overflow:hidden;
+  border:2.5px solid rgba(255,255,255,.8);
+  box-shadow:0 2px 14px rgba(10,37,64,.28),0 0 0 1px rgba(133,191,248,.35);
+  background:linear-gradient(135deg,#5ab4f7,#1a4b8c);cursor:pointer;
+  transition:transform .15s ease,box-shadow .15s ease}
+#gloveCorner:hover{transform:scale(1.08);box-shadow:0 4px 18px rgba(10,37,64,.4),0 0 0 2px rgba(133,191,248,.6)}
+#gloveCorner img{width:100%;height:100%;object-fit:cover;object-position:center 10%;display:block}
+
 /* bust flash */
 #bust{position:absolute;inset:0;z-index:40;background:radial-gradient(circle,rgba(255,40,40,.0),rgba(180,0,0,.55));
   opacity:0;pointer-events:none;transition:opacity .2s;display:grid;place-items:center}
@@ -921,7 +961,16 @@ function coinPop(x,y){
 }
 function toast(msg,em,kind){
   const t=document.createElement('div');t.className='toast '+(kind||'');
-  t.innerHTML=(em?`<span class="em">${em}</span>`:'')+`<span>${msg}</span>`;
+  if(kind==='streak'){
+    t.innerHTML='<div class="streak-wrap"><div class="streak-glow"></div><div class="streak-card">'+
+      '<div class="streak-label">✦ critical hit ✦</div>'+
+      '<div class="streak-title">'+msg+'</div>'+
+      '<div class="streak-mult">'+em+'</div>'+
+      '<div class="streak-stars">✦ ✦ ✦</div>'+
+      '</div></div>';
+  } else {
+    t.innerHTML=(em?`<span class="em">${em}</span>`:'')+`<span>${msg}</span>`;
+  }
   $('#toasts').appendChild(t);requestAnimationFrame(()=>t.classList.add('show'));
   setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),400)},1900);
 }
@@ -1001,7 +1050,7 @@ function doRiffle(clientX,clientY,swipe){
   const x=(clientX||r.left+r.width/2)-r.left;
   const y=(clientY||r.top+r.height*0.62)-r.top;
   moneyPop(x,y, '+'+fmt(earn).replace('$','$'), crit?'crit':'');
-  if(crit){ coinPop(x+18,y); coinPop(x-18,y+6); toast('$CLEAN STREAK ×5!','✨','good'); }
+  if(crit){ coinPop(x+18,y); coinPop(x-18,y+6); toast('$CLEAN STREAK','×5!','streak'); }
 
   checkLevel(); refresh();
   if(navigator.vibrate&&!reduce) navigator.vibrate(crit?[8,20,8]:6);
@@ -1830,11 +1879,16 @@ function boot(){
       var tk=document.createElement('div');
       tk.className='ticker loading'; tk.id='clnTicker';
       tk.innerHTML =
-        '<span class="coin" style="width:32px;height:32px;font-size:16px"><span class="s">$</span></span>'+
+        '<span class="coin" id="clnCoinBadge" style="width:32px;height:32px;font-size:16px;overflow:hidden;padding:0;flex:0 0 auto">'+
+          '<img id="clnCoinImg" alt="$CLEAN" style="width:100%;height:100%;object-fit:cover;object-position:center 10%;display:block;transition:opacity .3s">'+
+        '</span>'+
         '<span class="sym">$CLEAN</span>'+
         '<span class="px" id="clnPx">price…</span>'+
         '<button class="tkbuy" id="clnBuy" type="button">BUY</button>';
       ui.insertBefore(tk, ui.firstChild);     // first child → sits at the top of the column
+      // Set gloves image in coin badge
+      (function(){ var ci=document.getElementById('clnCoinImg');
+        if(ci && G.FRAME_URLS && G.FRAME_URLS[0]){ ci.src=G.FRAME_URLS[0]; } })();
       $('#clnBuy').addEventListener('click', function(e){ e.stopPropagation(); sfx('tap'); openBuy(); });
       tk.addEventListener('click', function(e){ if(e.target.id==='clnBuy') return; sfx('tap'); openBuy(); });
     }
@@ -1861,6 +1915,15 @@ function boot(){
         snd.textContent = META.mute ? '🔇' : '🔊';
         snd.addEventListener('click', function(e){ e.stopPropagation(); setMute(!META.mute); if(!META.mute) sfx('tap'); });
         play.appendChild(snd);
+      }
+      // Gloves logo badge — top-right of play area (replaces removed $ watermark)
+      if(!$('#gloveCorner')){
+        var badge=document.createElement('div'); badge.id='gloveCorner';
+        var bImg=document.createElement('img'); bImg.alt='$CLEAN';
+        if(G.FRAME_URLS && G.FRAME_URLS[0]) bImg.src=G.FRAME_URLS[0];
+        badge.appendChild(bImg);
+        play.appendChild(badge);
+        badge.addEventListener('click', function(e){ e.stopPropagation(); sfx('tap'); openBuy(); });
       }
     }
 
