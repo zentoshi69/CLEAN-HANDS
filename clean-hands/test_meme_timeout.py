@@ -2,8 +2,9 @@
 
 The flagship AI wash (`ai_glove_hands`) used a single 120 s httpx timeout with
 no short connect cap and no overall watchdog, and `_run_meme` was fully gated on
-it. A slow gpt-image-1 render — or, worse, a blocked egress to api.openai.com —
-left the cleaning animation cycling forever and the meme never posted.
+it. A slow render — or, worse, a blocked egress to the image API — left the
+cleaning animation cycling forever and the meme never posted. (The engine is now
+Gemini 2.5 Flash Image; the timeout/anti-stuck guarantees are engine-agnostic.)
 
 These tests pin the fix:
   * `ai_glove_hands` is time-bounded and returns None promptly on a stalled /
@@ -19,7 +20,7 @@ import os
 import asyncio
 
 os.environ.setdefault("TG_COMMUNITY_TOKEN", "123:TEST")
-os.environ.setdefault("OPENAI_API_KEY", "sk-test")  # AI path ON
+os.environ.setdefault("GEMINI_API_KEY", "test-key")  # AI path ON
 os.environ.setdefault("MEME_AI_COOLDOWN", "0")
 
 import httpx
@@ -203,12 +204,12 @@ def test_run_meme_posts_fallback_when_ai_hangs():
 
 
 def test_run_meme_fast_fail_falls_back():
-    """A 403 (org not verified) returns fast — meme posts immediately."""
+    """A non-200 (e.g. permission denied) returns fast — meme posts immediately."""
     async def post(*a, **k):
-        return httpx.Response(403, text="must be verified")
+        return httpx.Response(403, json={"error": {"message": "permission denied"}})
 
     _patch_httpx(post)
-    cb.MEME_AI_TIMEOUT = 90  # restore default-ish; failure is fast regardless
+    cb.MEME_AI_TIMEOUT = 60  # restore default-ish; failure is fast regardless
     bot = _Bot()
     asyncio.run(_run(bot))
     assert bot.photos and bot.photos[0][0] == "🧤 $CLEAN"
@@ -216,16 +217,47 @@ def test_run_meme_fast_fail_falls_back():
 
 
 def test_run_meme_happy_path_posts_ai_result():
-    """AI succeeds -> 'washed by $CLEAN' and the placeholder is deleted."""
+    """AI succeeds -> 'washed by $CLEAN' and the placeholder is deleted.
+
+    Mirrors a Gemini generateContent response: the edited image is the inline
+    data part (camelCase 'inlineData')."""
     async def post(*a, **k):
-        return httpx.Response(200, json={"data": [{"b64_json": _png_b64()}]})
+        return httpx.Response(
+            200,
+            json={
+                "candidates": [
+                    {"content": {"parts": [
+                        {"text": "Here you go"},
+                        {"inlineData": {"mimeType": "image/png", "data": _png_b64()}},
+                    ]}}
+                ]
+            },
+        )
 
     _patch_httpx(post)
-    cb.MEME_AI_TIMEOUT = 90
+    cb.MEME_AI_TIMEOUT = 60
     bot = _Bot()
     asyncio.run(_run(bot))
     assert bot.photos and bot.photos[0][0] == "🧤 washed by $CLEAN"
     assert bot.ph.deleted is True
+
+
+# ---------------------------------------------------------------------------- #
+#  Gemini response parsing                                                      #
+# ---------------------------------------------------------------------------- #
+def test_extract_image_camel_and_snake_case():
+    b = _png_b64()
+    camel = {"candidates": [{"content": {"parts": [{"inlineData": {"data": b}}]}}]}
+    snake = {"candidates": [{"content": {"parts": [{"inline_data": {"data": b}}]}}]}
+    assert cb._extract_gemini_image(camel) is not None
+    assert cb._extract_gemini_image(snake) is not None
+
+
+def test_extract_image_safety_block_returns_none_with_reason():
+    payload = {"candidates": [{"finishReason": "IMAGE_SAFETY",
+                               "content": {"parts": [{"text": "declined"}]}}]}
+    assert cb._extract_gemini_image(payload) is None
+    assert "no image" in cb._AI_LAST_ERR.lower()
 
 
 if __name__ == "__main__":

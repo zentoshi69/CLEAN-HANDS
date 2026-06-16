@@ -7,8 +7,9 @@ Commands:
   /stats  [mint]   — full readout: price, MC, FDV, liquidity, volume, changes.
   /chart  [mint]   — link to the live DexScreener chart.
   /meme   [top | bottom] — photo caption or reply: AI regenerates the image
-                           with every hand wearing the $CLEAN glove (needs
-                           OPENAI_API_KEY; admin /memetest diagnoses setup).
+                           with every hand wearing the $CLEAN glove (Gemini 2.5
+                           Flash Image; needs GEMINI_API_KEY; admin /memetest
+                           diagnoses setup).
   /sticker         — REPLY to a photo to convert it into a 512px sticker file.
   /help            — list commands.
 
@@ -242,17 +243,20 @@ async def cmd_trade(update: Update, context: ContextTypes.DEFAULT_TYPE):
 MAX_PHOTO_BYTES = 8 * 1024 * 1024  # Telegram-compressed photos are far smaller
 MAX_MEME_TEXT = 200  # per caption block
 
-# --- AI hand-washing (OpenAI image edits). Optional: no key -> local stamp --- #
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-MEME_AI_MODEL = os.environ.get("MEME_AI_MODEL", "gpt-image-1")
+# --- AI hand-washing (Gemini 2.5 Flash Image, "Nano Banana"). No key -> local
+# stamp. ~$0.039/image, fast, faithful photo edits; no org-verification hoop. --- #
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
+MEME_AI_MODEL = os.environ.get("MEME_AI_MODEL", "gemini-2.5-flash-image")
+GEMINI_API_BASE = os.environ.get(
+    "GEMINI_API_BASE", "https://generativelanguage.googleapis.com/v1beta"
+).rstrip("/")
 MEME_AI_COOLDOWN = int(os.environ.get("MEME_AI_COOLDOWN", "60"))  # s per user
-MEME_AI_QUALITY = os.environ.get("MEME_AI_QUALITY", "high")  # low|medium|high|auto
 # Hard time budget for one AI wash. The interactive /meme spinner can NEVER
 # outlive this: a short connect timeout makes a blocked/firewalled egress to
-# api.openai.com fail in seconds (not minutes), and the overall deadline — also
+# the image API fail in seconds (not minutes), and the overall deadline — also
 # enforced with asyncio.wait_for — guarantees the command always resolves to the
 # local stamp instead of hanging on "🫧 Soaking the image…" forever.
-MEME_AI_TIMEOUT = float(os.environ.get("MEME_AI_TIMEOUT", "90"))  # s, overall ceiling
+MEME_AI_TIMEOUT = float(os.environ.get("MEME_AI_TIMEOUT", "60"))  # s, overall ceiling
 MEME_AI_CONNECT_TIMEOUT = float(os.environ.get("MEME_AI_CONNECT_TIMEOUT", "10"))  # s
 # The signature edit, specified from the approved reference outputs:
 # exact pose kept, photoreal nitrile glove, blue pop on B&W, gloved thumbs-up
@@ -288,7 +292,7 @@ def _ai_allowed(user_id: int) -> bool:
     """AI path available for this user right now? (key set + off cooldown).
     Does NOT start the cooldown — only a successful render charges it, so a
     failed attempt can be retried immediately."""
-    if not OPENAI_API_KEY:
+    if not GEMINI_API_KEY:
         return False
     return time.time() - _ai_last.get(user_id, 0) >= MEME_AI_COOLDOWN
 
@@ -302,9 +306,37 @@ def _ai_mark(user_id: int) -> None:
     _ai_last[user_id] = now
 
 
+def _extract_gemini_image(payload: dict) -> bytes | None:
+    """Pull the first inline image out of a generateContent response. Tolerant of
+    camelCase ('inlineData'/'mimeType') and snake_case. On no image, records WHY
+    (safety block / finish reason) in _AI_LAST_ERR for /memetest."""
+    global _AI_LAST_ERR
+    for cand in payload.get("candidates") or []:
+        parts = ((cand.get("content") or {}).get("parts")) or []
+        for part in parts:
+            blob = part.get("inlineData") or part.get("inline_data")
+            if blob and blob.get("data"):
+                try:
+                    return base64.b64decode(blob["data"])
+                except Exception:  # noqa: BLE001 — corrupt b64: treat as failure
+                    break
+    # No image came back — surface the reason (Gemini often declines to edit
+    # real people, or trips a safety filter); the caller falls back to the stamp.
+    reason = ""
+    for cand in payload.get("candidates") or []:
+        if cand.get("finishReason"):
+            reason = cand["finishReason"]
+            break
+    block = (payload.get("promptFeedback") or {}).get("blockReason")
+    _AI_LAST_ERR = f"no image in response (finishReason={reason or '?'}, block={block or 'none'})"
+    log.warning("ai meme failed: %s", _AI_LAST_ERR)
+    return None
+
+
 async def ai_glove_hands(img_bytes: bytes) -> bytes | None:
-    """Ask the image model to swap all hands for the $CLEAN glove. Returns PNG
-    bytes, or None on any failure (caller falls back to the local stamp).
+    """Edit the photo so every hand wears the $CLEAN glove, via Gemini 2.5 Flash
+    Image ("Nano Banana"). Returns image bytes, or None on any failure (caller
+    falls back to the local stamp).
 
     Time-bounded on BOTH ends so /meme can never get stuck on the spinner: a
     short connect timeout makes a blocked/firewalled egress fail in seconds, the
@@ -314,22 +346,35 @@ async def ai_glove_hands(img_bytes: bytes) -> bytes | None:
     timeout = httpx.Timeout(
         MEME_AI_TIMEOUT, connect=MEME_AI_CONNECT_TIMEOUT, write=20.0, pool=5.0
     )
+    url = f"{GEMINI_API_BASE}/models/{MEME_AI_MODEL}:generateContent"
+    body = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [
+                    {"text": GLOVE_PROMPT},
+                    {
+                        "inline_data": {
+                            "mime_type": "image/jpeg",
+                            "data": base64.b64encode(img_bytes).decode("ascii"),
+                        }
+                    },
+                ],
+            }
+        ],
+        # ask for the edited image back (TEXT is included for broad compatibility)
+        "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
+    }
 
     async def _call() -> httpx.Response:
         async with httpx.AsyncClient(timeout=timeout) as client:
             return await client.post(
-                "https://api.openai.com/v1/images/edits",
-                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-                files={"image": ("photo.jpg", img_bytes, "image/jpeg")},
-                data={
-                    "model": MEME_AI_MODEL,
-                    "prompt": GLOVE_PROMPT,
-                    "size": "auto",
-                    "quality": MEME_AI_QUALITY,
-                    # preserves faces/identity through the edit — non-negotiable
-                    # for the reference-quality output
-                    "input_fidelity": "high",
+                url,
+                headers={
+                    "x-goog-api-key": GEMINI_API_KEY,  # keeps the key out of the URL
+                    "Content-Type": "application/json",
                 },
+                json=body,
             )
 
     try:
@@ -340,12 +385,11 @@ async def ai_glove_hands(img_bytes: bytes) -> bytes | None:
             _AI_LAST_ERR = f"HTTP {r.status_code}: {r.text[:300]}"
             log.warning("ai meme failed: %s", _AI_LAST_ERR)
             return None
-        b64 = (r.json().get("data") or [{}])[0].get("b64_json")
-        return base64.b64decode(b64) if b64 else None
+        return _extract_gemini_image(r.json())
     except (asyncio.TimeoutError, httpx.TimeoutException):
         _AI_LAST_ERR = (
             f"timeout after ~{MEME_AI_TIMEOUT:.0f}s — model too slow, or egress to "
-            "api.openai.com is blocked"
+            "generativelanguage.googleapis.com is blocked"
         )
         log.warning("ai meme failed: %s", _AI_LAST_ERR)
         return None
@@ -527,14 +571,15 @@ async def cmd_memetest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id if update.effective_user else 0
     if ADMIN_IDS and uid not in ADMIN_IDS:
         return
-    if not OPENAI_API_KEY:
+    if not GEMINI_API_KEY:
         await update.message.reply_text(
-            "❌ OPENAI_API_KEY is NOT set in .env — /meme is running the local "
-            "stamp fallback.\nAdd the key, then: sudo systemctl restart degen-community"
+            "❌ GEMINI_API_KEY is NOT set in .env — /meme is running the local "
+            "stamp fallback.\nGet a key at aistudio.google.com/apikey, add it, then: "
+            "sudo systemctl restart degen-community"
         )
         return
     await update.message.reply_text(
-        f"🧪 Testing the wash engine (model {MEME_AI_MODEL}, quality {MEME_AI_QUALITY})…"
+        f"🧪 Testing the wash engine (Gemini {MEME_AI_MODEL})…"
     )
     # tiny synthetic test image so the call is as cheap+fast as possible
     img = Image.new("RGB", (256, 256), (240, 248, 255))
@@ -548,22 +593,27 @@ async def cmd_memetest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             photo=io.BytesIO(out), caption="✅ AI wash engine LIVE — /meme will regenerate images."
         )
     else:
+        err = _AI_LAST_ERR.lower()
         hint = ""
-        if "403" in _AI_LAST_ERR or "verif" in _AI_LAST_ERR.lower():
+        if "api_key" in err or "api key" in err or "400" in _AI_LAST_ERR or "401" in _AI_LAST_ERR:
+            hint = "\n\n→ The API key looks invalid — get a fresh one at aistudio.google.com/apikey."
+        elif "permission" in err or "403" in _AI_LAST_ERR or "disabled" in err:
             hint = (
-                "\n\n→ gpt-image-1 requires a VERIFIED OpenAI organization: "
-                "platform.openai.com → Settings → Organization → Verify. "
-                "Until then every /meme falls back to the stamp."
+                "\n\n→ Permission denied — enable the Generative Language API for this "
+                "key's project (and check billing) in Google Cloud / AI Studio."
             )
-        elif "401" in _AI_LAST_ERR:
-            hint = "\n\n→ The API key is invalid/revoked — paste a fresh one into .env."
-        elif "429" in _AI_LAST_ERR or "quota" in _AI_LAST_ERR.lower():
-            hint = "\n\n→ Out of credits / rate limited — check platform.openai.com billing."
-        elif "timeout" in _AI_LAST_ERR.lower():
+        elif "429" in _AI_LAST_ERR or "quota" in err or "resource_exhausted" in err:
+            hint = "\n\n→ Rate limited / out of quota — check usage at aistudio.google.com."
+        elif "no image" in err or "block" in err or "safety" in err:
             hint = (
-                "\n\n→ The call timed out — gpt-image-1 high quality can exceed the "
-                f"{MEME_AI_TIMEOUT:.0f}s budget, or the host can't reach api.openai.com. "
-                "Raise MEME_AI_TIMEOUT, lower MEME_AI_QUALITY, or check outbound network."
+                "\n\n→ Gemini returned no image (likely a safety block — it often "
+                "declines to edit photos of real, identifiable people). Try another image."
+            )
+        elif "timeout" in err:
+            hint = (
+                f"\n\n→ The call timed out (>{MEME_AI_TIMEOUT:.0f}s) — the model is slow or "
+                "the host can't reach generativelanguage.googleapis.com. Raise "
+                "MEME_AI_TIMEOUT or check outbound network."
             )
         await update.message.reply_text(
             f"❌ AI call failed:\n{_AI_LAST_ERR[:350] or 'no error captured'}{hint}"
@@ -573,7 +623,7 @@ async def cmd_memetest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_meme(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_msg = _photo_source(update)
     if not photo_msg:
-        ai = " — AI swaps every hand for the $CLEAN glove 🧤" if OPENAI_API_KEY else ""
+        ai = " — AI swaps every hand for the $CLEAN glove 🧤" if GEMINI_API_KEY else ""
         await update.message.reply_text(
             "Send a photo with caption  /meme  (optional: top text | bottom text)\n"
             f"…or reply to a photo with the same command{ai}.\n"
@@ -825,9 +875,9 @@ async def _post_init(app):
 def main():
     log.info(
         "AI meme engine: %s",
-        f"ENABLED (model={MEME_AI_MODEL}, quality={MEME_AI_QUALITY})"
-        if OPENAI_API_KEY
-        else "DISABLED — set OPENAI_API_KEY for the AI glove-wash",
+        f"ENABLED (Gemini {MEME_AI_MODEL})"
+        if GEMINI_API_KEY
+        else "DISABLED — set GEMINI_API_KEY for the AI glove-wash",
     )
     if not BOT_TOKEN:
         raise SystemExit("Set TG_COMMUNITY_TOKEN (from @BotFather).")
