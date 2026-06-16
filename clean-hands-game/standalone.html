@@ -131,8 +131,12 @@ body{
 .hero{flex:0 0 auto;text-align:center;margin-top:12px}
 .hero .big{
   font-family:'Fraunces',serif;
-  font-size:clamp(42px,14vw,70px);font-weight:700;letter-spacing:-1.5px;line-height:1;
+  /* font-size is set dynamically in JS (sizeHero) — small at low balances,
+     growing with wealth up to ~full width at $10B. This default is just the
+     pre-script value. */
+  font-size:30px;font-weight:700;letter-spacing:-1.5px;line-height:1;
   margin:0;font-variant-numeric:tabular-nums;white-space:nowrap;
+  transition:font-size .42s var(--ease);
   /* GOLDEN SHINING money — animated metallic gradient sweep */
   background:linear-gradient(95deg,#b8860b 0%,#ffd54a 22%,#fff3b0 38%,#ffcf33 52%,#e6a700 70%,#ffe88a 88%,#caa106 100%);
   background-size:260% 100%;
@@ -187,9 +191,7 @@ body{
   width:66%;height:11%;transform:translateX(-50%);
   background:radial-gradient(50% 50% at 50% 50%,rgba(10,37,64,.36) 0%,rgba(10,37,64,.14) 52%,transparent 76%)}
 .handimg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center bottom;
-  pointer-events:none;user-select:none;-webkit-user-drag:none;
-  /* keep each frame on its own stable, never-blanked composited layer */
-  transform:translateZ(0);backface-visibility:hidden}
+  pointer-events:none;user-select:none;-webkit-user-drag:none}
 #hands2{display:none}
 #hands.grab{cursor:grabbing}
 #hands.pop{animation:pop .26s var(--ease)}
@@ -231,7 +233,7 @@ body{
 /* ===== UNITED DOCK : stats + nav share one card ===== */
 .dock{
   background:var(--card-solid);border:1px solid var(--line);
-  border-radius:24px;box-shadow:var(--shadow-lg);overflow:hidden;
+  border-radius:0;box-shadow:var(--shadow-lg);overflow:hidden;
 }
 .dock .strip{border-bottom:1.5px solid var(--line)}
 .dock .tabs{padding:6px 6px 4px}
@@ -1350,6 +1352,22 @@ function animNum(el,from,to){
     if(k<1) totalRAF=requestAnimationFrame(st); else totalRAF=0;
   })(performance.now());
 }
+/* Dynamic hero size: the money number starts small (a compact square of real
+   estate) and grows with the balance, reaching almost the full card width at
+   $10B. Driven by log-magnitude, with a fit-guard so a long number never spills
+   past ~94% of the width. */
+function sizeHero(){
+  const el=D.total; if(!el) return;
+  const host=el.parentElement;
+  const contW=(host&&host.clientWidth)||320;
+  const v=Math.max(1,safe(S.cash));
+  const prog=Math.min(1,Math.log10(v)/10);          // 0 at $1 … 1 at $10,000,000,000
+  let fs=26 + prog*22;                              // wealth growth: 26px → 48px
+  const len=(fmtHero(v)||'$0').length||3;
+  const fitFs=(0.94*contW)/(len*0.60);             // never wider than ~94% of the card
+  fs=Math.max(20,Math.min(fs,fitFs));
+  el.style.fontSize=fs.toFixed(1)+'px';
+}
 function perksOwned(){ return ['scrub','ghost','speedy'].filter(k=>S.perks[k]>0).length; }
 let couldAfford=false;
 function refresh(light){
@@ -1358,8 +1376,9 @@ function refresh(light){
   S.total=clamp(safe(S.total),0, CAP.total);
   S.heat =clamp(safe(S.heat), 0, CAP.heat);
   S.escape=Math.floor(S.total/1000);
-  // hero (full comma number, navy)
+  // hero (full comma number, navy) — size scales with wealth
   animNum(D.total,lastTotal,S.cash);lastTotal=S.cash;
+  sizeHero();
   D.perSec.textContent=fmt(S.perSec);
   // heat
   D.heatFill.style.width=S.heat.toFixed(1)+'%';
@@ -1677,13 +1696,18 @@ function boot(){
      layer (the bug), this image still shows the gloves underneath — so the hands
      can never fully disappear, no matter what the compositor does. It's a data-URI
      (can't 404) and stays referenced + decoded. */
-  function mountRestHands(){ return;   /* superseded — hands are now always-on <img> layers; no canvas to back up */
+  function mountRestHands(){
+    // HARD BACKSTOP: an always-visible plain <img> of the resting frame sits as
+    // the BOTTOM layer of #hands, beneath every crossfade frame. It is never
+    // animated, carries no filter and no GPU promotion, and is decode-pinned —
+    // so even if the WebView momentarily drops a frame's decode on the first-tap
+    // audio churn, this resting pair of gloves is still painted. The hands can
+    // never fully disappear, regardless of what the compositor does.
     var hd=$('#hands'); if(!hd || $('#clnRest') || !(G.FRAME_URLS && G.FRAME_URLS[0])) return;
     var img=document.createElement('img'); img.id='clnRest'; img.alt=''; img.draggable=false;
     img.src=G.FRAME_URLS[0];
     img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center bottom;pointer-events:none;z-index:0;-webkit-user-drag:none';
-    var cv=$('#handsCv');
-    if(cv) hd.insertBefore(img, cv); else hd.appendChild(img);   // behind the canvas
+    hd.insertBefore(img, hd.firstChild);   // below every crossfade layer
     if(img.decode) img.decode().catch(function(){});
   }
 
@@ -1896,6 +1920,21 @@ function boot(){
         if(p&&p.catch) p.catch(function(){ _auFail[kind]=true; synthFallback(kind); }); return; }catch(e){}
     }
     synthFallback(kind);                      // graceful: never silent
+  }
+  /* Pre-warm: play every SFX once, muted, BEHIND the splash. This forces the
+     browser to fetch + decode each clip while the splash still covers the
+     screen, so the first in-game tap just replays a hot buffer — no first-play
+     decode stall, which is what churned the compositor and blanked the hands /
+     money number on the very first click. */
+  var _warmed=false;
+  function warmSfx(){
+    if(_warmed) return; _warmed=true;
+    try{ for(var k in _au){ (function(a){ if(!a) return;
+      try{ a.muted=true; var p=a.play();
+        if(p&&p.then) p.then(function(){ try{ a.pause(); a.currentTime=0; a.muted=false; }catch(e){} })
+                       .catch(function(){ try{ a.muted=false; }catch(e){} });
+      }catch(e){} })(_au[k]); }
+    }catch(e){}
   }
   function setMute(m){
     META.mute=m; var b=$('#clnSnd'); if(b) b.textContent = m ? '🔇' : '🔊';
@@ -2220,7 +2259,7 @@ function boot(){
     // Tapping START primes audio AND reveals the canvas — repaint through the
     // whole fade/reveal so the gloves are solid the instant they're shown.
     var sb=$('#splashBtn');
-    if(sb) sb.addEventListener('click', function(){ audioReady(); startMusic(); repaintBurst(1000); }, {passive:true});
+    if(sb) sb.addEventListener('click', function(){ audioReady(); warmSfx(); startMusic(); repaintBurst(1300); }, {passive:true});
   }
 
   /* ============================ BOOT ============================ */
