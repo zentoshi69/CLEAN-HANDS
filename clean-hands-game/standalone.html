@@ -176,8 +176,8 @@ body{
   transform-origin:center bottom;cursor:grab;user-select:none;-webkit-user-select:none;
   transition:transform .12s var(--ease);
 }
-#handsCv{display:block;width:100%;height:100%}
-/* legacy overlay element retired (canvas renderer now) */
+.handimg{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center bottom;
+  pointer-events:none;user-select:none;-webkit-user-drag:none}
 #hands2{display:none}
 #hands.grab{cursor:grabbing}
 #hands.pop{animation:pop .26s var(--ease)}
@@ -613,7 +613,7 @@ body{
 
   <div id="scene"></div>
   <div id="cardFrame" aria-hidden="true"></div>
-  <div id="scene-wm" class="coin" style="width:34px;height:34px;font-size:17px;opacity:.22"><span class="s">$</span></div>
+  <!-- corner $ watermark removed per request -->
   <div class="aura"><b></b><b></b></div>
 
   <div id="ui">
@@ -645,7 +645,7 @@ body{
 
     <!-- PLAY -->
     <div class="play">
-      <div id="hands" role="button" tabindex="0" aria-label="Tap or swipe to riffle cash"><canvas id="handsCv"></canvas></div>
+      <div id="hands" role="button" tabindex="0" aria-label="Tap or swipe to riffle cash"></div>
       <div class="prompt" id="rifflePrompt"><span class="pulse"></span><span class="ptxt">Tap • Swipe to Riffle</span></div>
     </div>
 
@@ -937,41 +937,26 @@ const VFRAMES=128;                         // virtual frame count (super-smooth)
 const KSPAN=2*(FRAME_COUNT-1);             // ping-pong span across 7 keyframes (=12)
 let frame=0, riffleRAF=0;
 
-/* CANVAS RIFFLE RENDERER.
-   The hands are drawn on a <canvas> using pre-decoded Image objects. drawImage()
-   of a loaded image is immediate and GPU-friendly — unlike CSS background-image,
-   whose decoded bitmap the browser evicts on opacity:0 layers and must re-decode
-   on press (that was the "hands vanish on tap" bug). Canvas never evicts mid-frame. */
-const cv=$('#handsCv'), cx=cv.getContext('2d');
-const HIMG=[];                             // HTMLImageElement per frame
-let imgsReady=0;
-(function loadHandImgs(){
-  FRAME_URLS.forEach((url,i)=>{
-    const im=new Image();
-    im.onload=()=>{ imgsReady++; sizeCanvas(); };   // size+draw whenever a frame arrives
-    im.src=url; HIMG[i]=im;
-  });
-})();
-function sizeCanvas(){
-  const r=hands.getBoundingClientRect(); if(!r.width) return;
-  const dpr=Math.min(3,window.devicePixelRatio||1);
-  const w=Math.round(r.width*dpr), h=Math.round(r.height*dpr);
-  if(cv.width!==w||cv.height!==h){ cv.width=w; cv.height=h; cv.style.width='100%'; cv.style.height='100%'; }
-  cx.setTransform(dpr,0,0,dpr,0,0);
-  draw();
-}
+/* IMG RIFFLE RENDERER — bulletproof against the "hands vanish on tap" bug.
+   The gloves are rendered as 7 stacked <img> layers (the engine's own embedded
+   frames), crossfaded by OPACITY only. Unlike <canvas> — whose GPU backing-store
+   mobile compositors evict on tap / audio spin-up (the bug) — or CSS background-
+   image (decode eviction), composited <img> elements are NEVER blanked on press.
+   The bottom layer stays opaque, so a full pair of hands is ALWAYS on screen. */
+const HLAYERS = FRAME_URLS.map((url,i)=>{
+  const im=document.createElement('img');
+  im.className='handimg'; im.alt=''; im.draggable=false; im.src=url;
+  im.style.zIndex=String(i); im.style.opacity = i===0 ? '1' : '0';
+  if(im.decode) im.decode().catch(()=>{});   // warm-decode so swaps never flash
+  hands.appendChild(im);
+  return im;
+});
 let dLo=0,dHi=0,dT=0;
 function draw(){
-  const r=hands.getBoundingClientRect(); const W=r.width||cv.width, H=r.height||cv.height;
-  cx.clearRect(0,0,W,H);
-  // contain-fit, bottom-anchored (matches the old background-size:contain; position:center bottom)
-  const scale=Math.min(W/FRAME_W,H/FRAME_H), dw=FRAME_W*scale, dh=FRAME_H*scale;
-  const ox=(W-dw)/2, oy=H-dh;
-  const lo=HIMG[dLo], hi=HIMG[dHi];
-  // lo always fully opaque underneath → a complete pair of hands is ALWAYS painted
-  if(lo&&lo.complete&&lo.naturalWidth){ cx.globalAlpha=1; cx.drawImage(lo,ox,oy,dw,dh); }
-  if(dHi!==dLo && hi&&hi.complete&&hi.naturalWidth){ cx.globalAlpha=dT; cx.drawImage(hi,ox,oy,dw,dh); }
-  cx.globalAlpha=1;
+  // bottom keyframe fully opaque + next keyframe at crossfade weight; rest hidden.
+  for(let i=0;i<HLAYERS.length;i++){
+    HLAYERS[i].style.opacity = (i===dLo) ? '1' : (i===dHi && dHi!==dLo ? String(dT) : '0');
+  }
 }
 function setVFrame(p){                      // p in [0, VFRAMES)
   frame=((p%VFRAMES)+VFRAMES)%VFRAMES;
@@ -983,12 +968,8 @@ function setVFrame(p){                      // p in [0, VFRAMES)
   draw();
 }
 function setFrame(f){ setVFrame(Math.round((f/(FRAME_COUNT-1))*(VFRAMES/2))); } // legacy callers (compat)
-addEventListener('resize',sizeCanvas);
-addEventListener('orientationchange',sizeCanvas);
-if(window.ResizeObserver){ new ResizeObserver(sizeCanvas).observe(hands); }
-setTimeout(sizeCanvas,0); requestAnimationFrame(sizeCanvas);
 
-/* one super-fast riffle burst on tap — canvas drawImage, always a solid frame */
+/* one super-fast riffle burst on tap — opacity crossfade, always a solid frame */
 function animateRiffle(){
   cancelAnimationFrame(riffleRAF);
   const dur = reduce ? 120 : 200;
@@ -1549,7 +1530,7 @@ function boot(){
      layer (the bug), this image still shows the gloves underneath — so the hands
      can never fully disappear, no matter what the compositor does. It's a data-URI
      (can't 404) and stays referenced + decoded. */
-  function mountRestHands(){
+  function mountRestHands(){ return;   /* superseded — hands are now always-on <img> layers; no canvas to back up */
     var hd=$('#hands'); if(!hd || $('#clnRest') || !(G.FRAME_URLS && G.FRAME_URLS[0])) return;
     var img=document.createElement('img'); img.id='clnRest'; img.alt=''; img.draggable=false;
     img.src=G.FRAME_URLS[0];
