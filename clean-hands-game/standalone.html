@@ -175,13 +175,18 @@ body{
 .loc svg{width:15px;height:15px;color:var(--accent)}
 
 #hands{
-  position:relative;top:15px;width:min(100%,440px);aspect-ratio:460/293;flex:0 0 auto;
-  /* NO filter here. A CSS filter (the old drop-shadow) forces the whole hand
-     subtree onto one composited surface that mobile compositors EVICT/blank
-     under the GPU+memory churn of first-tap audio spin-up — that was the
-     "hands disappear on tap" bug. The shadow is now a filter-less contact
-     shadow (::before) so the <img> layers stay independently composited and
-     can never be blanked. */
+  position:relative;top:15px;width:min(100%,440px);flex:0 0 auto;
+  /* ROOT CAUSE of "hands vanish when I tap/hold" (confirmed by forensic audit):
+     #hands is a COLUMN flex item that used aspect-ratio:460/293 for its height.
+     But every child here is position:absolute (the <img> layers), so the item's
+     content height is ~0. aspect-ratio held on first paint, but ANY re-layout —
+     which a pointer-down / pointer-capture triggers — made the flex algorithm
+     re-resolve the item's main size to its content height and COLLAPSE #hands to
+     ~5px. The gloves were never blanked; the box was squished to a sliver.
+     Fix: size the height with a padding-ratio box (293/460) instead. Padding
+     percentages resolve against the container width and do NOT depend on flex
+     content resolution, so the height is rock-solid through every re-layout. */
+  height:0;padding-bottom:63.696%;   /* 293 / 460 — replaces aspect-ratio */
   transform-origin:center bottom;cursor:grab;user-select:none;-webkit-user-select:none;
   transition:transform .12s var(--ease);
 }
