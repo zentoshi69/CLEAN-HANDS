@@ -78,6 +78,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  community-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: clean-hands/requirements.txt
+
+      - name: Install community-bot deps
+        run: pip install -r clean-hands/requirements.txt pytest
+
+      - name: /meme regression — never stuck on "Soaking the image…"
+        working-directory: clean-hands
+        run: python -m pytest test_meme_timeout.py -q
+
   glove-bot:
     runs-on: ubuntu-latest
     steps:
