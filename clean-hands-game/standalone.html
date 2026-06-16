@@ -198,9 +198,10 @@ body{
   outline:none;-webkit-tap-highlight-color:transparent;   /* no blue focus/tap square */
   transition:transform .12s var(--ease);
 }
-/* #hands is role=button tabindex=0; on a desktop click the browser paints its
-   default blue focus ring ("the blue square when I tap"). Suppress it. */
-#hands:focus,#hands:focus-visible{outline:none;box-shadow:none}
+/* #hands is role=button tabindex=0; on a desktop click/focus the browser paints
+   its default blue focus ring — a blue rectangle the exact size of the hands
+   ("the blue square when I tap"). Suppress it completely. */
+#hands,#hands:focus,#hands:focus-visible,#hands:active{outline:none!important;box-shadow:none!important}
 /* soft contact shadow — radial gradient (no filter); paints below the z-indexed
    hand layers, so the hands themselves carry zero compositing filters */
 #hands::before{content:"";position:absolute;left:50%;bottom:3%;pointer-events:none;
@@ -1243,6 +1244,10 @@ hands.addEventListener('keydown',e=>{
     doRiffle(r.left+r.width/2,r.top+r.height/2);
   }
 });
+// Desktop: stop a mouse click from FOCUSING #hands, so the browser can never
+// paint its blue focus-ring "square" over the gloves. Tapping still riffles
+// (handled on pointerup) and keyboard Tab can still focus for accessibility.
+hands.addEventListener('mousedown',e=>{ e.preventDefault(); });
 
 /* ============ LEVEL / CITY ============ */
 let curScene=null;
