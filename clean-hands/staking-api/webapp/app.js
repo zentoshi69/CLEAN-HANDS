@@ -178,7 +178,7 @@
   // GAME: lazy-load the embedded game on first open (so it never costs anything
   // until tapped), with an external fallback link if the host refuses framing.
   function loadGame() {
-    const url = (CONFIG && CONFIG.gameUrl) || 'https://clean-hands-dirty-money.vercel.app/';
+    const url = (CONFIG && CONFIG.gameUrl) || '/play';
     const f = $('game-frame');
     if (f && !f.getAttribute('src')) {
       f.setAttribute('src', url); // game loads behind the intro
