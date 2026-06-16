@@ -383,13 +383,13 @@ body{
    The achievement overlay is absolutely positioned so layout never shifts. */
 .tcard.mid .ic,.tcard.mid b{transition:opacity .2s ease}
 .tcard.mid.crit .ic,.tcard.mid.crit b{opacity:0}
-.tcard.mid::before{ /* light-yellow → electric-gold flood */
+.tcard.mid::before{ /* electric-blue flood (inside) */
   content:"";position:absolute;inset:0;z-index:0;border-radius:inherit;pointer-events:none;
-  background:linear-gradient(140deg,#fff3c4 0%,#ffe06a 36%,#ffc107 68%,#ff9e00 100%);
+  background:linear-gradient(140deg,#021642 0%,#0a3bb0 38%,#0a66ff 70%,#2f8bff 100%);
   opacity:0;transition:opacity .25s ease}
 .tcard.mid::after{ /* white metallic sheen sweep */
   content:"";position:absolute;inset:0;z-index:1;border-radius:inherit;pointer-events:none;
-  background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.6) 50%,transparent 80%);
+  background:linear-gradient(110deg,transparent 20%,rgba(255,255,255,.5) 50%,transparent 80%);
   transform:translateX(-130%);opacity:0}
 .tcard.mid.crit{border-color:transparent;animation:tcCritGlow 1.1s ease-in-out infinite}
 .tcard.mid.crit::before{opacity:1}
@@ -402,15 +402,15 @@ body{
 .tc-line{position:absolute;inset:0;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:0;will-change:transform}
 .tc-line .m{font-size:20px;font-weight:900;line-height:1;letter-spacing:-.5px;
-  background:linear-gradient(135deg,#7a4300,#a85d00,#d07e00);
+  background:linear-gradient(135deg,#ffe888,#ffc23d,#ff9500);
   -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
-  filter:drop-shadow(0 1px 0 rgba(255,255,255,.55))}
+  filter:drop-shadow(0 0 10px rgba(255,180,40,.9))}
 .tc-line .s{font-size:8px;font-weight:900;letter-spacing:1.4px;line-height:1.25;
-  color:#5a3200;text-shadow:0 1px 0 rgba(255,255,255,.4)}
+  color:#fff;text-shadow:0 0 10px rgba(120,190,255,.95),0 1px 2px rgba(0,30,90,.6)}
+/* golden pulsing outline */
 @keyframes tcCritGlow{
-  0%,100%{box-shadow:0 0 0 2px #00d4ff,0 0 18px rgba(0,120,255,.75)}
-  33%    {box-shadow:0 0 0 2px #9000ff,0 0 18px rgba(144,0,255,.75)}
-  66%    {box-shadow:0 0 0 2px #ff00c0,0 0 18px rgba(255,0,192,.7)}
+  0%,100%{box-shadow:0 0 0 2px #ffd75e,0 0 16px rgba(255,200,60,.8)}
+  50%    {box-shadow:0 0 0 2.5px #ffb300,0 0 24px rgba(255,170,0,.98)}
 }
 
 /* bust flash */
