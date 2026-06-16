@@ -50,7 +50,7 @@ from telegram import (
     WebAppInfo,
     MenuButtonWebApp,
 )
-from telegram.constants import ParseMode
+from telegram.constants import ChatType, ParseMode
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -670,18 +670,29 @@ async def cmd_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --------------------------------------------------------------------------- #
 #  MINI APP (staking / leaderboard / referrals)                               #
 # --------------------------------------------------------------------------- #
+def _open_app_button(chat, username: str, label: str) -> InlineKeyboardButton:
+    """A button that opens the Mini App from anywhere.
+
+    `web_app` buttons are allowed ONLY in private chats — in groups/channels
+    Telegram rejects them (so the reply silently fails). There we fall back to
+    the t.me Direct-Link Mini App (same style as /invite), a plain URL button
+    that works in any chat.
+    """
+    if getattr(chat, "type", None) == ChatType.PRIVATE:
+        return InlineKeyboardButton(label, web_app=WebAppInfo(url=MINIAPP_URL))
+    return InlineKeyboardButton(label, url=f"https://t.me/{username}/{MINIAPP_SHORT_NAME}")
+
+
 async def cmd_app(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not MINIAPP_URL:
         await update.message.reply_text(
             "Mini App isn't configured yet. Set MINIAPP_URL to the deployed app URL."
         )
         return
-    kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("🧤 Open $CLEAN App", web_app=WebAppInfo(url=MINIAPP_URL))]]
-    )
+    btn = _open_app_button(update.effective_chat, context.bot.username, "🧤 Open $CLEAN App")
     await update.message.reply_text(
         "💎 Stake points, climb the leaderboard, and earn from referrals:",
-        reply_markup=kb,
+        reply_markup=InlineKeyboardMarkup([[btn]]),
     )
 
 
@@ -690,10 +701,10 @@ async def cmd_stake(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not MINIAPP_URL:
         await update.message.reply_text("Mini App isn't configured yet (set MINIAPP_URL).")
         return
-    kb = InlineKeyboardMarkup(
-        [[InlineKeyboardButton("📈 Stake in the App", web_app=WebAppInfo(url=MINIAPP_URL))]]
+    btn = _open_app_button(update.effective_chat, context.bot.username, "📈 Stake in the App")
+    await update.message.reply_text(
+        "Lock points for yield in the $CLEAN App:", reply_markup=InlineKeyboardMarkup([[btn]])
     )
-    await update.message.reply_text("Lock points for yield in the $CLEAN App:", reply_markup=kb)
 
 
 async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):

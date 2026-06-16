@@ -1,0 +1,1560 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Clean Hands, Dirty Money</title>
+    <meta name="theme-color" content="#bfe1ff" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+/* ======================================================================
+   Clean Hands, Dirty Money — standalone game styles
+   Light, airy, luxury. Glassmorphism over a Dubai skyline scene.
+   ====================================================================== */
+:root {
+  --sky-1: #bfe1ff;
+  --sky-2: #e7f4ff;
+  --sky-3: #f4faff;
+  --ink: #143a63;
+  --ink-deep: #0c2f5a;
+  --ink-2: #2f74c0;
+  --muted: #5b7da3;
+  --glass: rgba(255, 255, 255, 0.66);
+  --glass-2: rgba(255, 255, 255, 0.82);
+  --line: rgba(27, 93, 166, 0.16);
+  --line-2: rgba(27, 93, 166, 0.28);
+  --green: #2f9e63;
+  --amber: #ff9f43;
+  --red: #ff5a4d;
+  --gold: #e8b53a;
+  --shadow: 0 22px 54px -30px rgba(20, 70, 130, 0.55);
+  --shadow-sm: 0 12px 28px -18px rgba(20, 70, 130, 0.5);
+  --r: 22px;
+}
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+:focus-visible {
+  outline: 2.5px solid var(--ink-deep);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  color: var(--ink);
+  background: #cfe6fb;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* phone frame — centered, mobile-first */
+.phone {
+  position: relative;
+  width: min(100vw, 460px);
+  height: 100dvh;
+  max-height: 940px;
+  margin: 0 auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+  background: linear-gradient(var(--sky-1), var(--sky-2) 46%, var(--sky-3));
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+@media (min-width: 480px) {
+  body {
+    display: grid;
+    place-items: center;
+    background:
+      radial-gradient(60% 50% at 50% 0, #d7ecff 0, transparent 60%), #aacdf0;
+  }
+  .phone {
+    height: 92dvh;
+    border-radius: 36px;
+    box-shadow: 0 40px 100px -40px rgba(12, 47, 90, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.6);
+  }
+}
+
+/* ============================ SCENE ============================ */
+.scene {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  /* fallback wash until a scene image is dropped in */
+  background: linear-gradient(#a9d2f7 0, #cfe6fb 40%, #eaf6ff 70%, #f6fbff 100%);
+}
+.scene-img {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.scene-img.on {
+  opacity: 1;
+}
+.scrim-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 34%;
+  background: linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
+}
+.scrim-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30%;
+  background: linear-gradient(rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.5));
+}
+.scene-hint {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  padding: 16px 20px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1.5px dashed var(--line-2);
+  box-shadow: var(--shadow-sm);
+  max-width: 80%;
+}
+.scene-hint[hidden] {
+  display: none;
+}
+.scene-hint b {
+  display: block;
+  color: var(--ink-deep);
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+.scene-hint span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-top: 4px;
+}
+.scene-hint code {
+  font-family: ui-monospace, monospace;
+  background: rgba(47, 116, 192, 0.12);
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: var(--ink-2);
+}
+
+/* ============================ HUD ============================ */
+.hud {
+  position: relative;
+  z-index: 3;
+  padding: max(12px, env(safe-area-inset-top)) 14px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.card {
+  background: var(--glass);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-sm);
+}
+.pills {
+  display: flex;
+  gap: 8px;
+}
+.pill {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 11px 8px;
+  background: var(--glass);
+  border: 1.5px solid var(--line);
+  border-radius: 100px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.82rem;
+}
+.pill.loc {
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.pill.loc:active {
+  transform: scale(0.96);
+}
+.pin {
+  width: 15px;
+  height: 15px;
+  fill: var(--ink-2);
+}
+.pk {
+  color: var(--muted);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: 0.7rem;
+}
+.pv,
+.pill.loc span {
+  color: var(--ink-deep);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+/* heat */
+.heat {
+  padding: 11px 14px 9px;
+}
+.heat-line {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.heat-k {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--ink-deep);
+}
+.heat-track {
+  flex: 1;
+  height: 9px;
+  border-radius: 100px;
+  background: rgba(180, 205, 230, 0.55);
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(40, 80, 130, 0.18);
+}
+.heat-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: 100px;
+  background: linear-gradient(90deg, #7ed3a3, #ffcf5a 55%, #ff7a5c);
+  background-size: 240px 100%;
+  transition: width 0.35s ease;
+}
+.heat-v {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--ink-2);
+  min-width: 34px;
+  text-align: right;
+}
+.heat-sub {
+  margin-top: 5px;
+  text-align: center;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--muted);
+}
+.heat.hot {
+  animation: heat-shake 0.5s ease infinite;
+}
+@keyframes heat-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
+}
+
+/* counter */
+.counter {
+  text-align: center;
+  margin-top: 2px;
+}
+.cash {
+  font-weight: 800;
+  font-size: clamp(2.3rem, 11vw, 3.3rem);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--ink-deep);
+  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.6);
+  font-variant-numeric: tabular-nums;
+}
+.cash.pop {
+  animation: cash-pop 0.18s ease;
+}
+@keyframes cash-pop {
+  50% { transform: scale(1.035); }
+}
+.rate {
+  margin-top: 4px;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+.rate b {
+  color: var(--ink-2);
+  font-weight: 800;
+}
+
+/* $CLEAN chip */
+.clean {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 2px;
+  padding: 7px 8px 7px 9px;
+  background: var(--glass-2);
+  border: 1.5px solid var(--line-2);
+  border-radius: 100px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.clean:active {
+  transform: scale(0.96);
+}
+.clean-ico {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--ink-deep);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+.clean-name {
+  font-weight: 800;
+  color: var(--ink-deep);
+  letter-spacing: 0.01em;
+}
+.clean-price {
+  color: var(--ink-2);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.clean-go {
+  padding: 5px 13px;
+  border-radius: 100px;
+  background: linear-gradient(180deg, #d6ecff, #bfe0fb);
+  border: 1px solid var(--line-2);
+  color: var(--ink-deep);
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+}
+
+/* ============================ STAGE ============================ */
+.stage {
+  position: relative;
+  z-index: 2;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+.view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.view[hidden] {
+  display: none;
+}
+
+/* tap zone */
+.view-launder {
+  align-items: center;
+  justify-content: center;
+}
+.tap {
+  position: relative;
+  flex: 1;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+.tap-ring {
+  position: absolute;
+  width: 90px;
+  height: 90px;
+  margin: -45px 0 0 -45px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 70%);
+  opacity: 0;
+  pointer-events: none;
+}
+.tap-ring.go {
+  animation: ring 0.45s ease-out;
+}
+@keyframes ring {
+  0% { opacity: 0.9; transform: scale(0.4); }
+  100% { opacity: 0; transform: scale(1.6); }
+}
+.tap-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 16px;
+  border-radius: 100px;
+  background: rgba(12, 47, 90, 0.82);
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+/* floating +$ on tap */
+.floaters {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+.float {
+  position: absolute;
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: var(--green);
+  text-shadow: 0 1px 0 #fff;
+  animation: floatup 0.9s ease-out forwards;
+}
+@keyframes floatup {
+  0% { transform: translateY(0) scale(0.8); opacity: 0; }
+  20% { opacity: 1; }
+  100% { transform: translateY(-90px) scale(1.15); opacity: 0; }
+}
+
+/* ============================ PANELS (perks/bribes/rep/escape) ============================ */
+.panel {
+  display: block;
+  overflow-y: auto;
+  padding: 4px 14px 14px;
+  -webkit-overflow-scrolling: touch;
+}
+.panel[hidden] {
+  display: none;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  background: var(--glass-2);
+  border: 1.5px solid var(--line);
+  border-radius: 18px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.15s, opacity 0.2s;
+}
+.item:active {
+  transform: scale(0.98);
+}
+.item.afford {
+  border-color: var(--line-2);
+}
+.item.locked {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.item.done {
+  border-color: rgba(47, 158, 99, 0.5);
+  background: rgba(223, 245, 230, 0.7);
+}
+.item-ico {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 13px;
+  background: linear-gradient(180deg, #eaf5ff, #d6ecff);
+  border: 1px solid var(--line);
+  font-size: 1.4rem;
+}
+.item-meta {
+  flex: 1;
+  min-width: 0;
+}
+.item-meta b {
+  display: block;
+  color: var(--ink-deep);
+  font-weight: 800;
+  font-size: 0.96rem;
+}
+.item-meta span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.78rem;
+  margin-top: 1px;
+}
+.item-cta {
+  flex: none;
+  padding: 8px 14px;
+  border-radius: 100px;
+  background: linear-gradient(180deg, #d6ecff, #bfe0fb);
+  border: 1px solid var(--line-2);
+  color: var(--ink-deep);
+  font-weight: 800;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+.item.locked .item-cta {
+  background: #e7eef6;
+  color: var(--muted);
+}
+.panel-head {
+  text-align: center;
+  padding: 6px 0 2px;
+}
+.panel-head h2 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.3rem;
+  color: var(--ink-deep);
+}
+.panel-head p {
+  color: var(--muted);
+  font-size: 0.84rem;
+  margin-top: 2px;
+}
+
+/* ============================ DOCK ============================ */
+.dock {
+  position: relative;
+  z-index: 3;
+  padding: 0 14px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.feat {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 12px 14px;
+  width: 100%;
+  background: var(--glass-2);
+  border: 1.5px solid var(--line-2);
+  border-radius: 20px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-sm);
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.2s;
+}
+.feat:active {
+  transform: scale(0.985);
+}
+.feat.afford {
+  box-shadow: 0 0 0 2px rgba(47, 158, 99, 0.35), var(--shadow-sm);
+}
+.feat-ico {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #eaf5ff, #cfe6fb);
+  border: 1px solid var(--line);
+  font-size: 1.5rem;
+}
+.feat-meta {
+  flex: 1;
+  min-width: 0;
+}
+.feat-meta b {
+  display: block;
+  color: var(--ink-deep);
+  font-weight: 800;
+  font-size: 1rem;
+}
+.feat-meta i {
+  display: block;
+  color: var(--ink-2);
+  font-weight: 800;
+  font-style: normal;
+  font-size: 0.9rem;
+  margin-top: 1px;
+}
+.feat-cta {
+  flex: none;
+  padding: 10px 18px;
+  border-radius: 100px;
+  background: linear-gradient(180deg, #d6ecff, #bfe0fb);
+  border: 1px solid var(--line-2);
+  color: var(--ink-deep);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.feat.poor .feat-cta {
+  background: #e7eef6;
+  color: var(--muted);
+}
+.dock.hidden {
+  display: none;
+}
+
+.stats {
+  display: flex;
+  background: var(--glass-2);
+  border: 1.5px solid var(--line);
+  border-radius: 18px;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
+}
+.stat {
+  flex: 1;
+  text-align: center;
+  padding: 9px 4px;
+  border-left: 1px solid var(--line);
+}
+.stat:first-child {
+  border-left: 0;
+}
+.stat b {
+  display: block;
+  color: var(--ink-deep);
+  font-weight: 800;
+  font-size: 0.98rem;
+}
+.stat span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+
+/* ============================ NAV ============================ */
+.nav {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  gap: 4px;
+  padding: 8px 8px max(8px, env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-top: 1.5px solid var(--line);
+}
+.nav-btn {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 2px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, transform 0.1s;
+}
+.nav-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.nav-btn[data-tab='launder'] svg,
+.nav-btn[data-tab='perks'] svg {
+  fill: none;
+}
+.nav-btn:active {
+  transform: scale(0.92);
+}
+.nav-btn.on {
+  color: var(--ink-deep);
+  background: linear-gradient(180deg, #d9edff, #c4e2fb);
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.badge {
+  position: absolute;
+  top: 1px;
+  right: calc(50% - 26px);
+  padding: 1px 6px;
+  border-radius: 100px;
+  background: var(--ink-2);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 800;
+  font-style: normal;
+}
+
+/* ============================ OVERLAYS ============================ */
+.bust {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 90, 77, 0.18);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.bust.show {
+  opacity: 1;
+  animation: flash 0.5s ease;
+}
+@keyframes flash {
+  0%, 100% { background: rgba(255, 90, 77, 0.1); }
+  30% { background: rgba(255, 90, 77, 0.32); }
+}
+.bust-card {
+  text-align: center;
+  padding: 22px 34px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 2px solid var(--red);
+  box-shadow: var(--shadow);
+  transform: scale(0.8);
+  transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+}
+.bust.show .bust-card {
+  transform: scale(1);
+}
+.bust-card b {
+  display: block;
+  font-family: 'Fraunces', serif;
+  font-size: 2rem;
+  color: var(--red);
+  letter-spacing: 0.02em;
+}
+.bust-card span {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.hype {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  overflow: hidden;
+}
+.confetti {
+  position: absolute;
+  top: -12px;
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  animation: fall linear forwards;
+}
+@keyframes fall {
+  to {
+    transform: translateY(110vh) rotate(720deg);
+    opacity: 0.2;
+  }
+}
+
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 84px;
+  z-index: 10;
+  transform: translate(-50%, 12px);
+  padding: 11px 18px;
+  border-radius: 100px;
+  background: rgba(12, 47, 90, 0.94);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.86rem;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+}
+.toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+</style>
+  </head>
+  <body>
+    <div class="phone" id="app">
+      <!-- ===================== SCENE (parallax background) ===================== -->
+            <div class="scene" id="scene" aria-hidden="true">
+        <div class="scene-img" id="scene-img"></div>
+        <div class="scrim-top"></div>
+        <div class="scrim-bottom"></div>
+        <div class="scene-hint" id="scene-hint" hidden>
+          <b>Drop the scene image here</b>
+          <span>save it as <code>assets/scene-dubai.jpg</code> &mdash; hands + city, no UI</span>
+        </div>
+      </div>
+<!-- ===================== HUD (top) ===================== -->
+      <header class="hud">
+        <div class="pills">
+          <div class="pill"><span class="pk">LEVEL</span><span class="pv" id="ui-level">1</span></div>
+          <button class="pill loc" id="ui-loc-btn" type="button">
+            <svg viewBox="0 0 24 24" class="pin"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5Z"/></svg>
+            <span id="ui-loc">DUBAI</span>
+          </button>
+          <div class="pill"><span class="pk">GOAL</span><span class="pv" id="ui-goal">10K</span></div>
+        </div>
+
+        <div class="heat card">
+          <div class="heat-line">
+            <span class="heat-k">HEAT</span>
+            <div class="heat-track"><i class="heat-fill" id="ui-heatfill"></i></div>
+            <span class="heat-v" id="ui-heatpct">0%</span>
+          </div>
+          <div class="heat-sub" id="ui-heatsub">all quiet for now.</div>
+        </div>
+
+        <div class="counter">
+          <div class="cash" id="ui-cash">$0</div>
+          <div class="rate">laundering <b id="ui-rate">$0/s</b></div>
+        </div>
+
+        <button class="clean" id="ui-buy" type="button">
+          <span class="clean-ico">$</span>
+          <span class="clean-name">$CLEAN</span>
+          <span class="clean-price" id="ui-price">$0.000023</span>
+          <span class="clean-go">BUY</span>
+        </button>
+      </header>
+
+      <!-- ===================== STAGE ===================== -->
+      <main class="stage">
+        <section class="view view-launder" id="view-launder">
+          <button class="tap" id="ui-tap" type="button" aria-label="Launder money">
+            <span class="tap-ring" id="ui-tapring"></span>
+            <span class="tap-hint">TAP · SWIPE TO RIFFLE</span>
+            <span class="floaters" id="ui-floaters"></span>
+          </button>
+        </section>
+
+        <section class="view panel" id="view-perks" hidden><div class="list" id="list-perks"></div></section>
+        <section class="view panel" id="view-bribes" hidden><div class="list" id="list-bribes"></div></section>
+        <section class="view panel" id="view-rep" hidden><div class="list" id="list-rep"></div></section>
+        <section class="view panel" id="view-escape" hidden><div class="list" id="list-escape"></div></section>
+      </main>
+
+      <!-- ===================== DOCK (featured upgrade + stats) ===================== -->
+      <div class="dock" id="ui-dock">
+        <button class="feat" id="ui-feat" type="button">
+          <span class="feat-ico" id="ui-feat-ico">🧤</span>
+          <span class="feat-meta">
+            <b id="ui-feat-name">Extra Hands</b>
+            <i id="ui-feat-cost">$50</i>
+          </span>
+          <span class="feat-cta" id="ui-feat-cta">BUY</span>
+        </button>
+        <div class="stats">
+          <div class="stat"><b id="ui-s1">$0/s</b><span>income</span></div>
+          <div class="stat"><b id="ui-s2">×1</b><span>mult</span></div>
+          <div class="stat"><b id="ui-s3">0/3</b><span>perks</span></div>
+          <div class="stat"><b id="ui-s4">0</b><span>taps</span></div>
+        </div>
+      </div>
+
+      <!-- ===================== BOTTOM NAV ===================== -->
+      <nav class="nav" id="ui-nav">
+        <button class="nav-btn on" data-tab="launder" type="button">
+          <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="13" r="4.4"/><circle cx="7.5" cy="6.5" r="1.1"/></svg>
+          <span>LAUNDER</span>
+        </button>
+        <button class="nav-btn" data-tab="perks" type="button">
+          <svg viewBox="0 0 24 24"><path d="M6 3h12l3 6-9 12L3 9z"/></svg>
+          <span>PERKS</span>
+        </button>
+        <button class="nav-btn" data-tab="bribes" type="button">
+          <svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a3 3 0 0 1 6 0v2"/></svg>
+          <span>BRIBES</span>
+        </button>
+        <button class="nav-btn" data-tab="rep" type="button">
+          <svg viewBox="0 0 24 24"><path d="M12 3l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 21l1.1-6.5L2.6 9.8l6.5-.9z"/></svg>
+          <span>REP</span>
+          <i class="badge" id="ui-repbadge">0/8</i>
+        </button>
+        <button class="nav-btn" data-tab="escape" type="button">
+          <svg viewBox="0 0 24 24"><circle cx="13.5" cy="4.5" r="2"/><path d="M5 21l4-7 3 2 1 5M13 9l-3 3-4 1M13 9l3 1 3 4"/></svg>
+          <span>ESCAPE</span>
+        </button>
+      </nav>
+
+      <!-- ===================== OVERLAYS ===================== -->
+      <div class="bust" id="ui-bust"><div class="bust-card"><b>BUSTED</b><span id="ui-bust-sub">the feds took a cut.</span></div></div>
+      <div class="hype" id="ui-hype"></div>
+      <div class="toast" id="ui-toast"></div>
+    </div>
+
+    <script>
+/* ======================================================================
+   Clean Hands, Dirty Money — game engine (vanilla JS, CSP-safe)
+   A tap + idle launderer: launder cash, buy fronts, dodge HEAT, bribe the
+   law, build REP, and ESCAPE to a richer city for a permanent multiplier.
+   Progress saves to localStorage and (if a backend is reachable) syncs.
+   ====================================================================== */
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+
+  // -------------------------------------------------------------- content
+  const UPGRADES = [
+    { id: 'hands', name: 'Extra Hands', ico: '🧤', base: 50, inc: 1 },
+    { id: 'mat', name: 'Laundromat', ico: '🧺', base: 600, inc: 9 },
+    { id: 'wash', name: 'Car Wash', ico: '🚿', base: 5200, inc: 55 },
+    { id: 'casino', name: 'Casino Floor', ico: '🎰', base: 42000, inc: 320 },
+    { id: 'shell', name: 'Shell Company', ico: '🏢', base: 300000, inc: 1800 },
+    { id: 'mixer', name: 'Crypto Mixer', ico: '🌀', base: 2.2e6, inc: 10500 },
+    { id: 'bank', name: 'Private Bank', ico: '🏦', base: 1.5e7, inc: 62000 },
+    { id: 'cartel', name: 'Cartel Route', ico: '🛥️', base: 1.1e8, inc: 380000 },
+    { id: 'state', name: 'Captured State', ico: '🏛️', base: 9e8, inc: 2.4e6 },
+  ];
+  const COST_GROWTH = 1.15;
+
+  const PERKS = [
+    { id: 'nitrile', name: 'Nitrile Pro', ico: '💎', cost: 8000, desc: '×2 per-tap launder' },
+    { id: 'spin', name: 'Spin Cycle', ico: '⚡', cost: 90000, desc: '×2 idle income' },
+    { id: 'cold', name: 'Cold Wash', ico: '❄️', cost: 600000, desc: 'Heat builds 50% slower' },
+  ];
+
+  const BRIBES = [
+    { id: 'cop', name: 'Local Cop', ico: '👮', base: 1500, cut: 25, desc: 'Look the other way' },
+    { id: 'mayor', name: 'The Mayor', ico: '🎩', base: 18000, cut: 55, desc: 'A friend in city hall' },
+    { id: 'judge', name: 'A Judge', ico: '⚖️', base: 140000, cut: 100, desc: 'Make the case vanish' },
+  ];
+
+  const REP = [
+    { id: 'first', name: 'First Wash', ico: '🫧', desc: 'Launder your first $1,000', test: (s) => s.lifetime >= 1000 },
+    { id: 'busy', name: 'Busy Hands', ico: '👏', desc: 'Tap 500 times', test: (s) => s.taps >= 500 },
+    { id: 'team', name: 'Full Crew', ico: '🧤', desc: 'Own 10× Extra Hands', test: (s) => (s.ups.hands || 0) >= 10 },
+    { id: 'mil', name: 'Millionaire', ico: '💰', desc: 'Reach $1,000,000', test: (s) => s.lifetime >= 1e6 },
+    { id: 'ice', name: 'Ice Cold', ico: '🧊', desc: 'Buy the Cold Wash perk', test: (s) => !!s.perks.cold },
+    { id: 'fixer', name: 'The Fixer', ico: '🤝', desc: 'Pay 5 bribes', test: (s) => s.bribes >= 5 },
+    { id: 'jet', name: 'Jet Set', ico: '✈️', desc: 'Escape to a new city', test: (s) => s.prestige >= 1 },
+    { id: 'whale', name: 'Dirty Whale', ico: '🐋', desc: 'Reach $1,000,000,000', test: (s) => s.lifetime >= 1e9 },
+  ];
+
+  const CITIES = ['Dubai', 'Monaco', 'Singapore', 'Zurich', 'Cayman Is.', 'Macau', 'Geneva', 'Hong Kong'];
+
+  // tunables
+  const TAP_HEAT = 2.2;
+  const HEAT_DECAY = 3.0; // per second
+  const BASE_TAP = 5;
+  const TAP_FRACTION = 0.1; // taps also pay a slice of your $/s
+  const BUST_LOSS = 0.18;
+  const OFFLINE_RATE = 0.5;
+  const OFFLINE_CAP = 8 * 3600; // 8h
+
+  // -------------------------------------------------------------- state
+  const DEFAULT = () => ({
+    cash: 0,
+    lifetime: 0,
+    taps: 0,
+    cityIdx: 0,
+    heat: 0,
+    ups: {},
+    perks: {},
+    rep: {},
+    bribes: 0,
+    prestige: 0,
+    lastSeen: Date.now(),
+  });
+  let state = DEFAULT();
+  let bustedUntil = 0;
+  let player = '';
+
+  const SAVE_KEY = 'chdm_save_v1';
+  function loadLocal() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (raw) state = Object.assign(DEFAULT(), JSON.parse(raw));
+    } catch (_) {}
+    try {
+      player = localStorage.getItem('chdm_player') || '';
+      if (!player) {
+        player = (crypto.randomUUID && crypto.randomUUID()) || 'p' + Date.now() + Math.random().toString(36).slice(2);
+        localStorage.setItem('chdm_player', player);
+      }
+    } catch (_) {}
+  }
+  let _saveT = 0;
+  function saveLocal() {
+    state.lastSeen = Date.now();
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+    } catch (_) {}
+  }
+  function saveSoon() {
+    const now = Date.now();
+    if (now - _saveT < 1500) return;
+    _saveT = now;
+    saveLocal();
+    syncUp();
+  }
+
+  // -------------------------------------------------------------- backend (optional)
+  const API = ''; // same origin; standalone server.py serves it
+  async function syncDown() {
+    try {
+      const r = await fetch(API + '/api/load', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ player }),
+      });
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d && d.state) {
+        const remote = JSON.parse(d.state);
+        // take whichever was touched most recently
+        if ((remote.lastSeen || 0) > (state.lastSeen || 0)) state = Object.assign(DEFAULT(), remote);
+      }
+    } catch (_) {}
+  }
+  async function syncUp() {
+    try {
+      await fetch(API + '/api/save', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ player, state: JSON.stringify(state), score: Math.floor(state.lifetime) }),
+      });
+    } catch (_) {}
+  }
+  async function loadBoard() {
+    try {
+      const r = await fetch(API + '/api/leaderboard');
+      if (!r.ok) return [];
+      return (await r.json()).top || [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // -------------------------------------------------------------- math/derived
+  const upCost = (u) => Math.ceil(u.base * Math.pow(COST_GROWTH, state.ups[u.id] || 0));
+  const bribeCost = (b) => Math.ceil(b.base * Math.pow(1.22, state.bribes));
+  const prestigeMult = () => 1 + 0.75 * state.prestige;
+  const idleMult = () => (state.perks.spin ? 2 : 1) * prestigeMult();
+  const tapMult = () => (state.perks.nitrile ? 2 : 1) * prestigeMult();
+  function perSec() {
+    let s = 0;
+    for (const u of UPGRADES) s += (state.ups[u.id] || 0) * u.inc;
+    return s * idleMult();
+  }
+  const perTap = () => (BASE_TAP + perSec() * TAP_FRACTION) * tapMult();
+  const coolFactor = () => (state.perks.cold ? 0.5 : 1);
+  const level = () => Math.max(1, Math.floor(Math.log10(Math.max(10, state.lifetime))) - 1);
+  const escapeGoal = () => 250000 * Math.pow(15, state.cityIdx);
+  const perksOwned = () => PERKS.filter((p) => state.perks[p.id]).length;
+  const repOwned = () => REP.filter((r) => state.rep[r.id]).length;
+
+  // pick the upgrade with the best value you can afford, else the cheapest target
+  function featured() {
+    const aff = UPGRADES.filter((u) => upCost(u) <= state.cash);
+    if (aff.length) return aff.reduce((a, b) => (b.inc / upCost(b) > a.inc / upCost(a) ? b : a));
+    return UPGRADES.slice().sort((a, b) => upCost(a) - upCost(b))[0];
+  }
+
+  // -------------------------------------------------------------- format
+  function abbr(n) {
+    n = Math.floor(n);
+    if (n < 1000) return '' + n;
+    const u = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx'];
+    let i = 0,
+      x = n;
+    while (x >= 1000 && i < u.length - 1) {
+      x /= 1000;
+      i++;
+    }
+    return (x < 10 ? x.toFixed(2) : x < 100 ? x.toFixed(1) : Math.floor(x)) + u[i];
+  }
+  const money = (n) => (n < 1e9 ? '$' + Math.floor(n).toLocaleString('en-US') : '$' + abbr(n));
+  const moneyShort = (n) => '$' + abbr(n);
+
+  // -------------------------------------------------------------- UI helpers
+  let toastT;
+  function toast(msg) {
+    const t = $('ui-toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastT);
+    toastT = setTimeout(() => t.classList.remove('show'), 1900);
+  }
+  function haptic(ms) {
+    try {
+      navigator.vibrate && navigator.vibrate(ms || 8);
+    } catch (_) {}
+  }
+
+  // -------------------------------------------------------------- render
+  let curTab = 'launder';
+  function render() {
+    const ps = perSec();
+    $('ui-level').textContent = level();
+    $('ui-loc').textContent = (CITIES[state.cityIdx] || 'Offshore').toUpperCase();
+    $('ui-goal').textContent = abbr(escapeGoal());
+    $('ui-cash').textContent = money(state.cash);
+    $('ui-rate').textContent = moneyShort(ps) + '/s';
+
+    const hp = Math.round(state.heat);
+    $('ui-heatfill').style.width = Math.min(100, state.heat) + '%';
+    $('ui-heatpct').textContent = hp + '%';
+    $('ui-heatsub').textContent =
+      state.heat >= 95
+        ? 'RAID INCOMING — bribe or cool down!'
+        : state.heat >= 75
+          ? 'the feds opened a case. allegedly.'
+          : state.heat >= 40
+            ? 'local authorities are watching.'
+            : 'all quiet for now.';
+    $('app').querySelector('.heat').classList.toggle('hot', state.heat >= 90);
+
+    // dock
+    const f = featured();
+    const fc = upCost(f);
+    $('ui-feat-ico').textContent = f.ico;
+    $('ui-feat-name').textContent = f.name + (state.ups[f.id] ? ' ·' + (state.ups[f.id]) : '');
+    $('ui-feat-cost').textContent = moneyShort(fc) + '  (+' + moneyShort(f.inc * idleMult()) + '/s)';
+    const canBuy = state.cash >= fc;
+    $('ui-feat-cta').textContent = canBuy ? 'BUY' : 'SOON';
+    $('ui-feat').classList.toggle('afford', canBuy);
+    $('ui-feat').classList.toggle('poor', !canBuy);
+
+    $('ui-s1').textContent = moneyShort(ps) + '/s';
+    $('ui-s2').textContent = '×' + (prestigeMult() < 10 ? prestigeMult().toFixed(2) : Math.floor(prestigeMult()));
+    $('ui-s3').textContent = perksOwned() + '/' + PERKS.length;
+    $('ui-s4').textContent = abbr(state.taps);
+    $('ui-repbadge').textContent = repOwned() + '/' + REP.length;
+    $('ui-price').textContent = cleanPrice;
+
+    if (curTab !== 'launder') renderPanel(curTab);
+  }
+
+  function renderPanel(tab) {
+    if (tab === 'perks') {
+      $('list-perks').innerHTML =
+        head('Perks', 'Permanent boosts. Buy once.') +
+        PERKS.map((p) => {
+          const owned = !!state.perks[p.id];
+          const can = state.cash >= p.cost;
+          const cls = owned ? 'done' : can ? 'afford' : 'locked';
+          const cta = owned ? 'OWNED' : moneyShort(p.cost);
+          return item('perk', p.id, p.ico, p.name, p.desc, cta, cls);
+        }).join('');
+    } else if (tab === 'bribes') {
+      $('list-bribes').innerHTML =
+        head('Bribes', 'Spend dirty money to cool the HEAT — instantly.') +
+        BRIBES.map((b) => {
+          const c = bribeCost(b);
+          const can = state.cash >= c;
+          return item('bribe', b.id, b.ico, b.name, b.desc + ' · −' + b.cut + '% heat', moneyShort(c), can ? 'afford' : 'locked');
+        }).join('');
+    } else if (tab === 'rep') {
+      $('list-rep').innerHTML =
+        head('Reputation', repOwned() + ' of ' + REP.length + ' badges earned') +
+        REP.map((r) => {
+          const done = !!state.rep[r.id];
+          return item('rep', r.id, done ? r.ico : '🔒', r.name, r.desc, done ? 'DONE' : '—', done ? 'done' : 'locked');
+        }).join('');
+    } else if (tab === 'escape') {
+      const goal = escapeGoal();
+      const ready = state.lifetime >= goal;
+      const next = CITIES[state.cityIdx + 1] || 'a private island';
+      let html =
+        head('Escape', 'Burn it all down. Relocate to ' + next + ' for a permanent ×1.75 on everything.') +
+        '<div class="item ' +
+        (ready ? 'afford' : 'locked') +
+        '" data-act="escape"><span class="item-ico">✈️</span><span class="item-meta"><b>Escape to ' +
+        next +
+        '</b><span>Needs ' +
+        money(goal) +
+        ' laundered (lifetime). You have ' +
+        money(state.lifetime) +
+        '.</span></span><span class="item-cta">' +
+        (ready ? 'GO' : abbr(state.lifetime) + '/' + abbr(goal)) +
+        '</span></div>' +
+        '<div class="panel-head" style="margin-top:14px"><h2>Most Wanted</h2><p>top launderers worldwide</p></div>' +
+        '<div id="board"></div>';
+      $('list-escape').innerHTML = html;
+      loadBoard().then((top) => {
+        const el = $('board');
+        if (!el) return;
+        el.innerHTML = top.length
+          ? top
+              .map(
+                (r, i) =>
+                  '<div class="item"><span class="item-ico">' +
+                  (['🥇', '🥈', '🥉'][i] || i + 1) +
+                  '</span><span class="item-meta"><b>' +
+                  (r.wallet || r.name || 'anon') +
+                  '</b><span>' +
+                  money(r.score) +
+                  ' laundered</span></span></div>',
+              )
+              .join('')
+          : '<div class="item locked"><span class="item-meta"><b>No rankings yet</b><span>be the first dirty whale.</span></span></div>';
+      });
+    }
+  }
+  const head = (t, p) => '<div class="panel-head"><h2>' + t + '</h2><p>' + p + '</p></div>';
+  function item(kind, id, ico, name, desc, cta, cls) {
+    return (
+      '<button class="item ' +
+      cls +
+      '" data-act="' +
+      kind +
+      '" data-id="' +
+      id +
+      '"><span class="item-ico">' +
+      ico +
+      '</span><span class="item-meta"><b>' +
+      name +
+      '</b><span>' +
+      desc +
+      '</span></span><span class="item-cta">' +
+      cta +
+      '</span></button>'
+    );
+  }
+
+  // -------------------------------------------------------------- actions
+  function launder(e) {
+    if (Date.now() < bustedUntil) return;
+    const gain = perTap();
+    state.cash += gain;
+    state.lifetime += gain;
+    state.taps++;
+    state.heat = Math.min(100, state.heat + TAP_HEAT * coolFactor());
+    // drop the +$ and the ripple right where they tapped (over the hands)
+    let xp = 50,
+      yp = 50;
+    const tap = $('ui-tap');
+    if (e && tap && e.clientX != null) {
+      const r = tap.getBoundingClientRect();
+      const lx = e.clientX - r.left,
+        ly = e.clientY - r.top;
+      xp = (lx / r.width) * 100;
+      yp = (ly / r.height) * 100;
+      ring(lx, ly);
+    }
+    floater('+' + moneyShort(gain), xp, yp);
+    $('ui-cash').classList.remove('pop');
+    void $('ui-cash').offsetWidth;
+    $('ui-cash').classList.add('pop');
+    haptic(6);
+    if (state.heat >= 100) bust();
+    checkRep();
+    render();
+    saveSoon();
+  }
+  function ring(lx, ly) {
+    const r = $('ui-tapring');
+    if (!r) return;
+    r.style.left = lx + 'px';
+    r.style.top = ly + 'px';
+    r.classList.remove('go');
+    void r.offsetWidth;
+    r.classList.add('go');
+  }
+  let _fl = 0;
+  function floater(txt, xp, yp) {
+    const now = Date.now();
+    if (now - _fl < 50) return;
+    _fl = now;
+    const f = document.createElement('span');
+    f.className = 'float';
+    f.textContent = txt;
+    f.style.left = (xp != null ? xp : 50) + '%';
+    f.style.top = (yp != null ? yp : 50) + '%';
+    $('ui-floaters').appendChild(f);
+    setTimeout(() => f.remove(), 900);
+  }
+  function bust() {
+    const loss = state.cash * BUST_LOSS;
+    state.cash -= loss;
+    state.heat = 35;
+    bustedUntil = Date.now() + 1500;
+    const b = $('ui-bust');
+    $('ui-bust-sub').textContent = 'the feds took ' + money(loss) + '.';
+    b.classList.add('show');
+    haptic([30, 40, 30]);
+    setTimeout(() => b.classList.remove('show'), 900);
+  }
+  function buyFeatured() {
+    const f = featured();
+    const c = upCost(f);
+    if (state.cash < c) return toast('Keep laundering — ' + moneyShort(c) + ' needed.');
+    state.cash -= c;
+    state.ups[f.id] = (state.ups[f.id] || 0) + 1;
+    haptic(10);
+    checkRep();
+    render();
+    saveSoon();
+  }
+  function buyPerk(id) {
+    const p = PERKS.find((x) => x.id === id);
+    if (!p || state.perks[id]) return;
+    if (state.cash < p.cost) return toast('Need ' + moneyShort(p.cost) + ' for ' + p.name + '.');
+    state.cash -= p.cost;
+    state.perks[id] = true;
+    toast(p.name + ' unlocked ✦');
+    haptic(14);
+    checkRep();
+    render();
+    saveLocal();
+    syncUp();
+  }
+  function payBribe(id) {
+    const b = BRIBES.find((x) => x.id === id);
+    if (!b) return;
+    const c = bribeCost(b);
+    if (state.cash < c) return toast('Need ' + moneyShort(c) + ' for ' + b.name + '.');
+    state.cash -= c;
+    state.heat = Math.max(0, state.heat - b.cut);
+    state.bribes++;
+    toast(b.name + ' paid — heat down.');
+    haptic(12);
+    checkRep();
+    render();
+    saveLocal();
+    syncUp();
+  }
+  function doEscape() {
+    if (state.lifetime < escapeGoal()) return toast('Not enough laundered to escape yet.');
+    state.prestige++;
+    state.cityIdx = Math.min(CITIES.length - 1, state.cityIdx + 1);
+    state.cash = 0;
+    state.ups = {};
+    state.bribes = 0;
+    state.heat = 0;
+    setScene(CITIES[state.cityIdx]);
+    toast('Escaped to ' + CITIES[state.cityIdx] + ' ✈️  ×' + prestigeMult().toFixed(2));
+    confetti();
+    checkRep();
+    render();
+    saveLocal();
+    syncUp();
+  }
+  function checkRep() {
+    let any = false;
+    for (const r of REP) {
+      if (!state.rep[r.id] && r.test(state)) {
+        state.rep[r.id] = true;
+        any = true;
+        toast('Badge earned: ' + r.name + ' ' + r.ico);
+      }
+    }
+    if (any) confetti();
+  }
+  function confetti() {
+    const h = $('ui-hype');
+    const cols = ['#bfe0fb', '#2f74c0', '#e8b53a', '#2f9e63', '#ffffff'];
+    for (let i = 0; i < 26; i++) {
+      const c = document.createElement('span');
+      c.className = 'confetti';
+      c.style.left = Math.random() * 100 + '%';
+      c.style.background = cols[i % cols.length];
+      c.style.animationDuration = 1 + Math.random() * 1.2 + 's';
+      c.style.animationDelay = Math.random() * 0.2 + 's';
+      h.appendChild(c);
+      setTimeout(() => c.remove(), 2400);
+    }
+  }
+
+  // -------------------------------------------------------------- tabs
+  function showTab(tab) {
+    curTab = tab;
+    ['launder', 'perks', 'bribes', 'rep', 'escape'].forEach((t) => {
+      const v = $('view-' + t);
+      if (v) v.hidden = t !== tab;
+    });
+    $('ui-dock').classList.toggle('hidden', tab !== 'launder');
+    document.querySelectorAll('.nav-btn').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    if (tab !== 'launder') renderPanel(tab);
+  }
+
+  // -------------------------------------------------------------- scene image
+  // Full-bleed background photo per city. Drop art at assets/scene-<city>.<ext>
+  // (jpg/png/webp). Until then, a soft gradient + a "drop it here" hint show.
+  function setScene(city) {
+    const slug = (city || 'dubai').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const exts = ['jpg', 'jpeg', 'png', 'webp'];
+    const img = $('scene-img');
+    const hint = $('scene-hint');
+    if (!img) return;
+    let i = 0;
+    (function next() {
+      if (i >= exts.length) {
+        img.classList.remove('on');
+        if (hint) hint.hidden = false;
+        return;
+      }
+      const url = 'assets/scene-' + slug + '.' + exts[i++];
+      const probe = new Image();
+      probe.onload = () => {
+        img.style.backgroundImage = 'url("' + url + '")';
+        img.classList.add('on');
+        if (hint) hint.hidden = true;
+      };
+      probe.onerror = next;
+      probe.src = url;
+    })();
+  }
+
+  // -------------------------------------------------------------- $CLEAN buy
+  let cleanPrice = '$0.000023';
+  function buyClean() {
+    // Embedded in the mini app later: ask the parent to open the real swap.
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'clean:buy' }, '*');
+        toast('Opening $CLEAN swap…');
+        return;
+      }
+    } catch (_) {}
+    window.open('https://jup.ag/', '_blank', 'noopener');
+  }
+  // accept price/auth from a parent host (mini app), when integrated
+  window.addEventListener('message', (e) => {
+    const d = e.data || {};
+    if (d.type === 'clean:price' && d.price) {
+      cleanPrice = d.price;
+      $('ui-price').textContent = cleanPrice;
+    }
+  });
+
+  // -------------------------------------------------------------- engine loop
+  function tick(dt) {
+    const ps = perSec();
+    if (ps > 0) {
+      state.cash += ps * dt;
+      state.lifetime += ps * dt;
+    }
+    if (state.heat > 0 && Date.now() >= bustedUntil) state.heat = Math.max(0, state.heat - HEAT_DECAY * dt);
+    checkRep();
+  }
+  function offline() {
+    const dt = Math.min(OFFLINE_CAP, (Date.now() - (state.lastSeen || Date.now())) / 1000);
+    const earned = perSec() * dt * OFFLINE_RATE;
+    if (earned > 1) {
+      state.cash += earned;
+      state.lifetime += earned;
+      setTimeout(() => toast('Welcome back — +' + moneyShort(earned) + ' laundered while away.'), 600);
+    }
+  }
+
+  // -------------------------------------------------------------- wire up
+  function bind() {
+    $('ui-tap').addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      launder(e);
+    });
+    $('ui-feat').addEventListener('click', buyFeatured);
+    $('ui-buy').addEventListener('click', buyClean);
+    $('ui-loc-btn').addEventListener('click', () => showTab('escape'));
+    document.querySelectorAll('.nav-btn').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+    // event-delegated list actions
+    document.querySelector('.stage').addEventListener('click', (e) => {
+      const el = e.target.closest('[data-act]');
+      if (!el) return;
+      const act = el.dataset.act;
+      if (act === 'perk') buyPerk(el.dataset.id);
+      else if (act === 'bribe') payBribe(el.dataset.id);
+      else if (act === 'escape') doEscape();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        saveLocal();
+        syncUp();
+      }
+    });
+    window.addEventListener('pagehide', saveLocal);
+  }
+
+  // -------------------------------------------------------------- boot
+  function boot() {
+    loadLocal();
+    offline();
+    bind();
+    showTab('launder');
+    setScene(CITIES[state.cityIdx]);
+    render();
+    let last = performance.now();
+    setInterval(() => {
+      const now = performance.now();
+      const dt = Math.min(0.5, (now - last) / 1000);
+      last = now;
+      tick(dt);
+      render();
+    }, 100);
+    setInterval(saveSoon, 5000);
+    // try to pull a cloud save, then re-render
+    syncDown().then(render);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+
+</script>
+  </body>
+</html>
