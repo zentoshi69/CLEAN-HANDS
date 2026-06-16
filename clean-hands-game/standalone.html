@@ -195,8 +195,12 @@ body{
   height:0;padding-bottom:63.696%;   /* 293 / 460 — replaces aspect-ratio */
   z-index:1;                         /* sit above the .play::before wash */
   transform-origin:center bottom;cursor:grab;user-select:none;-webkit-user-select:none;
+  outline:none;-webkit-tap-highlight-color:transparent;   /* no blue focus/tap square */
   transition:transform .12s var(--ease);
 }
+/* #hands is role=button tabindex=0; on a desktop click the browser paints its
+   default blue focus ring ("the blue square when I tap"). Suppress it. */
+#hands:focus,#hands:focus-visible{outline:none;box-shadow:none}
 /* soft contact shadow — radial gradient (no filter); paints below the z-indexed
    hand layers, so the hands themselves carry zero compositing filters */
 #hands::before{content:"";position:absolute;left:50%;bottom:3%;pointer-events:none;
@@ -206,8 +210,11 @@ body{
   pointer-events:none;user-select:none;-webkit-user-drag:none}
 #hands2{display:none}
 #hands.grab{cursor:grabbing}
-#hands.pop{animation:pop .26s var(--ease)}
-@keyframes pop{40%{transform:scale(1.045) translateY(-4px)}}
+/* The tap "pop" used transform:scale(1.045) translateY(-4px), which read as a
+   ZOOM and nudged the sprite frames off their fixed spot on every tap. Removed —
+   every hand/money frame now stays locked at the exact same size and position;
+   only the sprite frame itself changes. */
+#hands.pop{animation:none}
 
 /* riffle prompt — shown only for the first few seconds of play, with a glowing
    shine sweep, then fades out. Absolutely positioned above the dock so it never
@@ -1708,19 +1715,14 @@ function boot(){
      layer (the bug), this image still shows the gloves underneath — so the hands
      can never fully disappear, no matter what the compositor does. It's a data-URI
      (can't 404) and stays referenced + decoded. */
-  function mountRestHands(){
-    // HARD BACKSTOP: an always-visible plain <img> of the resting frame sits as
-    // the BOTTOM layer of #hands, beneath every crossfade frame. It is never
-    // animated, carries no filter and no GPU promotion, and is decode-pinned —
-    // so even if the WebView momentarily drops a frame's decode on the first-tap
-    // audio churn, this resting pair of gloves is still painted. The hands can
-    // never fully disappear, regardless of what the compositor does.
-    var hd=$('#hands'); if(!hd || $('#clnRest') || !(G.FRAME_URLS && G.FRAME_URLS[0])) return;
-    var img=document.createElement('img'); img.id='clnRest'; img.alt=''; img.draggable=false;
-    img.src=G.FRAME_URLS[0];
-    img.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center bottom;pointer-events:none;z-index:0;-webkit-user-drag:none';
-    hd.insertBefore(img, hd.firstChild);   // below every crossfade layer
-    if(img.decode) img.decode().catch(function(){});
+  function mountRestHands(){ return;   /* DISABLED.
+    The "hands vanish on tap" bug turned out to be a flex/aspect-ratio layout
+    COLLAPSE of #hands (now fixed with a padding-ratio box), not a compositor
+    blank — so this resting-frame backstop is no longer needed. Worse, because it
+    stayed on frame 0 while the active layer riffled to another frame, it showed a
+    SECOND pair of gloves behind the live one (the "ghost"/double hands that
+    appeared to spill over the sides). Removing it leaves exactly one sprite frame
+    on screen at a time, locked in position. */
   }
 
   /* ---------- identity / endpoints (real on-chain) ---------- */
