@@ -552,6 +552,10 @@ body{
   color:var(--ink);-webkit-tap-highlight-color:transparent;line-height:1;
   transition:transform .15s var(--ease),background .2s}
 .cln-fab:active{transform:scale(.92)}
+/* sound on/off — pinned to the very top-right of the screen (over #app),
+   in the safe-area band above the ticker, NOT floating over the play area */
+.cln-snd{top:calc(env(safe-area-inset-top) + 8px);right:12px;z-index:8;
+  width:36px;height:36px;border-radius:50%;font-size:16px}
 .cln-inv{top:8px;left:8px;height:38px;border-radius:99px;padding:0 15px 0 12px;gap:7px;
   font-size:13px;font-weight:800;overflow:hidden}
 .cln-inv .e{font-size:15px}
@@ -1991,8 +1995,16 @@ function boot(){
         inv.addEventListener('click', function(e){ e.stopPropagation(); sfx('tap'); openInvite(); });
         play.appendChild(inv);
       }
-      // (floating top-right sound icon removed per request — audio still
-      //  plays; muting is handled by the device's own volume control)
+      // sound on/off — mounted on #app so it pins to the screen's top-right
+      // corner (top band, above the ticker), not floating over the play area
+      if(!$('#clnSnd')){
+        var snd=document.createElement('button');
+        snd.className='cln-fab cln-snd'; snd.id='clnSnd'; snd.type='button';
+        snd.setAttribute('aria-label','Toggle sound');
+        snd.textContent = META.mute ? '🔇' : '🔊';
+        snd.addEventListener('click', function(e){ e.stopPropagation(); setMute(!META.mute); if(!META.mute) sfx('tap'); });
+        app.appendChild(snd);
+      }
     }
 
     /* second overlay (reuses HTML6 .overlay + .win chrome verbatim) */
