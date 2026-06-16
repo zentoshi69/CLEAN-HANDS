@@ -93,6 +93,9 @@ _CSP = (
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src https://fonts.gstatic.com; "
     "img-src 'self' data: https:; "
+    # /play (the tap game) plays its SFX + music from inlined data: audio URIs;
+    # without media-src these fall back to default-src 'self' and are blocked.
+    "media-src 'self' data:; "
     "connect-src 'self' https: wss:; "
     "frame-src https:; "
     "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org; "
@@ -1552,6 +1555,14 @@ def app_js():
     return FileResponse(
         os.path.join(_WEB, "app.js"), media_type="application/javascript", headers=_NO_CACHE
     )
+
+
+@app.get("/play")
+def play():
+    # $CLEAN tap game — a single self-contained HTML file (all CSS/JS/audio/art
+    # inlined as data: URIs), so no extra asset routes are needed. Served here so
+    # it ships with the same deploy as the Mini App; reachable at /play.
+    return FileResponse(os.path.join(_WEB, "play.html"), headers=_NO_CACHE)
 
 
 @app.get("/whitepaper")
