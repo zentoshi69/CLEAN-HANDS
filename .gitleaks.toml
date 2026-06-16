@@ -1,0 +1,16 @@
+# Gitleaks config for CLEAN-HANDS.
+# Keeps ALL default secret-detection rules (useDefault) and only allowlists the
+# PUBLIC $CLEAN token mint — an on-chain pump.fun address used to query public
+# price data (also present in README.md, BRAND-KIT.md and deploy/site-index.html).
+# A mint address is a public identifier, not a credential; gitleaks' generic
+# "api-key" heuristic mistook the 44-char base58 string for a secret.
+title = "CLEAN-HANDS"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public, non-secret identifiers"
+regexes = [
+  '''6jb4XWggYJjoo3fx7irPVxhNiuFbHUyVyKR8mBL8pump''',
+]

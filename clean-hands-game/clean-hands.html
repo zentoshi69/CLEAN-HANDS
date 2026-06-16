@@ -1104,7 +1104,7 @@ footer b{color:var(--muted)}
   }
 
   // ---------------- NETWORKING: price ticker, referral, wallet ----------------
-  const TOKEN_MINT="6jb4XWggYJjoo3fx7irPVxhNiuFbHUyVyKR8mBL8pump";
+  const TOKEN_MINT="6jb4XWggYJjoo3fx7irPVxhNiuFbHUyVyKR8mBL8pump"; // gitleaks:allow — public pump.fun mint (on-chain id), not a secret
   async function pollPrice(){ try{
     const r=await fetch("https://api.dexscreener.com/latest/dex/tokens/"+TOKEN_MINT,{cache:"no-store"});
     if(!r.ok) throw 0; const j=await r.json();
