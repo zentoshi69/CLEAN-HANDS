@@ -247,6 +247,13 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 MEME_AI_MODEL = os.environ.get("MEME_AI_MODEL", "gpt-image-1")
 MEME_AI_COOLDOWN = int(os.environ.get("MEME_AI_COOLDOWN", "60"))  # s per user
 MEME_AI_QUALITY = os.environ.get("MEME_AI_QUALITY", "high")  # low|medium|high|auto
+# Hard time budget for one AI wash. The interactive /meme spinner can NEVER
+# outlive this: a short connect timeout makes a blocked/firewalled egress to
+# api.openai.com fail in seconds (not minutes), and the overall deadline — also
+# enforced with asyncio.wait_for — guarantees the command always resolves to the
+# local stamp instead of hanging on "🫧 Soaking the image…" forever.
+MEME_AI_TIMEOUT = float(os.environ.get("MEME_AI_TIMEOUT", "90"))  # s, overall ceiling
+MEME_AI_CONNECT_TIMEOUT = float(os.environ.get("MEME_AI_CONNECT_TIMEOUT", "10"))  # s
 # The signature edit, specified from the approved reference outputs:
 # exact pose kept, photoreal nitrile glove, blue pop on B&W, gloved thumbs-up
 # added when no hands are visible, identity untouched.
@@ -297,10 +304,20 @@ def _ai_mark(user_id: int) -> None:
 
 async def ai_glove_hands(img_bytes: bytes) -> bytes | None:
     """Ask the image model to swap all hands for the $CLEAN glove. Returns PNG
-    bytes, or None on any failure (caller falls back to the local stamp)."""
-    try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            r = await client.post(
+    bytes, or None on any failure (caller falls back to the local stamp).
+
+    Time-bounded on BOTH ends so /meme can never get stuck on the spinner: a
+    short connect timeout makes a blocked/firewalled egress fail in seconds, the
+    read timeout caps a slow render, and an outer asyncio deadline is a hard
+    ceiling even if a transport edge case slips past httpx's own timeout."""
+    global _AI_LAST_ERR
+    timeout = httpx.Timeout(
+        MEME_AI_TIMEOUT, connect=MEME_AI_CONNECT_TIMEOUT, write=20.0, pool=5.0
+    )
+
+    async def _call() -> httpx.Response:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            return await client.post(
                 "https://api.openai.com/v1/images/edits",
                 headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
                 files={"image": ("photo.jpg", img_bytes, "image/jpeg")},
@@ -314,15 +331,26 @@ async def ai_glove_hands(img_bytes: bytes) -> bytes | None:
                     "input_fidelity": "high",
                 },
             )
+
+    try:
+        # belt-and-suspenders: the wash can never outlive the budget, even if a
+        # connection stalls in a way httpx's own timeout doesn't catch promptly
+        r = await asyncio.wait_for(_call(), timeout=MEME_AI_TIMEOUT + 5)
         if r.status_code != 200:
-            global _AI_LAST_ERR
             _AI_LAST_ERR = f"HTTP {r.status_code}: {r.text[:300]}"
             log.warning("ai meme failed: %s", _AI_LAST_ERR)
             return None
         b64 = (r.json().get("data") or [{}])[0].get("b64_json")
         return base64.b64decode(b64) if b64 else None
+    except (asyncio.TimeoutError, httpx.TimeoutException):
+        _AI_LAST_ERR = (
+            f"timeout after ~{MEME_AI_TIMEOUT:.0f}s — model too slow, or egress to "
+            "api.openai.com is blocked"
+        )
+        log.warning("ai meme failed: %s", _AI_LAST_ERR)
+        return None
     except Exception as e:  # noqa: BLE001
-        globals()["_AI_LAST_ERR"] = f"{type(e).__name__}: {e}"
+        _AI_LAST_ERR = f"{type(e).__name__}: {e}"
         log.warning("ai meme failed: %s", type(e).__name__)
         return None
 
@@ -337,6 +365,21 @@ async def _cleaning_fx(msg) -> None:
             await msg.edit_text(CLEANING_FRAMES[i % len(CLEANING_FRAMES)])
         except Exception:  # noqa: BLE001 — deleted or rate-limited: stop quietly
             return
+
+
+async def _stop_fx(task) -> None:
+    """Cancel the cleaning animation and wait for it to actually stop, so it can
+    never keep editing the placeholder after the meme has already resolved (the
+    'stuck on Soaking the image…' bug)."""
+    if task is None or task.done():
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    except Exception:  # noqa: BLE001
+        pass
 
 
 async def _download_photo(context, photo) -> bytes | None:
@@ -420,18 +463,18 @@ async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_ms
     # visible cleaning FX while the wash runs
     placeholder = await context.bot.send_message(chat_id, CLEANING_FRAMES[0])
     fx = asyncio.create_task(_cleaning_fx(placeholder))
-    try:
-        await context.bot.send_chat_action(chat_id, "upload_photo")
-    except Exception:  # noqa: BLE001
-        pass
 
     user_id = update.effective_user.id if update.effective_user else 0
     out = None
     ai_ok = False
     ai_expected = _ai_allowed(user_id)
     try:
+        try:
+            await context.bot.send_chat_action(chat_id, "upload_photo")
+        except Exception:  # noqa: BLE001
+            pass
         if ai_expected:
-            out = await ai_glove_hands(buf)  # hands -> gloves, AI
+            out = await ai_glove_hands(buf)  # hands -> gloves, AI (time-bounded)
             ai_ok = out is not None
             if ai_ok:
                 _ai_mark(user_id)  # only a successful wash charges the cooldown
@@ -446,7 +489,7 @@ async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_ms
                 out = add_glove(out, "br", 0.2)
             except Exception:  # noqa: BLE001 — missing asset must not kill the meme
                 pass
-        fx.cancel()
+        await _stop_fx(fx)  # freeze the animation just before the result lands
         await context.bot.send_photo(
             chat_id,
             photo=io.BytesIO(out),
@@ -469,11 +512,14 @@ async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_ms
                 pass
     except Exception as e:  # noqa: BLE001
         log.warning("meme failed: %s", e)
-        fx.cancel()
         try:
             await placeholder.edit_text("Couldn't wash that one — try another image. 🧤")
         except Exception:  # noqa: BLE001
             pass
+    finally:
+        # the cleaning animation must NEVER outlive the command — otherwise the
+        # placeholder keeps cycling "🫧 Soaking the image…" forever (the bug).
+        await _stop_fx(fx)
 
 
 async def cmd_memetest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -513,6 +559,12 @@ async def cmd_memetest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             hint = "\n\n→ The API key is invalid/revoked — paste a fresh one into .env."
         elif "429" in _AI_LAST_ERR or "quota" in _AI_LAST_ERR.lower():
             hint = "\n\n→ Out of credits / rate limited — check platform.openai.com billing."
+        elif "timeout" in _AI_LAST_ERR.lower():
+            hint = (
+                "\n\n→ The call timed out — gpt-image-1 high quality can exceed the "
+                f"{MEME_AI_TIMEOUT:.0f}s budget, or the host can't reach api.openai.com. "
+                "Raise MEME_AI_TIMEOUT, lower MEME_AI_QUALITY, or check outbound network."
+            )
         await update.message.reply_text(
             f"❌ AI call failed:\n{_AI_LAST_ERR[:350] or 'no error captured'}{hint}"
         )
