@@ -749,7 +749,7 @@ body{
 
     <!-- PLAY -->
     <div class="play">
-      <div id="hands" role="button" tabindex="0" aria-label="Tap or swipe to riffle cash"></div>
+      <div id="hands" aria-label="Tap or swipe to riffle cash"></div>
       <div class="prompt" id="rifflePrompt"><span class="pulse"></span><span class="ptxt">Tap • Swipe to Riffle</span></div>
     </div>
 
@@ -1237,16 +1237,22 @@ hands.addEventListener('pointerup',e=>{
 hands.addEventListener('pointercancel',endDrag);
 hands.addEventListener('lostpointercapture',endDrag);
 // keyboard: one riffle per key press (block auto-repeat so held key ≠ free money)
-hands.addEventListener('keydown',e=>{
+// Keyboard riffle. #hands is intentionally NOT focusable (no tabindex/role) so
+// the browser can NEVER paint its blue focus-ring "square" over the gloves — the
+// recurring "blue square when I tap" bug. Space/Enter therefore listens on the
+// document, guarded so it never hijacks typing in inputs or activating buttons.
+document.addEventListener('keydown',e=>{
   if((e.key===' '||e.key==='Enter') && !e.repeat){
+    const a=document.activeElement;
+    if(a && (a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='BUTTON'||a.tagName==='A'||a.isContentEditable)) return;
+    if(document.querySelector('.overlay.show, #splash:not(.gone)')) return;  // not during modals/splash
     e.preventDefault();
     const r=hands.getBoundingClientRect();
     doRiffle(r.left+r.width/2,r.top+r.height/2);
   }
 });
-// Desktop: stop a mouse click from FOCUSING #hands, so the browser can never
-// paint its blue focus-ring "square" over the gloves. Tapping still riffles
-// (handled on pointerup) and keyboard Tab can still focus for accessibility.
+// Belt-and-suspenders: even though #hands isn't focusable, prevent the mousedown
+// default so no UA highlight/selection can ever start on it.
 hands.addEventListener('mousedown',e=>{ e.preventDefault(); });
 
 /* ============ LEVEL / CITY ============ */
@@ -1779,7 +1785,7 @@ function boot(){
   window.addEventListener('pagehide', function(){ track('session_end',{secs:Math.round((Date.now()-_sess)/1000)}); flush(true); saveAll(); });
 
   /* ================= PERSISTENCE + OFFLINE EARNINGS ================= */
-  var META = { refCode:'', reffed:false, refBonusUntil:0, mute:false, lastSeen:0 };
+  var META = { refCode:'', reffed:false, refBonusUntil:0, mute:false, musicMuted:false, lastSeen:0 };
   var DEFAULTS = {
     cash:0,total:0,perTap:1,perSec:0,heat:0,level:1,cityIdx:0,bribes:0,escape:0,rep:0,
     price:0.0000127,priceChg:-0.5,
@@ -1880,12 +1886,21 @@ function boot(){
     try{ musicMellow=new Audio('assets/music_mellow.mp3'); musicMellow.loop=true; musicMellow.preload='auto'; musicMellow.volume=MUSIC_BASE; }catch(e){}
   }
   function _playA(a){ if(!a) return; try{ var p=a.play(); if(p&&p.catch) p.catch(function(){}); }catch(e){} }
-  function startMusic(){ if(META.mute) return; if(!musicMellow) initMusic();
-    if(!_musicOn){ _musicOn=true; _playA(musicMellow); } applyMusicMix(); }
+  function musicOff(){ return META.mute || META.musicMuted; }   // the 🔊 icon controls musicMuted
+  function startMusic(){ if(musicOff()) return; if(!musicMellow) initMusic();
+    if(!_musicOn){ _musicOn=true; } _playA(musicMellow); applyMusicMix(); }
   function applyMusicMix(){ if(!musicMellow) return;   // single track — mellow only
-    if(META.mute){ try{ musicMellow.pause(); }catch(e){} musicMellow.volume=0; return; }
+    if(musicOff()){ try{ musicMellow.pause(); }catch(e){} musicMellow.volume=0; return; }
     musicMellow.volume=MUSIC_BASE;
-    if(_musicOn && musicMellow.paused) _playA(musicMellow);
+    if(musicMellow.paused) _playA(musicMellow);
+  }
+  // Top-right 🔊 icon: turn the MUSIC on/off only (SFX are unaffected).
+  function toggleMusic(){
+    META.musicMuted = !META.musicMuted;
+    var b=$('#clnSnd'); if(b){ b.textContent = META.musicMuted ? '🔇' : '🔊'; }
+    if(META.musicMuted){ try{ if(musicMellow) musicMellow.pause(); }catch(e){} }
+    else { var c=audioReady(); if(c && c.state==='suspended'){ try{ c.resume(); }catch(e){} } startMusic(); }
+    try{ saveAll(); }catch(e){}
   }
   // intensity rises with tap/swipe activity and decays — drives mellow→funk (backbone rule)
   var _lastMusTick=performance.now();
@@ -2070,9 +2085,9 @@ function boot(){
       if(!$('#clnSnd')){
         var snd=document.createElement('button');
         snd.className='cln-fab cln-snd'; snd.id='clnSnd'; snd.type='button';
-        snd.setAttribute('aria-label','Toggle sound');
-        snd.textContent = META.mute ? '🔇' : '🔊';
-        snd.addEventListener('click', function(e){ e.stopPropagation(); setMute(!META.mute); if(!META.mute) sfx('tap'); });
+        snd.setAttribute('aria-label','Toggle music');
+        snd.textContent = META.musicMuted ? '🔇' : '🔊';
+        snd.addEventListener('click', function(e){ e.stopPropagation(); toggleMusic(); });
         app.appendChild(snd);
       }
     }
@@ -2293,7 +2308,8 @@ function boot(){
   mountHeatAlert();
   mountRestHands();          // resting-hands image behind the canvas → hands can't vanish
   wireSfx();
-  setMute(META.mute);        // reflect saved sound state on the button
+  // reflect saved music state on the 🔊 icon (SFX always on; icon = music only)
+  (function(){ var b=$('#clnSnd'); if(b) b.textContent = META.musicMuted ? '🔇' : '🔊'; })();
   syncX2();
 
   // loops
