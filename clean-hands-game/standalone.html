@@ -866,10 +866,10 @@ const REP=[
 /* ============ DERIVED ============ */
 function bribeCut(){ let c=0; for(const b of BRIBES) c+=S.bribesBought[b.id]*b.cut; return Math.min(c,75); }
 function heatPerTap(){
-  let base=0.9;
-  base-=S.perks.scrub*0.12;
+  let base=0.05;                 // WRP-faithful: a tap adds only a slow trickle of heat (was 0.9 — 18× too hot)
+  base-=S.perks.scrub*0.012;     // Hand Sanitizer perk cools the per-tap heat
   base*=(1-bribeCut()/100);
-  return Math.max(0.05, base);
+  return Math.max(0.008, base);
 }
 function tapEarn(){
   let e=S.perTap;
@@ -1002,10 +1002,11 @@ function animateRiffle(){
 }
 
 /* ============ CORE ACTION: COUNT/RIFFLE ============ */
-function doRiffle(clientX,clientY){
+function doRiffle(clientX,clientY,swipe){
   // COUNT IS STRICTLY TIED TO THE TAP — never gated by heat.
   const crit=Math.random()<critChance();
   let earn=safe(tapEarn());
+  if(swipe) earn*=0.45;          // WRP swipeFactor — a riffle-step earns a fraction of a deliberate tap
   if(crit) earn*=5;
   S.cash =clamp(safe(S.cash +earn),0,CAP.cash);
   S.total=clamp(safe(S.total+earn),0,CAP.total);
@@ -1054,22 +1055,11 @@ function buildHitMaps(){
 }
 buildHitMaps();
 function onHands(clientX,clientY){
-  // before maps load, accept (so first taps aren't lost); after, require a solid pixel
-  if(!hitReady) return true;
+  // WRP-style: a tap/swipe anywhere on the play area counts. (Was a strict per-pixel
+  // glove-alpha hit-test, which felt dead when taps landed between the fingers — and
+  // desynced from the sound/FX layer, which already fires anywhere on the play area.)
   const r=hands.getBoundingClientRect();
-  if(clientX<r.left||clientX>r.right||clientY<r.top||clientY>r.bottom) return false;
-  // map click → image space. background-size:contain, bottom-anchored.
-  const scale=Math.min(r.width/FRAME_W, r.height/FRAME_H);
-  const dispW=FRAME_W*scale, dispH=FRAME_H*scale;
-  const offX=(r.width-dispW)/2;          // centered horizontally
-  const offY=r.height-dispH;             // anchored to bottom
-  const ix=(clientX-r.left-offX)/dispW;  // 0..1 within image
-  const iy=(clientY-r.top -offY)/dispH;
-  if(ix<0||ix>1||iy<0||iy>1) return false;
-  const m=hitMaps[Math.round(frame/VFRAMES*(2*(FRAME_COUNT-1)))%FRAME_COUNT] || hitMaps[0];
-  if(!m) return true;
-  const px=Math.min(HITW-1,Math.floor(ix*HITW)), py=Math.min(HITH-1,Math.floor(iy*HITH));
-  return m[py*HITW+px]===1;
+  return clientX>=r.left&&clientX<=r.right&&clientY>=r.top&&clientY<=r.bottom;
 }
 
 /* swipe to riffle: dragging scrubs frames + earns on direction change */
@@ -1085,7 +1075,7 @@ hands.addEventListener('pointermove',e=>{
   const dx=e.clientX-dragX;dragX=e.clientX;dragAcc+=Math.abs(dx);
   // scrub the virtual riffle directly (smooth across all 128 steps)
   setVFrame(frame + dx*0.9);
-  if(dragAcc>70){ dragAcc=0; riffledDuringDrag=true; doRiffle(e.clientX,e.clientY); }
+  if(dragAcc>26){ dragAcc=0; riffledDuringDrag=true; doRiffle(e.clientX,e.clientY,true); }   // WRP SWIPE_STEP=26px → responsive riffle
 });
 function endDrag(){ if(!dragging)return; dragging=false;hands.classList.remove('grab'); }
 hands.addEventListener('pointerup',e=>{
@@ -1188,11 +1178,11 @@ setInterval(()=>{
   if(S.perSec>0 && S.heat<CAP.heat){
     S.cash =clamp(safe(S.cash +S.perSec),0,CAP.cash);
     S.total=clamp(safe(S.total+S.perSec),0,CAP.total);
-    S.heat =clamp(S.heat+S.perSec*0.0009*(1-bribeCut()/100),0,CAP.heat);
+    S.heat =clamp(S.heat + 0.02*Math.min(10,Math.log10(S.perSec+10))*(1-bribeCut()/100),0,CAP.heat); // WRP log-capped passive heat (was linear → spiked at high income)
     checkLevel();
   }
-  // natural cooldown
-  S.heat=clamp(S.heat-0.35-S.perks.scrub*0.05,0,CAP.heat);
+  // natural cooldown (gentler so heat is a slow-burn pressure, WRP-style, not a punisher)
+  S.heat=clamp(S.heat-0.10-S.perks.scrub*0.05,0,CAP.heat);
   if(S.heat>=CAP.heat&&!busted) bust();
   refresh(true);
 },1000);
@@ -1797,23 +1787,26 @@ function boot(){
      showed a "+$" number. We spawn that same juice at the tap point, into #app
      (the same coordinate space HTML6's own moneyPop uses), pooled + capped. */
   var BILLS=['💵','💴','💶','💷','🤑'];
-  function spawnTapFx(clientX, clientY){
+  function spawnTapFx(clientX, clientY, light){
     if(reduce) return;
-    if(app.querySelectorAll('.cln-flip,.cln-spark').length > 26) return;   // perf cap (backbone fxCap=26)
+    if(app.querySelectorAll('.cln-flip,.cln-spark').length > 40) return;   // perf cap (raised for richer WRP-style fury)
     var r=app.getBoundingClientRect();
     var x=((clientX!=null?clientX:r.left+r.width/2)-r.left);
     var y=((clientY!=null?clientY:r.top+r.height*0.62)-r.top);
-    var b=document.createElement('div'); b.className='cln-flip';
-    b.textContent=BILLS[(Math.random()*BILLS.length)|0];
-    b.style.left=x+'px'; b.style.top=y+'px';
-    app.appendChild(b); setTimeout(function(){ if(b.parentNode) b.remove(); }, 640);
-    for(var i=0;i<4;i++){
-      var a=Math.random()*6.283, d=18+Math.random()*28;
+    var nBill=light?1:2, nSpark=light?2:6;                                 // full tap = flurry; swipe-step = lighter burst
+    for(var k=0;k<nBill;k++){
+      var b=document.createElement('div'); b.className='cln-flip';
+      b.textContent=BILLS[(Math.random()*BILLS.length)|0];
+      b.style.left=(x+(k?(Math.random()*44-22):0))+'px'; b.style.top=y+'px';
+      app.appendChild(b); (function(el){ setTimeout(function(){ if(el.parentNode) el.remove(); }, 720); })(b);
+    }
+    for(var i=0;i<nSpark;i++){
+      var a=Math.random()*6.283, d=18+Math.random()*30;
       var s=document.createElement('div'); s.className='cln-spark'; s.textContent='✦';
       s.style.left=x+'px'; s.style.top=y+'px';
       s.style.setProperty('--sx',((Math.cos(a)*d)|0)+'px');
       s.style.setProperty('--sy',((Math.sin(a)*d)|0)+'px');
-      app.appendChild(s); (function(el){ setTimeout(function(){ if(el.parentNode) el.remove(); }, 680); })(s);
+      app.appendChild(s); (function(el){ setTimeout(function(){ if(el.parentNode) el.remove(); }, 700); })(s);
     }
   }
 
@@ -2048,12 +2041,13 @@ function boot(){
   /* ================= TAP / CRIT / BUST SFX (zero engine edits) ================= */
   function wireSfx(){
     var hands=$('#hands');
-    var downX=0, downY=0, lastX=0, moved=0, swiped=false, _tapN=0;
+    var downX=0, downY=0, lastX=0, moved=0, swiped=false, _tapN=0, _swAcc=0;
     if(hands){
-      hands.addEventListener('pointerdown', function(e){ downX=lastX=e.clientX; downY=e.clientY; moved=0; swiped=false; audioReady(); startMusic(); }, {passive:true});
+      hands.addEventListener('pointerdown', function(e){ downX=lastX=e.clientX; downY=e.clientY; moved=0; swiped=false; _swAcc=0; audioReady(); startMusic(); }, {passive:true});
       hands.addEventListener('pointermove', function(e){
-        moved+=Math.abs(e.clientX-lastX); lastX=e.clientX;
+        var dxm=Math.abs(e.clientX-lastX); moved+=dxm; _swAcc+=dxm; lastX=e.clientX;
         if(!swiped && moved>26){ swiped=true; sfx('swipe'); bumpIntensity(); }   // backbone swipe sound
+        while(_swAcc>=26){ _swAcc-=26; spawnTapFx(e.clientX, e.clientY, true); bumpIntensity(); }  // money flies while riffling (WRP swipe juice)
       }, {passive:true});
       hands.addEventListener('pointerup', function(e){
         if(moved<8){ sfx('tap'); bumpIntensity(); spawnTapFx(downX, downY); }     // tap sound + money-emoji burst
