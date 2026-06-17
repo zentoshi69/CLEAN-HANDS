@@ -854,17 +854,17 @@ const fmtHero=n=>{ n=Math.floor(safe(n)); return n<1e11 ? '$'+n.toLocaleString('
    URL into sceneUrl for that level — the engine swaps the backdrop on level-up.
    Thresholds escalate so reaching Lv 11 ("count in $100 bills") takes ~an hour. */
 const LEVELS=[
-  {city:'Santorini', house:'Cliff Villa',     at:0,        sceneUrl:'/scenes/amsterdam.png'},
-  {city:'Santorini', house:'Pool Terrace',    at:1500,     sceneUrl:'/scenes/Athens%20acropolis.png'},
-  {city:'Santorini', house:'Sunset Suite',    at:6000,     sceneUrl:'/scenes/BRAZIL%20lalo%27%20flat.png'},
-  {city:'Santorini', house:'Caldera Estate',  at:20000,    sceneUrl:'/scenes/Las%20vegas%20night.png'},
-  {city:'Dubai',     house:'Marina Loft',     at:65000,    sceneUrl:'/scenes/new%20york%20central%20park.png'},
-  {city:'Dubai',     house:'Palm Villa',      at:180000,   sceneUrl:'/scenes/PAris%20effel%20tower.png'},
-  {city:'Dubai',     house:'Sky Penthouse',   at:520000,   sceneUrl:'/scenes/paris%20place%20vendome.png'},
-  {city:'Dubai',     house:'Burj Suite',      at:1500000,  sceneUrl:'/scenes/santorini.png'},
-  {city:'Singapore', house:'Bay Residence',   at:4200000,  sceneUrl:'/scenes/santorini.png'},
-  {city:'Singapore', house:'Cloud Nine',      at:11000000, sceneUrl:'/scenes/santorini.png'},
-  {city:'Singapore', house:'The Vault',       at:26000000, sceneUrl:'/scenes/santorini.png'},
+  {city:'Santorini', house:'City Villa',          at:0,        sceneUrl:'/scenes/amsterdam.png'},
+  {city:'Santorini', house:'City Rooftop Terrace',at:1500,     sceneUrl:'/scenes/Athens%20acropolis.png'},
+  {city:'Santorini', house:'Sunset Suite',        at:6000,     sceneUrl:'/scenes/BRAZIL%20lalo%27%20flat.png'},
+  {city:'Santorini', house:'Casino Suite',        at:20000,    sceneUrl:'/scenes/Las%20vegas%20night.png'},
+  {city:'Dubai',     house:'Upstate Penthouse',   at:65000,    sceneUrl:'/scenes/new%20york%20central%20park.png'},
+  {city:'Dubai',     house:'City Apartment',      at:180000,   sceneUrl:'/scenes/PAris%20effel%20tower.png'},
+  {city:'Dubai',     house:'Hotel Suite',         at:520000,   sceneUrl:'/scenes/paris%20place%20vendome.png'},
+  {city:'Dubai',     house:'Villa Summer',        at:1500000,  sceneUrl:'/scenes/santorini.png'},
+  {city:'Singapore', house:'Hotel Suite',         at:4200000,  sceneUrl:'/scenes/dubai.png'},
+  {city:'Singapore', house:'Hotel Suite',         at:11000000, sceneUrl:'/scenes/BANGKOK.png'},
+  {city:'Singapore', house:'Bay Area',            at:26000000, sceneUrl:'/scenes/los%20angeles.png'},
 ];
 const MAXLEVEL=LEVELS.length;             // 11
 // cities derived from the level table (goal = total needed to clear the city)
