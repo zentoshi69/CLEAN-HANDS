@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
-from src.image_pipeline import mask_builder, quality_gate
+from src.image_pipeline import compositor, mask_builder, quality_gate
 from src.image_pipeline.prompt_builder import build_prompt, stricter
 from src.image_pipeline.providers import ImageEditError, ImageEditProvider, create_provider
 from src.utils import image_io
@@ -121,6 +121,12 @@ def process_image_for_gloves(
     report: quality_gate.QualityReport | None = None
     output_path: str | None = None
 
+    # A fixed seed (when the provider supports one) makes the same image +
+    # prompt reproduce the same gloves run to run.
+    edit_config: dict = {"mode": bundle.mode}
+    if settings.image_provider_seed is not None:
+        edit_config["seed"] = settings.image_provider_seed
+
     for attempt, current in enumerate((bundle, stricter(bundle)), start=1):
         try:
             candidate = provider.edit_image(
@@ -128,7 +134,7 @@ def process_image_for_gloves(
                 str(mask_path),
                 current.prompt,
                 current.negative_prompt,
-                config={"mode": current.mode},
+                config={**edit_config, "mode": current.mode},
             )
         except ImageEditError as exc:
             result = _failure(REASON_PROVIDER_ERROR, str(exc), debug, started)
@@ -137,7 +143,13 @@ def process_image_for_gloves(
             result.mask_path = str(mask_path)
             return result
 
-        edited_bgr = image_io.load_bgr(candidate)
+        # Hard-mask composite: discard any provider drift outside the hand mask
+        # so the result is the EXACT original everywhere but the gloves, then
+        # persist it so the delivered file matches what we verify.
+        edited_bgr = compositor.composite_in_mask(
+            original_bgr, image_io.load_bgr(candidate), merged_mask
+        )
+        image_io.save_bgr(edited_bgr, candidate)
         report = quality_gate.evaluate(original_bgr, edited_bgr, merged_mask)
         debug[f"quality_attempt_{attempt}"] = {
             "passed": report.passed,

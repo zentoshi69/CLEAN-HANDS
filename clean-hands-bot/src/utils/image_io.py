@@ -79,6 +79,15 @@ def save_mask(mask: np.ndarray, path: str | Path) -> Path:
     return path
 
 
+def save_bgr(arr: np.ndarray, path: str | Path) -> Path:
+    """Save a BGR uint8 array as an image file."""
+    path = Path(path)
+    ensure_dir(path.parent)
+    if not cv2.imwrite(str(path), arr):
+        raise ImageIOError(f"Cannot write image {path.name}")
+    return path
+
+
 def load_bgr(path: str | Path) -> np.ndarray:
     """Load an image straight to a BGR numpy array (EXIF normalized)."""
     return pil_to_bgr(load_image_rgb(path))
