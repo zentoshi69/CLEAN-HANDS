@@ -35,7 +35,7 @@ def _harden_db_perms() -> None:
 # --------------------------------------------------------------------------- #
 DECIMALS = int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
 BASE = 10**DECIMALS
-SCHEMA_VERSION = 8  # bumped by migrations
+SCHEMA_VERSION = 9  # bumped by migrations (v9: game_state cloud save + leaderboard)
 
 
 def to_base(ui_amount: float) -> int:
@@ -395,6 +395,24 @@ def _migrate(conn) -> None:
         conn.execute("ALTER TABLE stakers ADD COLUMN mm_vip INTEGER NOT NULL DEFAULT 0")
         conn.execute("PRAGMA user_version = 8")
         conn.commit()
+        ver = 8
+    if ver < 9:
+        # v9: game (Clean Hands tap/idle) cloud save + Most Wanted leaderboard.
+        # An opaque client save blob keyed by player, plus a numeric lifetime-
+        # laundered score for ranking. Additive; never touches money tables.
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS game_state (
+                player     TEXT PRIMARY KEY,
+                name       TEXT,
+                state      TEXT NOT NULL,
+                score      INTEGER NOT NULL DEFAULT 0,
+                updated_ts INTEGER NOT NULL);
+            CREATE INDEX IF NOT EXISTS idx_game_score ON game_state(score DESC);
+            """
+        )
+        conn.execute("PRAGMA user_version = 9")
+        conn.commit()
 
 
 def get_staker(conn, wallet: str):
@@ -412,6 +430,40 @@ def record(conn, wallet: str, action: str, amount_base: int, detail: str = "") -
         (int(time.time()), wallet, action, int(amount_base), detail),
     )
     conn.commit()
+
+
+# --------------------------------------------------------------------------- #
+#  GAME state (Clean Hands tap/idle): cloud save + leaderboard.                #
+# --------------------------------------------------------------------------- #
+def game_load(conn, player: str):
+    return conn.execute(
+        "SELECT player, name, state, score, updated_ts FROM game_state WHERE player=?",
+        (player,),
+    ).fetchone()
+
+
+def game_save(conn, player: str, name: str, state: str, score: int) -> None:
+    """Upsert a player's opaque game save. Score (lifetime laundered) is kept
+    monotonic via a portable CASE — a stale client can never lower a ranking.
+    (Avoids SQLite-only 2-arg MAX(); the CASE form is valid on Postgres too.)"""
+    conn.execute(
+        "INSERT INTO game_state (player, name, state, score, updated_ts) "
+        "VALUES (?,?,?,?,?) "
+        "ON CONFLICT(player) DO UPDATE SET "
+        "  name=excluded.name, state=excluded.state, "
+        "  score=CASE WHEN excluded.score > game_state.score "
+        "             THEN excluded.score ELSE game_state.score END, "
+        "  updated_ts=excluded.updated_ts",
+        (player, name, state, int(score), int(time.time())),
+    )
+    conn.commit()
+
+
+def game_top(conn, limit: int = 20):
+    return conn.execute(
+        "SELECT name, score FROM game_state ORDER BY score DESC, updated_ts ASC LIMIT ?",
+        (int(limit),),
+    ).fetchall()
 
 
 def upsert_staker(conn, wallet: str, tg_id=None, username=None, referred_by=None):

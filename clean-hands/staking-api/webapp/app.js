@@ -231,6 +231,12 @@
       };
       f.addEventListener('load', () => {
         loaded = true;
+        // Hand the game our verified Telegram identity so it can cloud-save and
+        // rank on the leaderboard. targetOrigin pins it to our own origin, so a
+        // game served from a different origin (CONFIG.gameUrl) never sees initData.
+        try {
+          if (initData) f.contentWindow.postMessage({ type: 'clean:auth', initData }, location.origin);
+        } catch (_) {}
         reveal();
       });
       setTimeout(() => {

@@ -1463,7 +1463,7 @@ function upgRow(u){
 }
 function perkRow(p){
   const cost=perkCost(p),can=S.cash>=cost;
-  const per = p.id==='speedy'?15 : p.id==='scrub'?12 : 5;
+  const per = p.id==='speedy'?15 : p.id==='scrub'?20 : 3;  // scrub: -20%/lv heat (cap 60%); ghost: +3%/lv crit — must match heatPerTap()/critChance()
   const eff = p.eff.replace('%v', per).replace(/%%/g,'%');
   return `<div class="item">
     <div class="icn">${svg(p.icon)}</div>
@@ -1741,7 +1741,50 @@ function boot(){
     }catch(e){ return false; } }
   function saveAll(){ try{ META.lastSeen=Date.now();
       localStorage.setItem(SAVE_KEY, JSON.stringify({ S:S, meta:META }));
-    }catch(e){} }
+    }catch(e){} cloudSave(); }
+
+  /* ===== CLOUD SAVE (Mini App only) =================================
+     Inside Telegram the host (app.js) postMessages our verified initData in;
+     we then sync the same {S,meta} blob to /api/game/{save,load} so progress
+     follows the player across devices. Opened directly at /play (no host, no
+     initData) this stays dormant and the game is localStorage-only — exactly
+     as before. */
+  var TG_INIT='', _cloudPulled=false, _cloudSaveT=0;
+  window.addEventListener('message', function(e){
+    if(e.origin!==window.location.origin) return;          // same-origin host only
+    var d=e.data||{};
+    if(d.type==='clean:auth' && d.initData){
+      TG_INIT=d.initData;
+      if(!_cloudPulled){ _cloudPulled=true; cloudLoad(); }  // pull once on connect
+    }
+  });
+  function cloudLoad(){
+    if(!TG_INIT) return;
+    fetch('/api/game/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:TG_INIT})})
+      .then(function(r){ return r.ok?r.json():null; })
+      .then(function(d){
+        if(!d||!d.state) return;
+        var remote; try{ remote=JSON.parse(d.state); }catch(e){ return; }
+        var rSeen=(remote&&remote.meta&&remote.meta.lastSeen)||0, lSeen=(META&&META.lastSeen)||0;
+        if(rSeen>lSeen && remote.S){                         // cloud is newer → adopt it
+          Object.assign(S, remote.S);
+          ['upg','perks','bribesBought'].forEach(function(k){ if(remote.S[k]) Object.assign(S[k], remote.S[k]); });
+          if(Array.isArray(remote.S.repClaimed)) S.repClaimed=remote.S.repClaimed.slice();
+          if(remote.meta) Object.assign(META, remote.meta);
+          recompute(); refresh(); toast('Cloud save restored','☁️','good');
+        }
+      }).catch(function(){});
+  }
+  function cloudSave(force){
+    if(!TG_INIT) return;
+    var now=Date.now();
+    if(!force && !document.hidden && now-_cloudSaveT<7000) return;  // throttle; always flush on hide
+    _cloudSaveT=now;
+    try{
+      var body=JSON.stringify({ initData:TG_INIT, state:JSON.stringify({S:S,meta:META}), score:Math.floor(S.total||0) });
+      fetch('/api/game/save',{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true}).catch(function(){});
+    }catch(e){}
+  }
   function applyOffline(){
     var elapsed=Math.max(0,(Date.now()-(META.lastSeen||Date.now()))/1000);
     if(S.perSec<=0 || elapsed<60) return;

@@ -931,9 +931,9 @@ const REP=[
 /* ============ DERIVED ============ */
 function bribeCut(){ let c=0; for(const b of BRIBES) c+=S.bribesBought[b.id]*b.cut; return Math.min(c,75); }
 function heatPerTap(){
-  let base=2.2;                              // backbone TAP_HEAT — a tap is a real heat spike, not a trickle
-  base*=(1-Math.min(0.6,S.perks.scrub*0.2)); // Hand Sanitizer cools per-tap heat (Cold Wash analog, cap 60%)
-  base*=(1-bribeCut()/100);                  // bribes keep buildup down
+  let base=2.2;                              // backbone TAP_HEAT
+  base*=(1-Math.min(0.6,S.perks.scrub*0.2)); // Hand Sanitizer cools per-tap heat (cap 60%)
+  base*=(1-bribeCut()/100);
   return Math.max(0.4, base);
 }
 function tapEarn(){
@@ -1245,7 +1245,7 @@ let busted=false;
 let pendingFine=0, isGameOver=false;
 function bust(){
   if(busted) return; busted=true;
-  // backbone BUST_LOSS: a raid skims 18% of your cash — painful, but always recoverable (no wipe)
+  // backbone BUST_LOSS: lose 18% of cash — always recoverable, no wipe
   pendingFine=Math.floor(S.cash*0.18);
   isGameOver=false;
   $('#bustTitle').textContent='BUSTED!';
@@ -1265,7 +1265,7 @@ function resetRun(){
   recompute();
 }
 $('#bustBtn').onclick=()=>{
-  // backbone: pay the skim, heat resets to 35% (not zero) and you're straight back in
+  // backbone: pay the skim, heat resets to 35% and you're straight back in
   S.cash=clamp(S.cash-pendingFine,0,CAP.cash);
   S.heat=35; busted=false;
   toast('Laid low. Heat cooled to 35%.','🧊','');
@@ -1281,7 +1281,7 @@ setInterval(()=>{
     S.total=clamp(safe(S.total+S.perSec),0,CAP.total);
     checkLevel();
   }
-  // backbone HEAT_DECAY: heat comes only from tapping — idle income never raises it, it purely cools (3.0/s)
+  // backbone HEAT_DECAY: 3.0/s — heat comes only from tapping, idle purely cools
   S.heat=clamp(S.heat-3.0,0,CAP.heat);
   if(S.heat>=CAP.heat&&!busted) bust();
   refresh(true);
@@ -1463,7 +1463,7 @@ function upgRow(u){
 }
 function perkRow(p){
   const cost=perkCost(p),can=S.cash>=cost;
-  const per = p.id==='speedy'?15 : p.id==='scrub'?12 : 5;
+  const per = p.id==='speedy'?15 : p.id==='scrub'?20 : 3;  // scrub: -20%/lv heat (cap 60%); ghost: +3%/lv crit — must match heatPerTap()/critChance()
   const eff = p.eff.replace('%v', per).replace(/%%/g,'%');
   return `<div class="item">
     <div class="icn">${svg(p.icon)}</div>
@@ -1741,7 +1741,50 @@ function boot(){
     }catch(e){ return false; } }
   function saveAll(){ try{ META.lastSeen=Date.now();
       localStorage.setItem(SAVE_KEY, JSON.stringify({ S:S, meta:META }));
-    }catch(e){} }
+    }catch(e){} cloudSave(); }
+
+  /* ===== CLOUD SAVE (Mini App only) =================================
+     Inside Telegram the host (app.js) postMessages our verified initData in;
+     we then sync the same {S,meta} blob to /api/game/{save,load} so progress
+     follows the player across devices. Opened directly at /play (no host, no
+     initData) this stays dormant and the game is localStorage-only — exactly
+     as before. */
+  var TG_INIT='', _cloudPulled=false, _cloudSaveT=0;
+  window.addEventListener('message', function(e){
+    if(e.origin!==window.location.origin) return;          // same-origin host only
+    var d=e.data||{};
+    if(d.type==='clean:auth' && d.initData){
+      TG_INIT=d.initData;
+      if(!_cloudPulled){ _cloudPulled=true; cloudLoad(); }  // pull once on connect
+    }
+  });
+  function cloudLoad(){
+    if(!TG_INIT) return;
+    fetch('/api/game/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:TG_INIT})})
+      .then(function(r){ return r.ok?r.json():null; })
+      .then(function(d){
+        if(!d||!d.state) return;
+        var remote; try{ remote=JSON.parse(d.state); }catch(e){ return; }
+        var rSeen=(remote&&remote.meta&&remote.meta.lastSeen)||0, lSeen=(META&&META.lastSeen)||0;
+        if(rSeen>lSeen && remote.S){                         // cloud is newer → adopt it
+          Object.assign(S, remote.S);
+          ['upg','perks','bribesBought'].forEach(function(k){ if(remote.S[k]) Object.assign(S[k], remote.S[k]); });
+          if(Array.isArray(remote.S.repClaimed)) S.repClaimed=remote.S.repClaimed.slice();
+          if(remote.meta) Object.assign(META, remote.meta);
+          recompute(); refresh(); toast('Cloud save restored','☁️','good');
+        }
+      }).catch(function(){});
+  }
+  function cloudSave(force){
+    if(!TG_INIT) return;
+    var now=Date.now();
+    if(!force && !document.hidden && now-_cloudSaveT<7000) return;  // throttle; always flush on hide
+    _cloudSaveT=now;
+    try{
+      var body=JSON.stringify({ initData:TG_INIT, state:JSON.stringify({S:S,meta:META}), score:Math.floor(S.total||0) });
+      fetch('/api/game/save',{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true}).catch(function(){});
+    }catch(e){}
+  }
   function applyOffline(){
     var elapsed=Math.max(0,(Date.now()-(META.lastSeen||Date.now()))/1000);
     if(S.perSec<=0 || elapsed<60) return;
