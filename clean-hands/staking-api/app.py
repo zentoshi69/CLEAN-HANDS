@@ -1709,6 +1709,19 @@ def banner_png():
     )
 
 
+@app.get("/scenes/{filename}")
+def scene_img(filename: str):
+    """Serve level backdrop images from webapp/scenes/.
+    Only single-segment filenames are accepted (FastAPI rejects '/' in path
+    params); the '..' guard blocks the only remaining traversal vector."""
+    if ".." in filename:
+        raise HTTPException(400, "invalid filename")
+    path = os.path.join(_WEB, "scenes", filename)
+    if not os.path.isfile(path):
+        raise HTTPException(404)
+    return FileResponse(path, headers=_DAY_CACHE)
+
+
 # --------------------------------------------------------------------------- #
 #  GLOVE-CODE LANDING (/g/<code>) — the shareable invite link                   #
 #  Unfurls with a branded OG card in Telegram/X/Discord and funnels the tap     #
