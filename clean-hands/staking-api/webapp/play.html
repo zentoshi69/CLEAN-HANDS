@@ -2397,6 +2397,7 @@ function boot(){
   ensureRefCode();
   captureRef();              // inbound ?ref= → welcome 2×
   applyOffline();            // credit time-away earnings
+  applyLevelScene();         // set correct backdrop on first load (not just on level-up)
   try{ G.refresh(); }catch(e){}
 
   mountUI();
