@@ -111,7 +111,8 @@ jobs:
       - name: Image-pipeline unit tests
         working-directory: clean-hands-bot
         run: |
-          # The mask/prompt/quality tests need only numpy/opencv/Pillow — not the
-          # heavy mediapipe + aiogram runtime — so keep this install lean and fast.
-          pip install "numpy<2" opencv-python-headless pillow pytest
+          # The mask/prompt/quality tests need only numpy/opencv/Pillow + requests
+          # (for the provider adapters) — not the heavy mediapipe + aiogram
+          # runtime — so keep this install lean and fast.
+          pip install "numpy<2" opencv-python-headless pillow requests pytest
           python -m pytest tests/ -q

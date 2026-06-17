@@ -37,6 +37,16 @@ def _parse_optional_int(env: Mapping[str, str], key: str) -> int | None:
         raise ConfigError(f"{key} must be an integer, got {raw!r}") from exc
 
 
+def _parse_float(env: Mapping[str, str], key: str, default: float) -> float:
+    raw = env.get(key, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{key} must be a number, got {raw!r}") from exc
+
+
 def _parse_id_set(raw: str) -> frozenset[int]:
     ids: set[int] = set()
     for chunk in raw.replace(";", ",").split(","):
@@ -66,6 +76,9 @@ class Settings:
     output_max_side: int = 1536
     delete_files_after_hours: int = 24
     temp_dir: Path = Path("/tmp/clean-hands-bot")
+    # Hand detection: tighter defaults reduce phantom "invented" hands.
+    hand_max_num_hands: int = 4
+    hand_min_detection_confidence: float = 0.6
 
     @classmethod
     def from_env(
@@ -98,6 +111,10 @@ class Settings:
             output_max_side=_parse_int(env, "OUTPUT_MAX_SIDE", 1536),
             delete_files_after_hours=_parse_int(env, "DELETE_FILES_AFTER_HOURS", 24),
             temp_dir=Path(env.get("TEMP_DIR", "/tmp/clean-hands-bot")),
+            hand_max_num_hands=_parse_int(env, "HAND_MAX_NUM_HANDS", 4),
+            hand_min_detection_confidence=_parse_float(
+                env, "HAND_MIN_DETECTION_CONFIDENCE", 0.6
+            ),
         )
 
     @property

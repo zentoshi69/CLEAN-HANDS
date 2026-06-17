@@ -69,8 +69,9 @@ Set `IMAGE_PROVIDER` in `.env`:
 
 | Provider | What it does |
 |---|---|
-| `mock` | Offline glove compositor (alpha-blends #9ED8FF over the hand mask). No API key needed. Great for development and demos. |
-| `generic_http` | POSTs `image` + `mask` + `prompt` + `negative_prompt` as multipart form data to `IMAGE_PROVIDER_ENDPOINT` with `Authorization: Bearer $IMAGE_PROVIDER_API_KEY`. Accepts raw image bytes or JSON base64 responses. Works with most inpainting APIs. |
+| `flux_fill` | **Recommended for real gloves.** [FLUX.1 Fill \[pro\]](https://bfl.ai/flux-1-tools/) mask inpainting via the Black Forest Labs API. Repaints *only* the masked hand region, so it doesn't invent hands or tint held objects. Set `IMAGE_PROVIDER_API_KEY` to your BFL key; the endpoint defaults to `https://api.bfl.ai/v1/flux-pro-1.0-fill`. |
+| `generic_http` | POSTs `image` + `mask` + `prompt` + `negative_prompt` as multipart form data to `IMAGE_PROVIDER_ENDPOINT` with `Authorization: Bearer $IMAGE_PROVIDER_API_KEY`. Accepts raw image bytes or JSON base64 responses. Works with most inpainting APIs (Replicate/fal proxies, self-hosted SD inpaint, etc.). |
+| `mock` | Offline tint (alpha-blends #9ED8FF over the hand mask). **Not real gloves** — it paints everything in the mask blue, held objects included. Development and demos only. |
 | `future` | Placeholder slot for the next integration. |
 
 To add a real provider, implement `ImageEditProvider.edit_image()` in

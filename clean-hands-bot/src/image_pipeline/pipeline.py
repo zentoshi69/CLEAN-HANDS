@@ -82,7 +82,11 @@ def process_image_for_gloves(
     if detector is None:
         from src.image_pipeline.hand_detector import HandDetector
 
-        detector = HandDetector()
+        detector = HandDetector(
+            max_num_hands=settings.hand_max_num_hands,
+            min_detection_confidence=settings.hand_min_detection_confidence,
+            min_tracking_confidence=settings.hand_min_detection_confidence,
+        )
     hands = detector.detect_with_fallback(original_bgr)
     if not hands:
         return _failure(
