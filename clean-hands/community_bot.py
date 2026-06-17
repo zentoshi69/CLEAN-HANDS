@@ -701,7 +701,13 @@ async def _remember_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_msg = _photo_source(update)
-    cached_photo = None
+    # PTB v21 routes caption-commands through CommandHandler first; effective_message
+    # still carries the photo even when _photo_source misses it via update.message
+    if not photo_msg:
+        em = update.effective_message
+        if em and em.photo:
+            photo_msg = em
+            context.user_data["last_photo"] = em.photo  # populate cache for this path
     if not photo_msg:
         cached_photo = context.user_data.get("last_photo")
         if not cached_photo:
@@ -709,7 +715,9 @@ async def cmd_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Send a photo with caption  /sticker  (or reply to a photo) to convert it."
             )
             return
-    photo_list = photo_msg.photo if photo_msg else cached_photo
+        photo_list = cached_photo
+    else:
+        photo_list = photo_msg.photo
     raw = await _download_photo(context, photo_list[-1])
     if raw is None:
         await update.message.reply_text("That image is too large to convert.")
