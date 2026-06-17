@@ -899,7 +899,22 @@ def main():
     )
     if not BOT_TOKEN:
         raise SystemExit("Set TG_COMMUNITY_TOKEN (from @BotFather).")
-    app = ApplicationBuilder().token(BOT_TOKEN).post_init(_post_init).build()
+    # Hard network timeouts on every bot.send_* call. Without read_timeout a
+    # stalled Telegram upload (e.g. send_photo) hangs the command forever with a
+    # frozen spinner — no exception, no fallback. read_timeout(30) bounds each
+    # HTTP read so a stall raises instead, which _send_photo_resilient catches
+    # and downgrades to the local stamp. (Set generously so it never fights the
+    # legitimate flood-retry loop, which sleeps on Telegram's Retry-After.)
+    app = (
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .post_init(_post_init)
+        .connect_timeout(10)
+        .read_timeout(30)
+        .write_timeout(30)
+        .pool_timeout(5)
+        .build()
+    )
     app.add_handler(CommandHandler(["start", "help"], cmd_help))
     app.add_handler(CommandHandler("app", cmd_app))
     app.add_handler(CommandHandler("stake", cmd_stake))
