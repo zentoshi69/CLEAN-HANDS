@@ -26,6 +26,7 @@ import json
 import time
 import hmac
 import secrets
+import asyncio
 from urllib.parse import urlencode
 
 import base58
@@ -163,7 +164,7 @@ async def _refresh_wallet_usd(wallet: str, force: bool = False) -> None:
     if not econ.BAL_BOOST_ENABLED:
         return
     try:
-        await market.refresh_prices()  # internally cached (~MARKET_TTL)
+        await asyncio.wait_for(market.refresh_prices(), timeout=5.0)
     except Exception:  # noqa: BLE001
         pass
     now = time.time()
@@ -171,7 +172,7 @@ async def _refresh_wallet_usd(wallet: str, force: bool = False) -> None:
     if hit and not force and (now - hit[0]) < BALANCE_TTL:
         return
     try:
-        _sol_cache[wallet] = (now, await solana.sol_balance(wallet))
+        _sol_cache[wallet] = (now, await asyncio.wait_for(solana.sol_balance(wallet), timeout=5.0))
     except Exception:  # noqa: BLE001 — RPC hiccup: keep last known SOL balance
         pass
 
@@ -196,8 +197,8 @@ async def _refresh_balance(conn, row, force: bool = False) -> int:
     if not force and (now - row["balance_ts"]) < BALANCE_TTL:
         return row["cached_balance"]
     try:
-        bal_base = db.to_base(await solana.token_balance(row["wallet"]))
-    except Exception:  # noqa: BLE001 — RPC hiccup: keep last known balance
+        bal_base = db.to_base(await asyncio.wait_for(solana.token_balance(row["wallet"]), timeout=8.0))
+    except Exception:  # noqa: BLE001 — RPC hiccup or timeout: keep last known balance
         return row["cached_balance"]
     conn.execute(
         "UPDATE stakers SET cached_balance=?, balance_ts=? WHERE wallet=?",

@@ -82,19 +82,29 @@
     toast(msg || 'Copied ✦');
   }
   async function api(path, body) {
-    const res = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body || {}),
-    });
-    if (!res.ok) {
-      let detail = res.status;
-      try {
-        detail = (await res.json()).detail || detail;
-      } catch (e) {}
-      throw new Error(detail);
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 22000);
+    try {
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+        signal: ctrl.signal,
+      });
+      clearTimeout(tid);
+      if (!res.ok) {
+        let detail = res.status;
+        try {
+          detail = (await res.json()).detail || detail;
+        } catch (e) {}
+        throw new Error(detail);
+      }
+      return res.json();
+    } catch (e) {
+      clearTimeout(tid);
+      if (e.name === 'AbortError') throw new Error('Server timed out — try again');
+      throw e;
     }
-    return res.json();
   }
   function authedBody(extra) {
     return Object.assign({ token: TOKEN }, extra || {});
@@ -102,15 +112,42 @@
   // Fetch a login nonce, surfacing real errors (429/400) instead of letting an
   // error body flow through and make us sign the literal string "undefined".
   async function getNonce(pubkey) {
-    const r = await fetch('/api/nonce?wallet=' + encodeURIComponent(pubkey));
-    if (!r.ok) {
-      let d = r.status;
-      try {
-        d = (await r.json()).detail || d;
-      } catch (e) {}
-      throw new Error(d);
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 10000);
+    try {
+      const r = await fetch('/api/nonce?wallet=' + encodeURIComponent(pubkey), { signal: ctrl.signal });
+      clearTimeout(tid);
+      if (!r.ok) {
+        let d = r.status;
+        try {
+          d = (await r.json()).detail || d;
+        } catch (e) {}
+        throw new Error(d);
+      }
+      return r.json();
+    } catch (e) {
+      clearTimeout(tid);
+      if (e.name === 'AbortError') throw new Error('Server timed out — try again');
+      throw e;
     }
-    return r.json();
+  }
+  // Wrap a promise with a hard timeout; rejects with a friendly message on expiry.
+  function withTimeout(p, ms, label) {
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error((label || 'Request') + ' timed out — try again')), ms);
+      p.then(
+        (v) => { clearTimeout(t); resolve(v); },
+        (e) => { clearTimeout(t); reject(e); },
+      );
+    });
+  }
+  // Friendly message for server errors so "504" doesn't show raw to users.
+  function _loginErrMsg(raw) {
+    const s = String(raw || '');
+    if (/50[234]|timeout|timed out/i.test(s)) return 'Server busy — please try again in a moment';
+    if (/429|rate.?limit/i.test(s)) return 'Too many attempts — wait a minute and try again';
+    if (/401|signature|nonce/i.test(s)) return 'Signature rejected — try connecting again';
+    return 'Connect failed: ' + s;
   }
   // Only ever talk to an https RPC. If the configured swapRpc is missing or not
   // https (tampered /api/economics, misconfig), fall back to the public endpoint
@@ -752,12 +789,13 @@
   // ---- injected (extension) login: connect -> nonce -> sign -> login ----- //
   let CONNECTING = false;
   async function loginInjected(id) {
+    if (CONNECTING) return; // prevent double-tap / concurrent connect attempts
     try {
       CONNECTING = true;
       $('connect-spin').classList.remove('hide');
-      const pk = await CleanWallet.connectInjected(id);
+      const pk = await withTimeout(CleanWallet.connectInjected(id), 60000, 'Wallet connect');
       const { nonce, message } = await getNonce(pk);
-      const sig = await CleanWallet.signInjected(message);
+      const sig = await withTimeout(CleanWallet.signInjected(message), 60000, 'Wallet sign');
       const r = await api('/api/login', {
         wallet: pk,
         signature: sig,
@@ -773,9 +811,10 @@
       CONNECTING = false;
     } catch (e) {
       CONNECTING = false;
-      toast('Connect failed: ' + (e.message || e));
+      const msg = String(e.message || e);
+      toast(_loginErrMsg(msg));
       showConnect();
-      diag('connect err: ' + (e.message || e));
+      diag('connect err: ' + msg);
     }
   }
 
@@ -830,7 +869,7 @@
     try {
       toast('Wallet switched — sign to continue as ' + newAddr.slice(0, 4) + '…');
       const { nonce, message } = await getNonce(newAddr);
-      const sig = await CleanWallet.signInjected(message); // signs with the NEW account
+      const sig = await withTimeout(CleanWallet.signInjected(message), 60000, 'Wallet sign');
       const r = await api('/api/login', {
         wallet: newAddr,
         signature: sig,
@@ -860,13 +899,14 @@
 
   // ---- WalletConnect login: QR/relay -> nonce -> sign -> login ----------- //
   async function loginWalletConnect() {
+    if (CONNECTING) return; // prevent double-tap / concurrent connect attempts
     try {
       CONNECTING = true;
       $('connect-spin').classList.remove('hide');
       toast('Opening WalletConnect…');
-      const pk = await CleanWallet.wcConnect(CONFIG.wcProjectId);
+      const pk = await withTimeout(CleanWallet.wcConnect(CONFIG.wcProjectId), 120000, 'WalletConnect');
       const { nonce, message } = await getNonce(pk);
-      const sig = await CleanWallet.wcSign(message);
+      const sig = await withTimeout(CleanWallet.wcSign(message), 60000, 'WalletConnect sign');
       const r = await api('/api/login', {
         wallet: pk,
         signature: sig,
@@ -892,7 +932,9 @@
           ? 'WalletConnect is busy — use a wallet extension above, or try again.'
           : /closed|reject|cancel/i.test(msg)
             ? 'WalletConnect cancelled.'
-            : 'WalletConnect: ' + msg;
+            : /50[234]|timeout|timed out/i.test(msg)
+              ? 'Server busy — please try again in a moment'
+              : 'WalletConnect: ' + msg;
       toast(friendly);
       showConnect();
       diag('wc err: ' + msg);
