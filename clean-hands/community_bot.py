@@ -492,10 +492,13 @@ async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_ms
             except Exception:  # noqa: BLE001 — missing asset must not kill the meme
                 pass
         await _stop_fx(fx)  # freeze the animation just before the result lands
-        await context.bot.send_photo(
-            chat_id,
-            photo=io.BytesIO(out),
-            caption="🧤 washed by $CLEAN" if ai_ok else "🧤 $CLEAN",
+        await asyncio.wait_for(
+            context.bot.send_photo(
+                chat_id,
+                photo=io.BytesIO(out),
+                caption="🧤 washed by $CLEAN" if ai_ok else "🧤 $CLEAN",
+            ),
+            timeout=30,
         )
         if ai_expected and not ai_ok:
             # NEVER silently downgrade the flagship: leave the placeholder as a
@@ -863,7 +866,16 @@ def main():
     )
     if not BOT_TOKEN:
         raise SystemExit("Set TG_COMMUNITY_TOKEN (from @BotFather).")
-    app = ApplicationBuilder().token(BOT_TOKEN).post_init(_post_init).build()
+    app = (
+        ApplicationBuilder()
+        .token(BOT_TOKEN)
+        .post_init(_post_init)
+        .connect_timeout(10)
+        .read_timeout(30)    # covers send_photo upload stalls
+        .write_timeout(30)
+        .pool_timeout(5)
+        .build()
+    )
     app.add_handler(CommandHandler(["start", "help"], cmd_help))
     app.add_handler(CommandHandler("app", cmd_app))
     app.add_handler(CommandHandler("stake", cmd_stake))
