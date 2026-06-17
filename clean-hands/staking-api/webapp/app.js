@@ -181,14 +181,29 @@
     const url = (CONFIG && CONFIG.gameUrl) || '/play';
     const f = $('game-frame');
     if (f && !f.getAttribute('src')) {
-      f.setAttribute('src', url); // game loads behind the intro
-      // Play the loading intro once: the glow rings the circle (~1.25s), the
-      // logo shines once (~0.85s @1.2s), then we reveal the game.
+      // Play the loading intro: the glow rings the circle (~1.25s), the logo
+      // shines once (~0.85s @1.2s). Reveal the game only once BOTH the shine has
+      // finished (~2.15s min) AND the iframe has actually loaded — so we never
+      // flash a half-loaded game. A 9s safety cap never traps the user.
       const intro = $('game-intro');
-      if (intro) {
-        intro.classList.remove('done');
-        setTimeout(() => intro.classList.add('done'), 2150);
-      }
+      if (intro) intro.classList.remove('done');
+      let loaded = false,
+        minElapsed = false;
+      const reveal = () => {
+        if (loaded && minElapsed && intro) intro.classList.add('done');
+      };
+      f.addEventListener('load', () => {
+        loaded = true;
+        reveal();
+      });
+      setTimeout(() => {
+        minElapsed = true;
+        reveal();
+      }, 2150);
+      setTimeout(() => {
+        if (intro) intro.classList.add('done');
+      }, 9000);
+      f.setAttribute('src', url); // game loads behind the intro
     }
   }
 

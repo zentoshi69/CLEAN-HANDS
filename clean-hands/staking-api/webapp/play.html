@@ -1575,6 +1575,17 @@ window.__game = { S, setFrame, setVFrame, VFRAMES, doRiffle, refresh,
     }
   }
   $('#splashBtn').onclick=start;
+
+  // When this game runs INSIDE the Mini App (an iframe), the host already plays
+  // its own logo + shine loading intro before revealing us — so our in-game
+  // "START WASHING" splash would be a jarring second gate that buries it. If
+  // we're framed, auto-dismiss our splash so the host's logo+shine flows
+  // straight into play. (Audio still primes on the first in-game tap, which is
+  // required by the webview autoplay policy anyway.) Opened directly at /play
+  // (not framed), the branded splash stays.
+  try{
+    if(window.self !== window.top){ setTimeout(start, 120); }
+  }catch(_){ setTimeout(start, 120); }   // cross-origin access throw ⇒ framed
 })();
 
 // intro
