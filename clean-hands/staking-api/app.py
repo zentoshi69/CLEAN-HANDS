@@ -1722,6 +1722,17 @@ def scene_img(filename: str):
     return FileResponse(path, headers=_DAY_CACHE)
 
 
+@app.get("/audio/{filename}")
+def audio_file(filename: str):
+    """Serve game music/SFX from webapp/audio/ (e.g. the per-scene track)."""
+    if ".." in filename:
+        raise HTTPException(400, "invalid filename")
+    path = os.path.join(_WEB, "audio", filename)
+    if not os.path.isfile(path):
+        raise HTTPException(404)
+    return FileResponse(path, media_type="audio/mpeg", headers=_DAY_CACHE)
+
+
 # --------------------------------------------------------------------------- #
 #  GLOVE-CODE LANDING (/g/<code>) — the shareable invite link                   #
 #  Unfurls with a branded OG card in Telegram/X/Discord and funnels the tap     #
