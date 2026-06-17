@@ -8,6 +8,7 @@ from src.image_pipeline.providers.base import (
     ImageEditProvider,
     ProviderConfig,
 )
+from src.image_pipeline.providers.flux_fill import FluxFillProvider
 from src.image_pipeline.providers.generic_http import GenericHTTPProvider
 from src.image_pipeline.providers.mock import MockProvider
 from src.utils.config import Settings
@@ -25,6 +26,13 @@ def create_provider(settings: Settings) -> ImageEditProvider:
     name = settings.image_provider
     if name == "mock":
         return MockProvider()
+    if name == "flux_fill":
+        return FluxFillProvider(
+            ProviderConfig(
+                api_key=settings.image_provider_api_key,
+                endpoint=settings.image_provider_endpoint,
+            )
+        )
     if name == "generic_http":
         return GenericHTTPProvider(
             ProviderConfig(
@@ -35,5 +43,6 @@ def create_provider(settings: Settings) -> ImageEditProvider:
     if name == "future":
         return FutureProvider()
     raise ImageEditError(
-        f"Unknown IMAGE_PROVIDER {name!r}. Supported: mock, generic_http, future."
+        f"Unknown IMAGE_PROVIDER {name!r}. Supported: mock, flux_fill, "
+        "generic_http, future."
     )

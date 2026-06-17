@@ -39,9 +39,9 @@ class HandDetector:
 
     def __init__(
         self,
-        max_num_hands: int = 6,
-        min_detection_confidence: float = 0.45,
-        min_tracking_confidence: float = 0.45,
+        max_num_hands: int = 4,
+        min_detection_confidence: float = 0.6,
+        min_tracking_confidence: float = 0.6,
     ) -> None:
         try:
             import mediapipe as mp
