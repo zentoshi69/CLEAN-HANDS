@@ -338,6 +338,32 @@ body{
 .mw-you .mw-rk{color:var(--accent)}
 .mw-you .mw-nm{color:var(--accent)}
 .mw-empty{padding:14px;text-align:center;color:var(--ink-soft);font-size:13px}
+/* achievements grid (Reputation panel) */
+.ach-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.ach{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:14px;padding:10px;background:#fbfdff;opacity:.5;filter:grayscale(.7);position:relative;transition:all .25s var(--ease)}
+.ach.got{opacity:1;filter:none;border-color:rgba(20,241,149,.45);background:#f1fff8}
+.ach-ic{font-size:20px;flex:0 0 auto}
+.ach-tx{display:flex;flex-direction:column;min-width:0}
+.ach-tx b{font-size:12.5px;line-height:1.15}
+.ach-tx span{font-size:10.5px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ach-chk{position:absolute;top:6px;right:8px;color:var(--money);font-weight:900;font-size:13px}
+/* confirm modal (escape/flee) */
+.confirm{position:absolute;inset:0;z-index:45;display:grid;place-items:center;background:rgba(10,37,64,.5);
+  backdrop-filter:blur(6px);opacity:0;pointer-events:none;transition:opacity .22s}
+.confirm.show{opacity:1;pointer-events:auto}
+.cf-card{background:#fff;border-radius:22px;padding:22px 24px;text-align:center;max-width:84%;width:340px;
+  box-shadow:var(--shadow-lg);transform:scale(.85) translateY(8px);transition:transform .3s var(--ease)}
+.confirm.show .cf-card{transform:scale(1) translateY(0)}
+.cf-ic{font-size:38px;line-height:1}
+.cf-card h3{margin:8px 0 6px;font-size:19px;font-weight:900;color:var(--accent)}
+.cf-card p{margin:0 0 16px;font-size:13px;line-height:1.5;color:var(--ink-soft)}
+.cf-row{display:grid;grid-template-columns:1fr 1.2fr;gap:10px}
+.cf-btn{font-size:14px;font-weight:800;border-radius:14px;padding:13px;cursor:pointer;border:1px solid var(--line)}
+.cf-cancel{background:#fff;color:var(--ink-soft)}
+.cf-cancel:active{transform:scale(.97)}
+.cf-ok{border:none;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  box-shadow:0 12px 26px -12px var(--accent)}
+.cf-ok:active{transform:scale(.97)}
 
 /* toast */
 #toasts{position:absolute;z-index:50;left:0;right:0;top:calc(10px + env(safe-area-inset-top));display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
@@ -417,10 +443,15 @@ body{
 /* bust flash */
 #bust{position:absolute;inset:0;z-index:40;background:radial-gradient(circle,rgba(255,40,40,.0),rgba(180,0,0,.55));
   opacity:0;pointer-events:none;transition:opacity .2s;display:grid;place-items:center}
-#bust.show{opacity:1;pointer-events:auto}
+#bust.show{opacity:1;pointer-events:auto;animation:sirenStrobe 1.1s ease-in-out infinite}
+@keyframes sirenStrobe{0%,100%{background:radial-gradient(circle,rgba(255,40,40,0),rgba(170,0,0,.5))}
+  50%{background:radial-gradient(circle,rgba(255,60,60,.18),rgba(225,0,0,.74))}}
 #bust .msg{background:#fff;border-radius:22px;padding:24px 26px;text-align:center;max-width:80%;box-shadow:var(--shadow-lg);transform:scale(.8);transition:transform .4s var(--ease)}
 #bust.show .msg{transform:scale(1)}
-#bust .siren{font-size:46px}
+#bust .siren{font-size:46px;display:inline-block}
+#bust.show .siren{animation:sirenShake .5s ease-in-out infinite}
+@keyframes sirenShake{0%,100%{transform:rotate(-9deg) scale(1)}50%{transform:rotate(9deg) scale(1.12)}}
+@media (prefers-reduced-motion:reduce){#bust.show,#bust.show .siren{animation:none}}
 #bust h3{margin:6px 0 4px;font-size:22px;font-weight:900;color:var(--danger)}
 #bust p{margin:0 0 14px;font-size:13px;color:var(--ink-soft)}
 
@@ -946,6 +977,18 @@ const REP=[
   {amt:2e7,    label:'Ghost'},
   {amt:1e8,    label:'Legend'},
 ];
+/* Achievements — bragging rights derived live from state (no saved fields, so old
+   saves light them up retroactively). Shown in the Reputation panel. */
+const ACHIEVEMENTS=[
+  {ic:'🧼', name:'First Wash',    desc:'Launder $500',        on:()=>S.lifetime>=500},
+  {ic:'💵', name:'Petty Cash',    desc:'Launder $25K',        on:()=>S.lifetime>=25000},
+  {ic:'🏦', name:'Made Man',      desc:'$1M lifetime',        on:()=>S.lifetime>=1e6},
+  {ic:'👑', name:'Kingpin',       desc:'$100M lifetime',      on:()=>S.lifetime>=1e8},
+  {ic:'✈️', name:'Escapee',       desc:'Relocate once',       on:()=>(S.prestige||0)>=1},
+  {ic:'🌍', name:'Serial Mover',  desc:'Relocate ×3',         on:()=>(S.prestige||0)>=3},
+  {ic:'🧤', name:'Full Crew',     desc:'Own all 3 perks',     on:()=>perksOwned()>=3},
+  {ic:'🤝', name:'Well Connected',desc:'5 bribes on payroll', on:()=>S.bribes>=5},
+];
 
 /* ============ DERIVED ============ */
 function bribeCut(){ let c=0; for(const b of BRIBES) c+=S.bribesBought[b.id]*b.cut; return Math.min(c,75); }
@@ -1451,7 +1494,17 @@ function renderPanel(id){
               :reached?`<button class="minibtn" data-claim="${i}">CLAIM</button>`
               :`<span class="c cant">${fmt(r.amt)}</span>`}
           </div></div>`;
-      }).join('');
+      }).join('')
+      +`<h2 style="margin-top:20px">${svg('crown')} Achievements</h2>
+        <p class="wsub">Permanent bragging rights — they survive every relocation.</p>
+        <div class="ach-grid">`
+      +ACHIEVEMENTS.map(a=>{
+        const got=!!a.on();
+        return `<div class="ach${got?' got':''}"><div class="ach-ic">${a.ic}</div>
+          <div class="ach-tx"><b>${a.name}</b><span>${a.desc}</span></div>
+          ${got?'<div class="ach-chk">✓</div>':''}</div>`;
+      }).join('')
+      +`</div>`;
     b.querySelectorAll('[data-claim]').forEach(btn=>btn.onclick=()=>{
       const i=+btn.dataset.claim; if(S.repClaimed[i])return;
       S.repClaimed[i]=true;S.rep++;
@@ -1482,7 +1535,7 @@ function renderPanel(id){
       </div>
       <button class="bigbtn" id="escGo" ${ready?'':'disabled'}>${cta}</button>
       <div id="mostWanted" class="mw"><div class="mw-h">${svg('star')} Most Wanted</div><div class="mw-list"><div class="mw-empty">loading…</div></div></div>`;
-    const g=$('#escGo'); if(g&&ready) g.onclick=doEscape;
+    const g=$('#escGo'); if(g&&ready) g.onclick=confirmEscape;
     loadMostWanted();
   }
 }
@@ -1504,6 +1557,40 @@ function doEscape(){
   toast('Relocated to '+PRESTIGE_CITIES[Math.min(S.prestige-1,PRESTIGE_CITIES.length-1)]+' — ×'+escMult().toFixed(2)+' income forever','✈︎','good');
   closePanel(); refresh();
   try{ window.__cleanLayer && window.__cleanLayer.save && window.__cleanLayer.save(); }catch(e){}   // persist prestige now (local + cloud)
+}
+// Lightweight reusable confirm dialog (built on demand, auto-removed on close).
+function confirmModal(o){
+  o=o||{};
+  const wrap=document.createElement('div');
+  wrap.className='confirm';
+  wrap.innerHTML=`<div class="cf-card">
+    <div class="cf-ic">${o.icon||'❔'}</div>
+    <h3>${o.title||''}</h3>
+    <p>${o.body||''}</p>
+    <div class="cf-row">
+      <button class="cf-btn cf-cancel">${o.cancel||'Cancel'}</button>
+      <button class="cf-btn cf-ok">${o.ok||'Confirm'}</button>
+    </div></div>`;
+  app.appendChild(wrap);
+  requestAnimationFrame(()=>wrap.classList.add('show'));
+  const close=()=>{ wrap.classList.remove('show'); setTimeout(()=>{ if(wrap.parentNode) wrap.remove(); },260); };
+  wrap.querySelector('.cf-cancel').onclick=close;
+  wrap.addEventListener('click',e=>{ if(e.target===wrap) close(); });   // tap-outside cancels
+  wrap.querySelector('.cf-ok').onclick=()=>{ close(); try{ o.onOk&&o.onOk(); }catch(_){ } };
+}
+// Escape is destructive (wipes the run) — confirm before relocating so a stray
+// tap never burns a hard-earned run.
+function confirmEscape(){
+  if(S.total < CITIES[S.cityIdx].goal || S.heat >= 40) return;
+  const nextMult=1+0.75*((safe(S.prestige)||0)+1);
+  const dest=PRESTIGE_CITIES[Math.min(safe(S.prestige)||0, PRESTIGE_CITIES.length-1)];
+  confirmModal({
+    icon:'✈︎',
+    title:'Relocate to '+dest+'?',
+    body:`Bank a permanent <b>×${nextMult.toFixed(2)}</b> on all income. Your <b>perks, rank &amp; lifetime record carry over</b> — but this run’s cash, upgrades and bribes reset to zero.`,
+    cancel:'Stay', ok:'RELOCATE ✈︎',
+    onOk: doEscape,
+  });
 }
 // HTML-escape leaderboard names (Telegram-supplied → untrusted).
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
