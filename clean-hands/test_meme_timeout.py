@@ -75,8 +75,10 @@ class _Placeholder:
     def __init__(self):
         self.text = None
         self.deleted = False
+        self.edits = 0  # editing this on a timer is what used to flood the chat
 
     async def edit_text(self, t, *a, **k):
+        self.edits += 1
         self.text = t
 
     async def delete(self):
@@ -84,9 +86,11 @@ class _Placeholder:
 
 
 class _Bot:
-    def __init__(self):
+    def __init__(self, *, flood_photo=0):
         self.ph = _Placeholder()
         self.photos = []
+        self.actions = 0          # native 'uploading photo…' keepalive (flood-exempt)
+        self._flood_photo = flood_photo  # raise RetryAfter on the first N photo sends
 
     async def get_file(self, fid):
         return _File()
@@ -99,9 +103,13 @@ class _Bot:
         return self.ph
 
     async def send_chat_action(self, c, a):
-        pass
+        self.actions += 1
 
     async def send_photo(self, c, photo, caption=None, **k):
+        if self._flood_photo > 0:
+            self._flood_photo -= 1
+            from telegram.error import RetryAfter
+            raise RetryAfter(0)  # transient per-chat flood; sender must retry
         data = photo.getvalue() if hasattr(photo, "getvalue") else b""
         self.photos.append((caption, len(data)))
 
@@ -226,6 +234,67 @@ def test_run_meme_happy_path_posts_ai_result():
     asyncio.run(_run(bot))
     assert bot.photos and bot.photos[0][0] == "🧤 washed by $CLEAN"
     assert bot.ph.deleted is True
+
+
+# ---------------------------------------------------------------------------- #
+#  flood control: the REAL 'stops halfway' bug                                 #
+# ---------------------------------------------------------------------------- #
+def test_run_meme_no_edit_loop_during_render():
+    """THE root-cause guard. The old code edited the placeholder ~once a second
+    while the AI rendered; 20+ edits trip Telegram's per-chat flood limit and the
+    final send_photo gets 429'd, so the meme never posts. The fix shows liveliness
+    via the native 'uploading photo…' chat action (flood-exempt) and NEVER edits
+    the placeholder on a timer. Pin both facts against a multi-second render."""
+    async def post(*a, **k):
+        return httpx.Response(200, json={"data": [{"b64_json": _png_b64()}]})
+
+    _patch_httpx(post)
+    cb.MEME_AI_TIMEOUT = 90
+
+    real_ai = cb.ai_glove_hands
+
+    async def slow_ai(b):
+        await asyncio.sleep(2.5)  # longer than the old 1.4s edit cadence
+        return await real_ai(b)
+
+    cb.ai_glove_hands = slow_ai
+    try:
+        bot = _Bot()
+        asyncio.run(_run(bot))
+    finally:
+        cb.ai_glove_hands = real_ai
+
+    assert bot.photos, "no photo posted — /meme is still stuck"
+    assert bot.actions >= 1, "no chat-action keepalive — nothing shows progress"
+    # zero timed edits during the render: success deletes the placeholder, it is
+    # never edited. This is what keeps the chat under the flood limit.
+    assert bot.ph.edits == 0, f"placeholder was edited {bot.ph.edits}x — flood risk"
+    assert bot.ph.deleted is True
+
+
+def test_run_meme_survives_transient_photo_flood():
+    """Even if the final send_photo hits a transient 429, the meme is the whole
+    point — the resilient sender honours Retry-After and posts it anyway."""
+    async def post(*a, **k):
+        return httpx.Response(200, json={"data": [{"b64_json": _png_b64()}]})
+
+    _patch_httpx(post)
+    cb.MEME_AI_TIMEOUT = 90
+    bot = _Bot(flood_photo=1)  # first send 429s, retry succeeds
+    asyncio.run(_run(bot))
+    assert bot.photos and bot.photos[0][0] == "🧤 washed by $CLEAN"
+    assert bot.ph.deleted is True
+
+
+def test_send_photo_resilient_gives_up_on_hard_error():
+    """A non-flood send failure must NOT loop forever — it returns False so the
+    caller can surface an error instead of hanging."""
+    class _BadBot:
+        async def send_photo(self, *a, **k):
+            raise RuntimeError("boom")
+
+    out = asyncio.run(cb._send_photo_resilient(_BadBot(), -100, b"x", "cap"))
+    assert out is False
 
 
 if __name__ == "__main__":

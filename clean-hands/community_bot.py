@@ -51,6 +51,7 @@ from telegram import (
     MenuButtonWebApp,
 )
 from telegram.constants import ChatType, ParseMode
+from telegram.error import RetryAfter
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
@@ -247,12 +248,14 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 MEME_AI_MODEL = os.environ.get("MEME_AI_MODEL", "gpt-image-1")
 MEME_AI_COOLDOWN = int(os.environ.get("MEME_AI_COOLDOWN", "60"))  # s per user
 MEME_AI_QUALITY = os.environ.get("MEME_AI_QUALITY", "high")  # low|medium|high|auto
-# Hard time budget for one AI wash. The interactive /meme spinner can NEVER
+# Hard time budget for one AI wash. The interactive /meme status can NEVER
 # outlive this: a short connect timeout makes a blocked/firewalled egress to
 # api.openai.com fail in seconds (not minutes), and the overall deadline — also
 # enforced with asyncio.wait_for — guarantees the command always resolves to the
-# local stamp instead of hanging on "🫧 Soaking the image…" forever.
-MEME_AI_TIMEOUT = float(os.environ.get("MEME_AI_TIMEOUT", "40"))  # s, overall ceiling
+# local stamp instead of hanging on the "washing…" status forever.
+# Default matches .env.example: gpt-image-1 at high quality routinely needs
+# 60-90s, so a tighter budget would force the local-stamp fallback every time.
+MEME_AI_TIMEOUT = float(os.environ.get("MEME_AI_TIMEOUT", "90"))  # s, overall ceiling
 MEME_AI_CONNECT_TIMEOUT = float(os.environ.get("MEME_AI_CONNECT_TIMEOUT", "10"))  # s
 # The signature edit, specified from the approved reference outputs:
 # exact pose kept, photoreal nitrile glove, blue pop on B&W, gloved thumbs-up
@@ -270,13 +273,12 @@ GLOVE_PROMPT = (
     "into the scene (a thumbs-up or fist belonging to a subject). "
     "Photorealistic, seamless, professional retouching quality."
 )
-CLEANING_FRAMES = [
-    "🫧 Soaking the image… (AI wash, up to 40s)",
-    "🧼 Scrubbing the pixels…",
-    "🧤 Fitting the gloves…",
-    "✨ Polishing the shine…",
-    "🚿 Final rinse…",
-]
+# One STATIC status line. We deliberately do NOT cycle an edit-loop animation:
+# editing the placeholder once per second floods Telegram's per-chat message
+# limit (~20 msg-ops/min) during a slow AI render, and the 429 then eats the
+# final send_photo — the meme would never post. Liveliness comes from the native
+# "uploading photo…" chat action instead (see _keepalive), which is flood-exempt.
+WASHING_MSG = f"🫧 Washing the image with the $CLEAN glove… (up to {int(MEME_AI_TIMEOUT)}s)"
 _ai_last: dict[int, float] = {}  # user_id -> last SUCCESSFUL AI run (cooldown)
 # max concurrent AI calls — prevents pile-ups when many users trigger /meme at once
 _AI_LAST_ERR = ""  # last failure detail, surfaced by /memetest
@@ -354,22 +356,24 @@ async def ai_glove_hands(img_bytes: bytes) -> bytes | None:
         return None
 
 
-async def _cleaning_fx(msg) -> None:
-    """Edit-loop 'cleaning' animation on the placeholder message."""
-    i = 0
+async def _keepalive(bot, chat_id) -> None:
+    """Keep Telegram's native 'uploading photo…' indicator alive while the wash
+    runs. Chat actions auto-expire after ~5s, so we refresh them — but unlike
+    editing a placeholder message every second, chat actions are NOT counted
+    against the per-chat message flood limit. This is the whole fix for the
+    'stops halfway, never generates' bug: the old edit-loop animation tripped a
+    429 that then blocked the final send_photo, so the meme never posted."""
     while True:
-        await asyncio.sleep(1.4)
-        i += 1
         try:
-            await msg.edit_text(CLEANING_FRAMES[i % len(CLEANING_FRAMES)])
-        except Exception:  # noqa: BLE001 — deleted or rate-limited: stop quietly
+            await bot.send_chat_action(chat_id, "upload_photo")
+        except Exception:  # noqa: BLE001 — never let liveliness break the command
             return
+        await asyncio.sleep(4)
 
 
 async def _stop_fx(task) -> None:
-    """Cancel the cleaning animation and wait for it to actually stop, so it can
-    never keep editing the placeholder after the meme has already resolved (the
-    'stuck on Soaking the image…' bug)."""
+    """Cancel a background task (the keepalive) and wait for it to actually stop,
+    so it can never keep touching the chat after the meme has resolved."""
     if task is None or task.done():
         return
     task.cancel()
@@ -379,6 +383,26 @@ async def _stop_fx(task) -> None:
         pass
     except Exception:  # noqa: BLE001
         pass
+
+
+async def _send_photo_resilient(bot, chat_id, data: bytes, caption: str) -> bool:
+    """Send the finished meme, surviving a transient per-chat flood (429). The
+    final image is the whole point of the command, so we honour Telegram's
+    Retry-After and try again instead of dropping it. Returns True on success."""
+    for attempt in range(3):
+        try:
+            await bot.send_photo(chat_id, photo=io.BytesIO(data), caption=caption)
+            return True
+        except RetryAfter as e:  # chat flooded — wait the advised window, retry
+            ra = getattr(e, "retry_after", 5)
+            secs = ra.total_seconds() if hasattr(ra, "total_seconds") else ra  # int|timedelta
+            wait = min(int(secs) + 1, 30)
+            log.warning("send_photo flood-limited (attempt %d); retry in %ss", attempt + 1, wait)
+            await asyncio.sleep(wait)
+        except Exception as e:  # noqa: BLE001 — non-flood failure: don't loop
+            log.warning("send_photo failed: %s", e)
+            return False
+    return False
 
 
 async def _download_photo(context, photo) -> bytes | None:
@@ -462,19 +486,17 @@ async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_ms
             except Exception:  # noqa: BLE001 — no delete rights: continue anyway
                 pass
 
-    # visible cleaning FX while the wash runs
-    placeholder = await context.bot.send_message(chat_id, CLEANING_FRAMES[0])
-    fx = asyncio.create_task(_cleaning_fx(placeholder))
+    # single STATIC status message + native 'uploading photo…' keepalive. No
+    # edit-loop: editing this message on a timer is what used to flood the chat
+    # and block the final send (the 'stops halfway' bug).
+    placeholder = await context.bot.send_message(chat_id, WASHING_MSG)
+    keepalive = asyncio.create_task(_keepalive(context.bot, chat_id))
 
     user_id = update.effective_user.id if update.effective_user else 0
     out = None
     ai_ok = False
     ai_expected = _ai_allowed(user_id)
     try:
-        try:
-            await context.bot.send_chat_action(chat_id, "upload_photo")
-        except Exception:  # noqa: BLE001
-            pass
         if ai_expected:
             out = await ai_glove_hands(buf)  # hands -> gloves, AI (time-bounded)
             ai_ok = out is not None
@@ -491,37 +513,51 @@ async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_ms
                 out = add_glove(out, "br", 0.2)
             except Exception:  # noqa: BLE001 — missing asset must not kill the meme
                 pass
-        await _stop_fx(fx)  # freeze the animation just before the result lands
-        await context.bot.send_photo(
-            chat_id,
-            photo=io.BytesIO(out),
-            caption="🧤 washed by $CLEAN" if ai_ok else "🧤 $CLEAN",
-        )
-        if ai_expected and not ai_ok:
-            # NEVER silently downgrade the flagship: leave the placeholder as a
-            # visible notice instead of deleting it.
-            try:
-                await placeholder.edit_text(
-                    "⚠️ The AI wash engine hiccupped — posted the classic stamp instead. "
-                    "Admins: send /memetest for the exact reason."
-                )
-            except Exception:  # noqa: BLE001
-                pass
-        else:
-            try:
-                await placeholder.delete()
-            except Exception:  # noqa: BLE001
-                pass
-    except Exception as e:  # noqa: BLE001
-        log.warning("meme failed: %s", e)
+    except Exception as e:  # noqa: BLE001 — the RENDER itself blew up
+        log.warning("meme render failed: %s", e)
+        out = None
+    finally:
+        # stop the keepalive BEFORE the final send so it can't race the photo or
+        # outlive the command.
+        await _stop_fx(keepalive)
+
+    if out is None:
         try:
             await placeholder.edit_text("Couldn't wash that one — try another image. 🧤")
         except Exception:  # noqa: BLE001
             pass
-    finally:
-        # the cleaning animation must NEVER outlive the command — otherwise the
-        # placeholder keeps cycling "🫧 Soaking the image…" forever (the bug).
-        await _stop_fx(fx)
+        return
+
+    # The image is the whole point — deliver it even if the chat is briefly
+    # flood-limited (honour Retry-After and try again).
+    sent = await _send_photo_resilient(
+        context.bot, chat_id, out, "🧤 washed by $CLEAN" if ai_ok else "🧤 $CLEAN"
+    )
+    if not sent:
+        try:
+            await placeholder.edit_text(
+                "Couldn't post the meme — Telegram is rate-limiting this chat. "
+                "Give it a minute and try again. 🧤"
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return
+
+    if ai_expected and not ai_ok:
+        # NEVER silently downgrade the flagship: leave the placeholder as a
+        # visible notice instead of deleting it.
+        try:
+            await placeholder.edit_text(
+                "⚠️ The AI wash engine hiccupped — posted the classic stamp instead. "
+                "Admins: send /memetest for the exact reason."
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    else:
+        try:
+            await placeholder.delete()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def cmd_memetest(update: Update, context: ContextTypes.DEFAULT_TYPE):
