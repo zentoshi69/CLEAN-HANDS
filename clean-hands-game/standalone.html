@@ -1106,7 +1106,7 @@ function doRiffle(clientX,clientY,swipe){
   // COUNT IS STRICTLY TIED TO THE TAP — never gated by heat.
   const crit=Math.random()<critChance();
   let earn=safe(tapEarn());
-  if(swipe) earn*=0.45;          // WRP swipeFactor — a riffle-step earns a fraction of a deliberate tap
+  // swipe earns full tap rate — hold+slide counts as fast tapping
   if(crit) earn*=5;
   S.cash =clamp(safe(S.cash +earn),0,CAP.cash);
   S.total=clamp(safe(S.total+earn),0,CAP.total);
@@ -1175,7 +1175,7 @@ hands.addEventListener('pointermove',e=>{
   const dx=e.clientX-dragX;dragX=e.clientX;dragAcc+=Math.abs(dx);
   // scrub the virtual riffle directly (smooth across all 128 steps)
   setVFrame(frame + dx*0.9);
-  if(dragAcc>26){ dragAcc=0; riffledDuringDrag=true; doRiffle(e.clientX,e.clientY,true); }   // WRP SWIPE_STEP=26px → responsive riffle
+  if(dragAcc>12){ dragAcc=0; riffledDuringDrag=true; doRiffle(e.clientX,e.clientY,true); }   // WRP SWIPE_STEP=12px → fast earn while swiping
 });
 function endDrag(){ if(!dragging)return; dragging=false;hands.classList.remove('grabbing'); }
 hands.addEventListener('pointerup',e=>{
