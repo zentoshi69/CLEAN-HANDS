@@ -931,10 +931,10 @@ const REP=[
 /* ============ DERIVED ============ */
 function bribeCut(){ let c=0; for(const b of BRIBES) c+=S.bribesBought[b.id]*b.cut; return Math.min(c,75); }
 function heatPerTap(){
-  let base=0.05;                 // WRP-faithful: a tap adds only a slow trickle of heat (was 0.9 — 18× too hot)
-  base-=S.perks.scrub*0.012;     // Hand Sanitizer perk cools the per-tap heat
-  base*=(1-bribeCut()/100);
-  return Math.max(0.008, base);
+  let base=2.2;                              // backbone TAP_HEAT — a tap is a real heat spike, not a trickle
+  base*=(1-Math.min(0.6,S.perks.scrub*0.2)); // Hand Sanitizer cools per-tap heat (Cold Wash analog, cap 60%)
+  base*=(1-bribeCut()/100);                  // bribes keep buildup down
+  return Math.max(0.4, base);
 }
 function tapEarn(){
   let e=S.perTap;
@@ -1245,19 +1245,12 @@ let busted=false;
 let pendingFine=0, isGameOver=false;
 function bust(){
   if(busted) return; busted=true;
-  // fine is a fixed penalty (not a % of cash) so a broke player can actually fail
-  pendingFine=Math.max(75, Math.floor(S.total*0.05));
-  if(S.cash>=pendingFine){
-    isGameOver=false;
-    $('#bustTitle').textContent='BUSTED!';
-    $('#bustText').textContent=`Heat maxed out. The feds raided ${sceneCityForLevel(S.level)}. Fine: ${fmt(pendingFine)}.`;
-    $('#bustBtn').textContent='PAY THE FINE & LAY LOW';
-  } else {
-    isGameOver=true;
-    $('#bustTitle').textContent='GAME OVER';
-    $('#bustText').textContent=`The feds raided ${sceneCityForLevel(S.level)}. Fine: ${fmt(pendingFine)} — and your wallet's empty. The operation is finished.`;
-    $('#bustBtn').textContent='START OVER';
-  }
+  // backbone BUST_LOSS: a raid skims 18% of your cash — painful, but always recoverable (no wipe)
+  pendingFine=Math.floor(S.cash*0.18);
+  isGameOver=false;
+  $('#bustTitle').textContent='BUSTED!';
+  $('#bustText').textContent=`Heat maxed out. The feds raided ${sceneCityForLevel(S.level)} and skimmed ${fmt(pendingFine)}.`;
+  $('#bustBtn').textContent='LAY LOW';
   $('#bust').classList.add('show');
   if(navigator.vibrate&&!reduce) navigator.vibrate([40,60,40,60,120]);
 }
@@ -1272,14 +1265,10 @@ function resetRun(){
   recompute();
 }
 $('#bustBtn').onclick=()=>{
-  if(isGameOver){
-    resetRun();
-    toast('Fresh start. Gloves on.','🧤','');
-  } else {
-    S.cash=clamp(S.cash-pendingFine,0,CAP.cash);
-    S.heat=10; busted=false;
-    toast('Laid low. Heat reset.','🧊','');
-  }
+  // backbone: pay the skim, heat resets to 35% (not zero) and you're straight back in
+  S.cash=clamp(S.cash-pendingFine,0,CAP.cash);
+  S.heat=35; busted=false;
+  toast('Laid low. Heat cooled to 35%.','🧊','');
   $('#bust').classList.remove('show');
   refresh();
 };
@@ -1290,11 +1279,10 @@ setInterval(()=>{
   if(S.perSec>0 && S.heat<CAP.heat){
     S.cash =clamp(safe(S.cash +S.perSec),0,CAP.cash);
     S.total=clamp(safe(S.total+S.perSec),0,CAP.total);
-    S.heat =clamp(S.heat + 0.02*Math.min(10,Math.log10(S.perSec+10))*(1-bribeCut()/100),0,CAP.heat); // WRP log-capped passive heat (was linear → spiked at high income)
     checkLevel();
   }
-  // natural cooldown (gentler so heat is a slow-burn pressure, WRP-style, not a punisher)
-  S.heat=clamp(S.heat-0.10-S.perks.scrub*0.05,0,CAP.heat);
+  // backbone HEAT_DECAY: heat comes only from tapping — idle income never raises it, it purely cools (3.0/s)
+  S.heat=clamp(S.heat-3.0,0,CAP.heat);
   if(S.heat>=CAP.heat&&!busted) bust();
   refresh(true);
 },1000);
