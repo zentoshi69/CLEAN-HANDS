@@ -693,14 +693,24 @@ async def on_photo_caption(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cmd_sticker(update, context)
 
 
+async def _remember_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cache every photo so /sticker works even when sent as a separate message."""
+    if update.message and update.message.photo:
+        context.user_data["last_photo"] = update.message.photo
+
+
 async def cmd_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_msg = _photo_source(update)
+    cached_photo = None
     if not photo_msg:
-        await update.message.reply_text(
-            "Send a photo with caption  /sticker  (or reply to a photo) to convert it."
-        )
-        return
-    raw = await _download_photo(context, photo_msg.photo[-1])
+        cached_photo = context.user_data.get("last_photo")
+        if not cached_photo:
+            await update.message.reply_text(
+                "Send a photo with caption  /sticker  (or reply to a photo) to convert it."
+            )
+            return
+    photo_list = photo_msg.photo if photo_msg else cached_photo
+    raw = await _download_photo(context, photo_list[-1])
     if raw is None:
         await update.message.reply_text("That image is too large to convert.")
         return
@@ -851,6 +861,8 @@ def main():
             on_photo_caption,
         )
     )
+    # cache every photo so /sticker works when sent as a follow-up message
+    app.add_handler(MessageHandler(filters.PHOTO, _remember_photo), group=1)
     log.info("Degen Community bot starting…")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
