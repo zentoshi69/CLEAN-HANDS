@@ -279,7 +279,6 @@ CLEANING_FRAMES = [
 ]
 _ai_last: dict[int, float] = {}  # user_id -> last SUCCESSFUL AI run (cooldown)
 # max concurrent AI calls — prevents pile-ups when many users trigger /meme at once
-_AI_SEM = asyncio.Semaphore(3)
 _AI_LAST_ERR = ""  # last failure detail, surfaced by /memetest
 ADMIN_IDS = {
     int(x) for x in os.environ.get("TG_ADMIN_IDS", "").split(",") if x.strip().isdigit()
@@ -334,20 +333,14 @@ async def ai_glove_hands(img_bytes: bytes) -> bytes | None:
                 },
             )
 
-    # skip to stamp immediately if 3 AI calls are already in flight
-    if not _AI_SEM._value:  # type: ignore[attr-defined]
-        _AI_LAST_ERR = "AI busy (too many concurrent washes) — falling back to stamp"
-        log.info(_AI_LAST_ERR)
-        return None
     try:
-        async with _AI_SEM:
-            r = await asyncio.wait_for(_call(), timeout=MEME_AI_TIMEOUT + 5)
-            if r.status_code != 200:
-                _AI_LAST_ERR = f"HTTP {r.status_code}: {r.text[:300]}"
-                log.warning("ai meme failed: %s", _AI_LAST_ERR)
-                return None
-            b64 = (r.json().get("data") or [{}])[0].get("b64_json")
-            return base64.b64decode(b64) if b64 else None
+        r = await asyncio.wait_for(_call(), timeout=MEME_AI_TIMEOUT + 5)
+        if r.status_code != 200:
+            _AI_LAST_ERR = f"HTTP {r.status_code}: {r.text[:300]}"
+            log.warning("ai meme failed: %s", _AI_LAST_ERR)
+            return None
+        b64 = (r.json().get("data") or [{}])[0].get("b64_json")
+        return base64.b64decode(b64) if b64 else None
     except (asyncio.TimeoutError, httpx.TimeoutException):
         _AI_LAST_ERR = (
             f"timeout after ~{MEME_AI_TIMEOUT:.0f}s — model too slow, or egress to "
