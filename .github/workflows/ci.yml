@@ -35,6 +35,18 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Game single-source guard (standalone.html must mirror play.html)
+        run: |
+          # play.html (served at /play) is canonical; standalone.html is a verified
+          # copy. They drifted once (4 stray comments) and shipped a mislabeled perk.
+          # build_standalone.py regenerates the copy; this fails the build if they diverge.
+          python3 clean-hands-game/build_standalone.py
+          if ! git diff --quiet -- clean-hands-game/standalone.html; then
+            echo "::error::standalone.html is out of sync with play.html — run 'python3 clean-hands-game/build_standalone.py' and commit."
+            git --no-pager diff -- clean-hands-game/standalone.html | head -40
+            exit 1
+          fi
+
       - name: Wallet flow regression tests
         working-directory: clean-hands/staking-api/webapp
         run: node test_wallet_flow.mjs

@@ -1463,7 +1463,7 @@ function upgRow(u){
 }
 function perkRow(p){
   const cost=perkCost(p),can=S.cash>=cost;
-  const per = p.id==='speedy'?15 : p.id==='scrub'?12 : 5;
+  const per = p.id==='speedy'?15 : p.id==='scrub'?20 : 3;  // scrub: -20%/lv heat (cap 60%); ghost: +3%/lv crit — must match heatPerTap()/critChance()
   const eff = p.eff.replace('%v', per).replace(/%%/g,'%');
   return `<div class="item">
     <div class="icn">${svg(p.icon)}</div>

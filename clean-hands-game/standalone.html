@@ -931,9 +931,9 @@ const REP=[
 /* ============ DERIVED ============ */
 function bribeCut(){ let c=0; for(const b of BRIBES) c+=S.bribesBought[b.id]*b.cut; return Math.min(c,75); }
 function heatPerTap(){
-  let base=2.2;                              // backbone TAP_HEAT — a tap is a real heat spike, not a trickle
-  base*=(1-Math.min(0.6,S.perks.scrub*0.2)); // Hand Sanitizer cools per-tap heat (Cold Wash analog, cap 60%)
-  base*=(1-bribeCut()/100);                  // bribes keep buildup down
+  let base=2.2;                              // backbone TAP_HEAT
+  base*=(1-Math.min(0.6,S.perks.scrub*0.2)); // Hand Sanitizer cools per-tap heat (cap 60%)
+  base*=(1-bribeCut()/100);
   return Math.max(0.4, base);
 }
 function tapEarn(){
@@ -1245,7 +1245,7 @@ let busted=false;
 let pendingFine=0, isGameOver=false;
 function bust(){
   if(busted) return; busted=true;
-  // backbone BUST_LOSS: a raid skims 18% of your cash — painful, but always recoverable (no wipe)
+  // backbone BUST_LOSS: lose 18% of cash — always recoverable, no wipe
   pendingFine=Math.floor(S.cash*0.18);
   isGameOver=false;
   $('#bustTitle').textContent='BUSTED!';
@@ -1265,7 +1265,7 @@ function resetRun(){
   recompute();
 }
 $('#bustBtn').onclick=()=>{
-  // backbone: pay the skim, heat resets to 35% (not zero) and you're straight back in
+  // backbone: pay the skim, heat resets to 35% and you're straight back in
   S.cash=clamp(S.cash-pendingFine,0,CAP.cash);
   S.heat=35; busted=false;
   toast('Laid low. Heat cooled to 35%.','🧊','');
@@ -1281,7 +1281,7 @@ setInterval(()=>{
     S.total=clamp(safe(S.total+S.perSec),0,CAP.total);
     checkLevel();
   }
-  // backbone HEAT_DECAY: heat comes only from tapping — idle income never raises it, it purely cools (3.0/s)
+  // backbone HEAT_DECAY: 3.0/s — heat comes only from tapping, idle purely cools
   S.heat=clamp(S.heat-3.0,0,CAP.heat);
   if(S.heat>=CAP.heat&&!busted) bust();
   refresh(true);
@@ -1463,7 +1463,7 @@ function upgRow(u){
 }
 function perkRow(p){
   const cost=perkCost(p),can=S.cash>=cost;
-  const per = p.id==='speedy'?15 : p.id==='scrub'?12 : 5;
+  const per = p.id==='speedy'?15 : p.id==='scrub'?20 : 3;  // scrub: -20%/lv heat (cap 60%); ghost: +3%/lv crit — must match heatPerTap()/critChance()
   const eff = p.eff.replace('%v', per).replace(/%%/g,'%');
   return `<div class="item">
     <div class="icn">${svg(p.icon)}</div>
