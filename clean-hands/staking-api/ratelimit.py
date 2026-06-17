@@ -68,4 +68,11 @@ def hit(request: Request, bucket: str, *, extra_key: str | None = None) -> None:
         keys.append(f"rl:{bucket}:k:{extra_key}")
     for k in keys:
         if s.incr_window(k, window) > limit:
+            # Log BEFORE raising — a silent 429 is the classic "connect does
+            # nothing / nothing in the logs" mobile failure (shared-NAT IP).
+            print(
+                f"[ratelimit] 429 bucket={bucket} ip={client_ip(request)}"
+                + (f" key={str(extra_key)[:8]}…" if extra_key else ""),
+                flush=True,
+            )
             raise HTTPException(429, "rate limit exceeded — slow down")
