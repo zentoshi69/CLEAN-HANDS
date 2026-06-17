@@ -430,7 +430,11 @@ async def api_stake(body: StakeBody, request: Request):
         if not row:
             raise HTTPException(404, "unknown wallet")
         _accrue(conn, wallet)  # settle rewards on the prior amount first
-        bal = await _refresh_balance(conn, db.get_staker(conn, wallet))
+        # FORCE a live on-chain read: a trader who just bought more $CLEAN must be
+        # able to stake the new tokens immediately. Honouring the 5-min balance
+        # cache here made staking feel like a one-time snapshot — a re-stake right
+        # after buying saw the stale (pre-purchase) balance and added nothing.
+        bal = await _refresh_balance(conn, db.get_staker(conn, wallet), force=True)
         if bal <= 0:
             raise HTTPException(400, "no $CLEAN in wallet to stake")
         pct = 100 if body.percent is None else int(body.percent)

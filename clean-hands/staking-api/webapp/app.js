@@ -404,13 +404,75 @@
 
   async function refresh() {
     try {
-      paint(await api('/api/profile', authedBody()));
+      const p = await api('/api/profile', authedBody());
+      if (sessionStale(p)) {
+        await reauthLive();
+        return;
+      }
+      paint(p);
     } catch (e) {
       if (String(e.message).indexOf('session') >= 0 || e.message === 401) {
         TOKEN = '';
         SS.removeItem('clw_token');
         showConnect('Session expired — reconnect your wallet.');
       } else toast(String(e.message));
+    }
+  }
+
+  // The saved session token authenticated a DIFFERENT, EMPTY wallet than the one
+  // live in the extension right now. Classic Brave case: its built-in wallet
+  // auto-injects and signs in first, so the token is for an unused address while
+  // Phantom is what's actually connected — the chip shows Phantom (live pubkey)
+  // but the balance reflects the token's empty wallet, i.e. "connected but 0".
+  // Only ever fire when the session wallet has NOTHING staked/held/burned, so a
+  // real linked/primary wallet (a deliberate multi-wallet portfolio) is never
+  // hijacked.
+  function sessionStale(p) {
+    if (LINKING) return false; // mid multi-wallet link: divergence is intentional
+    if (SS.getItem('clw_wallet') !== 'injected') return false; // extensions only
+    const live = (CleanWallet.currentPubkey && CleanWallet.currentPubkey()) || '';
+    if (!live || !p || !p.wallet || live === p.wallet) return false;
+    return (
+      !Number(p.balance) &&
+      !Number(p.staked) &&
+      !Number(p.pending_rewards) &&
+      !Number(p.total_burned) &&
+      !Number(p.active_referrals)
+    );
+  }
+
+  // Re-authenticate as the wallet that is actually connected now, so the balances
+  // on screen always belong to the address in the chip.
+  let _reauthing = false;
+  async function reauthLive() {
+    if (_reauthing) return false;
+    _reauthing = true;
+    TOKEN = '';
+    SS.removeItem('clw_token');
+    const pk = (CleanWallet.currentPubkey && CleanWallet.currentPubkey()) || '';
+    try {
+      if (!pk) throw new Error('no live wallet');
+      const { nonce, message } = await getNonce(pk);
+      const sig = await CleanWallet.signInjected(message);
+      const r = await api('/api/login', {
+        wallet: pk,
+        signature: sig,
+        nonce: nonce,
+        initData: initData || null,
+        ref: startParam || null,
+      });
+      TOKEN = r.token;
+      SS.setItem('clw_token', TOKEN);
+      paint(r.profile);
+      showApp();
+      show('stake');
+      return true;
+    } catch (e) {
+      showConnect('Reconnect your wallet to load your balances.');
+      diag('reauth: ' + ((e && e.message) || e));
+      return false;
+    } finally {
+      _reauthing = false;
     }
   }
 
@@ -452,9 +514,18 @@
   }
   async function stake() {
     try {
-      paint(await api('/api/stake', authedBody({ percent: STAKE_PCT })));
+      const prev = (PROFILE && Number(PROFILE.staked)) || 0;
+      const p = await api('/api/stake', authedBody({ percent: STAKE_PCT }));
+      paint(p);
       haptic('medium');
-      toast(STAKE_PCT === 100 ? 'Soft-staked ✦' : 'Soft-staked ' + STAKE_PCT + '% of your bag ✦');
+      // re-staking after buying more $CLEAN stacks the new tokens on top (the
+      // server now reads the live balance), so call out the increase explicitly.
+      const added = (Number(p.staked) || 0) - prev;
+      if (prev > 0 && added > 0) {
+        toast('Added ' + fmt(added) + ' $CLEAN to your stake ✦');
+      } else {
+        toast(STAKE_PCT === 100 ? 'Soft-staked ✦' : 'Soft-staked ' + STAKE_PCT + '% of your bag ✦');
+      }
     } catch (e) {
       toast(String(e.message));
     }
@@ -1222,9 +1293,21 @@
         SS.removeItem('clw_token');
       }
       if (p) {
+        if (sessionStale(p)) {
+          // stale token from a different (empty) wallet — re-auth as the live one
+          // so the balances always match the connected account.
+          diag('stale session — re-authing live wallet');
+          await reauthLive();
+          return;
+        }
         try {
           paint(p);
-        } catch (_) {}
+        } catch (e) {
+          // never swallow silently: a paint failure here is exactly how "in the
+          // app but balances blank" used to happen with zero diagnostics.
+          console.error('paint failed on restore:', e);
+          diag('paint err: ' + ((e && e.message) || e));
+        }
         showApp();
         show('stake');
         return;
