@@ -27,6 +27,16 @@ def _parse_int(env: Mapping[str, str], key: str, default: int) -> int:
         raise ConfigError(f"{key} must be an integer, got {raw!r}") from exc
 
 
+def _parse_optional_int(env: Mapping[str, str], key: str) -> int | None:
+    raw = env.get(key, "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ConfigError(f"{key} must be an integer, got {raw!r}") from exc
+
+
 def _parse_id_set(raw: str) -> frozenset[int]:
     ids: set[int] = set()
     for chunk in raw.replace(";", ",").split(","):
@@ -50,6 +60,7 @@ class Settings:
     image_provider: str = "mock"
     image_provider_api_key: str = ""
     image_provider_endpoint: str = ""
+    image_provider_seed: int | None = None
     admin_telegram_ids: frozenset[int] = field(default_factory=frozenset)
     max_image_size_mb: int = 15
     output_max_side: int = 1536
@@ -81,6 +92,7 @@ class Settings:
             image_provider=env.get("IMAGE_PROVIDER", "mock").strip().lower() or "mock",
             image_provider_api_key=env.get("IMAGE_PROVIDER_API_KEY", "").strip(),
             image_provider_endpoint=env.get("IMAGE_PROVIDER_ENDPOINT", "").strip(),
+            image_provider_seed=_parse_optional_int(env, "IMAGE_PROVIDER_SEED"),
             admin_telegram_ids=_parse_id_set(env.get("ADMIN_TELEGRAM_IDS", "")),
             max_image_size_mb=_parse_int(env, "MAX_IMAGE_SIZE_MB", 15),
             output_max_side=_parse_int(env, "OUTPUT_MAX_SIDE", 1536),

@@ -13,9 +13,18 @@ User uploads chaos. Bot returns same chaos, but medically gloved.
 photo → EXIF normalize + bounded resize → MediaPipe hand detection
       → per-hand skeleton masks (feathered, wrist-extended, object-avoiding)
       → masked edit via provider (strict glove prompt)
+      → hard-mask composite (only hand pixels change; rest = exact original)
       → quality gate (outside-mask diff + SSIM + glove-effect check)
       → retry once with strict prompt → deliver or fail safely
 ```
+
+The **hard-mask composite** is what makes the output the *exact same image,
+just gloved*. Generative providers re-render the whole frame, so even a good
+inpaint drifts the face/background by a few levels everywhere. After the
+provider answers, the bot keeps only the masked hand pixels from the edit and
+pastes them over the pristine original — everything outside the hand mask is
+byte-identical to what the user uploaded. Set `IMAGE_PROVIDER_SEED` to make the
+gloves themselves reproducible: same image + prompt → same result.
 
 If anything is uncertain — no hands, suspicious mask coverage, provider
 output that touched pixels outside the mask — the bot preserves the original
