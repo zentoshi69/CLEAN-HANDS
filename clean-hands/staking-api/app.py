@@ -93,6 +93,9 @@ _CSP = (
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src https://fonts.gstatic.com; "
     "img-src 'self' data: https:; "
+    # /play (the tap game) plays its SFX + music from inlined data: audio URIs;
+    # without media-src these fall back to default-src 'self' and are blocked.
+    "media-src 'self' data:; "
     "connect-src 'self' https: wss:; "
     "frame-src https:; "
     "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org; "
@@ -1007,10 +1010,10 @@ def api_economics():
             "mmMaxUsd": econ.MM_MAX_USD,
             "mmLpCap": econ.MM_LP_CAP,
             "solMint": solana.SOL_MINT,
-            # Embedded Game tab — defaults to the live build; override per-deploy.
-            "gameUrl": os.environ.get(
-                "MINIAPP_GAME_URL", "https://clean-hands-dirty-money.vercel.app/"
-            ).strip(),
+            # Embedded Game tab — defaults to our same-origin /play build (the
+            # self-contained standalone served by this API). Override per-deploy
+            # with MINIAPP_GAME_URL if the game is hosted elsewhere.
+            "gameUrl": os.environ.get("MINIAPP_GAME_URL", "/play").strip(),
         }
     )
 
@@ -1552,6 +1555,14 @@ def app_js():
     return FileResponse(
         os.path.join(_WEB, "app.js"), media_type="application/javascript", headers=_NO_CACHE
     )
+
+
+@app.get("/play")
+def play():
+    # $CLEAN tap game — a single self-contained HTML file (all CSS/JS/audio/art
+    # inlined as data: URIs), so no extra asset routes are needed. Served here so
+    # it ships with the same deploy as the Mini App; reachable at /play.
+    return FileResponse(os.path.join(_WEB, "play.html"), headers=_NO_CACHE)
 
 
 @app.get("/whitepaper")
