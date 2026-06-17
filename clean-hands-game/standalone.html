@@ -323,6 +323,21 @@ body{
 .bigbtn:active{transform:scale(.97)}
 .bigbtn.warn{background:linear-gradient(135deg,#ff7a1f,#ff4d4d);box-shadow:0 14px 30px -12px #ff4d4d}
 .bigbtn:disabled{filter:grayscale(.7);opacity:.6;cursor:not-allowed}
+/* most wanted (leaderboard) */
+.mw{margin-top:16px;border:1px solid var(--line);border-radius:18px;background:#fbfdff;overflow:hidden}
+.mw-h{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;
+  color:var(--ink-soft);padding:11px 14px;border-bottom:1px solid var(--line)}
+.mw-h svg{width:15px;height:15px;color:var(--accent)}
+.mw-list{display:flex;flex-direction:column}
+.mw-row{display:grid;grid-template-columns:26px 1fr auto;align-items:center;gap:10px;padding:9px 14px;font-size:14px}
+.mw-row+.mw-row{border-top:1px solid var(--line)}
+.mw-rk{font-weight:900;color:var(--ink-soft);text-align:center}
+.mw-nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mw-sc{font-weight:900;color:var(--money);font-variant-numeric:tabular-nums}
+.mw-you{background:#eef6ff}
+.mw-you .mw-rk{color:var(--accent)}
+.mw-you .mw-nm{color:var(--accent)}
+.mw-empty{padding:14px;text-align:center;color:var(--ink-soft);font-size:13px}
 
 /* toast */
 #toasts{position:absolute;z-index:50;left:0;right:0;top:calc(10px + env(safe-area-inset-top));display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
@@ -860,6 +875,9 @@ const CITIES=CITY_NAMES.map(name=>{
   const next=LEVELS[lastLvlGlobalIdx+1];
   return {name, goal: next?next.at:LEVELS[LEVELS.length-1].at};
 });
+// Glamorous safehouses you relocate to on each Escape/prestige (distinct from the
+// in-run level cities). Indexed by prestige count; the last one repeats forever.
+const PRESTIGE_CITIES=['Monaco','Zürich','Macau','Cayman Islands','Andorra','Liechtenstein','Panama City','Marrakesh','Montenegro','Vanuatu'];
 function levelFromTotal(t){ let lv=1; for(let i=0;i<LEVELS.length;i++) if(t>=LEVELS[i].at) lv=i+1; return Math.min(lv,MAXLEVEL); }
 function cityIdxForLevel(lv){ return CITY_NAMES.indexOf(LEVELS[lv-1].city); }
 function nextGoal(lv){ return lv<MAXLEVEL ? LEVELS[lv].at : LEVELS[MAXLEVEL-1].at; }
@@ -887,6 +905,7 @@ const safe=n=>(isFinite(n)&&!isNaN(n))?n:0;   // guards every numeric write
 
 const S={
   cash:0, total:0,
+  lifetime:0, prestige:0,          // lifetime = all-time laundered (never resets); prestige = Escape count
   perTap:1, perSec:0,
   heat:0, level:1, cityIdx:0,
   bribes:0, escape:0,
@@ -942,6 +961,8 @@ function tapEarn(){
   return e;
 }
 function critChance(){ return Math.min(0.20, 0.018 + S.perks.ghost*0.03); }
+// Each Escape banks a permanent income multiplier: ×(1 + 0.75·prestige).
+function escMult(){ return 1 + 0.75*(safe(S.prestige)||0); }
 function recompute(){
   // tap power
   let pt=1;
@@ -955,6 +976,13 @@ function recompute(){
   ps+=S.upg.offshore*UPG[4].val;
   S.perSec=clamp(safe(ps),0,CAP.perSec);
   S.perks.launder_speed=S.perks.speedy;
+  // prestige multiplier — applied to BOTH tap and passive income, recomputed fresh
+  // each call so it never compounds on itself.
+  const em=escMult();
+  if(em!==1){
+    S.perTap=clamp(safe(S.perTap*em),1,CAP.perTap);
+    S.perSec=clamp(safe(S.perSec*em),0,CAP.perSec);
+  }
 }
 function upgCost(u){ return Math.floor(u.base*Math.pow(u.mult, S.upg[u.id])); }
 function perkCost(p){ return Math.floor(p.base*Math.pow(p.mult, S.perks[p.id])); }
@@ -1110,6 +1138,7 @@ function doRiffle(clientX,clientY,swipe){
   if(crit) earn*=5;
   S.cash =clamp(safe(S.cash +earn),0,CAP.cash);
   S.total=clamp(safe(S.total+earn),0,CAP.total);
+  S.lifetime=clamp(safe(S.lifetime+earn),0,CAP.total);   // all-time tally (drives leaderboard, survives Escape)
   // heat is a SEPARATE consequence of tapping; it never changes the amount counted
   S.heat =clamp(S.heat+heatPerTap(),0,CAP.heat);
 
@@ -1255,7 +1284,7 @@ function bust(){
   if(navigator.vibrate&&!reduce) navigator.vibrate([40,60,40,60,120]);
 }
 function resetRun(){
-  Object.assign(S,{cash:0,total:0,perTap:1,perSec:0,heat:0,level:1,cityIdx:0,bribes:0,escape:0,rep:0,
+  Object.assign(S,{cash:0,total:0,lifetime:0,prestige:0,perTap:1,perSec:0,heat:0,level:1,cityIdx:0,bribes:0,escape:0,rep:0,
     price:0.0000127,priceChg:-0.5,
     upg:{hands:0,dryer:0,shell:0,crypto:0,offshore:0},
     perks:{scrub:0,ghost:0,speedy:0,launder_speed:0},
@@ -1279,6 +1308,7 @@ setInterval(()=>{
   if(S.perSec>0 && S.heat<CAP.heat){
     S.cash =clamp(safe(S.cash +S.perSec),0,CAP.cash);
     S.total=clamp(safe(S.total+S.perSec),0,CAP.total);
+    S.lifetime=clamp(safe(S.lifetime+S.perSec),0,CAP.total);
     checkLevel();
   }
   // backbone HEAT_DECAY: 3.0/s — heat comes only from tapping, idle purely cools
@@ -1340,7 +1370,8 @@ function refresh(light){
   S.cash =clamp(safe(S.cash), 0, CAP.cash);
   S.total=clamp(safe(S.total),0, CAP.total);
   S.heat =clamp(safe(S.heat), 0, CAP.heat);
-  S.escape=Math.floor(S.total/1000);
+  S.lifetime=clamp(safe(S.lifetime), 0, CAP.total);
+  if(S.lifetime<S.total) S.lifetime=S.total;   // invariant: all-time ≥ current run
   // hero (full comma number, navy) — size scales with wealth
   animNum(D.total,lastTotal,S.cash);lastTotal=S.cash;
   sizeHero();
@@ -1359,7 +1390,7 @@ function refresh(light){
   D.sLaund.textContent=fmt(S.perSec);
   D.sBribes.textContent=S.bribes;
   D.sPerks.textContent=perksOwned();
-  D.sEscape.textContent=S.escape<1e6?fmtN(S.escape):fmt(S.escape).replace('$','');
+  D.sEscape.textContent='×'+escMult().toFixed(2);   // live prestige multiplier
   D.repBadge.textContent=S.rep+'/8';
   if(curTab && !light) renderPanel(curTab);
 }
@@ -1427,30 +1458,66 @@ function renderPanel(id){
       const reward=Math.floor(REP[i].amt*0.15);
       S.cash=clamp(safe(S.cash+reward),0,CAP.cash);
       S.total=clamp(safe(S.total+reward),0,CAP.total);
+      S.lifetime=clamp(safe(S.lifetime+reward),0,CAP.total);
       toast(REP[i].label+' unlocked! +'+fmt(reward),'⭐','good');
       refresh();renderPanel('rep');
     });
   }else if(id==='escape'){
-    const stars=S.rep, ready=S.total>=CITIES[S.cityIdx].goal*0.6 && S.heat<40;
-    b.innerHTML=`<h2>${svg('crown')} Escape Plan</h2><p class="wsub">Cash out, leave the heat behind, and bank a permanent multiplier.</p>
-      <div class="escape-hero"><div class="num">${fmtN(S.escape)}</div><div class="cap">Escape Score</div></div>
+    const goal=CITIES[S.cityIdx].goal;
+    const hitGoal=S.total>=goal, cool=S.heat<40, ready=hitGoal&&cool;
+    const curMult=escMult(), nextMult=1+0.75*((safe(S.prestige)||0)+1);
+    const dest=PRESTIGE_CITIES[Math.min(safe(S.prestige)||0, PRESTIGE_CITIES.length-1)];
+    const cta = ready ? `RELOCATE &nbsp;✈︎&nbsp; (×${nextMult.toFixed(2)} forever)`
+              : !hitGoal ? `Launder ${fmt(goal)} total to relocate`
+              : 'Lower heat below 40% to relocate';
+    b.innerHTML=`<h2>${svg('crown')} Escape Plan</h2><p class="wsub">Relocate to a new safehouse, leave the heat behind, and bank a <b>permanent</b> income multiplier. Your perks, rank and lifetime record carry over — only the current run resets.</p>
+      <div class="escape-hero"><div class="num">${fmt(S.lifetime)}</div><div class="cap">Lifetime Laundered</div></div>
       <div class="escape-cards">
-        <div class="ec"><b>Clean Fortune</b><div class="v">${fmt(S.total)}</div></div>
-        <div class="ec"><b>Heat</b><div class="v" style="color:${S.heat<40?'var(--money)':'var(--danger)'}">${Math.round(S.heat)}%</div></div>
-        <div class="ec"><b>Bribe Shield</b><div class="v" style="color:var(--accent)">${bribeCut().toFixed(0)}%</div></div>
-        <div class="ec"><b>Next City</b><div class="v" style="color:var(--accent)">${S.cityIdx<CITIES.length-1?CITIES[S.cityIdx+1].name:'—'}</div></div>
+        <div class="ec"><b>Escape Multiplier</b><div class="v" style="color:var(--accent)">×${curMult.toFixed(2)}</div></div>
+        <div class="ec"><b>Relocations</b><div class="v">${safe(S.prestige)||0}</div></div>
+        <div class="ec"><b>This Run</b><div class="v">${fmt(S.total)} <span style="font-size:11px;color:var(--ink-soft);font-weight:600">/ ${fmt(goal)}</span></div></div>
+        <div class="ec"><b>Heat</b><div class="v" style="color:${cool?'var(--money)':'var(--danger)'}">${Math.round(S.heat)}%</div></div>
+        <div class="ec"><b>Next Safehouse</b><div class="v" style="color:var(--accent)">${dest}</div></div>
+        <div class="ec"><b>After Escape</b><div class="v" style="color:var(--accent)">×${nextMult.toFixed(2)}</div></div>
       </div>
-      <button class="bigbtn ${ready?'':''}" id="escGo" ${ready?'':'disabled'}>
-        ${ready?'DISAPPEAR &nbsp;✈︎ &nbsp;(+15% forever)':'Lower heat below 40% to escape'}
-      </button>`;
-    const g=$('#escGo'); if(g&&ready) g.onclick=()=>{
-      S.perTap=Math.floor(S.perTap*1.15)||S.perTap;
-      S.heat=0;
-      toast('You vanished. Permanent +15% count power.','✈︎','good');
-      $('#scene').animate([{filter:'brightness(2)'},{filter:'none'}],{duration:1000});
-      closePanel();refresh();
-    };
+      <button class="bigbtn" id="escGo" ${ready?'':'disabled'}>${cta}</button>
+      <div id="mostWanted" class="mw"><div class="mw-h">${svg('star')} Most Wanted</div><div class="mw-list"><div class="mw-empty">loading…</div></div></div>`;
+    const g=$('#escGo'); if(g&&ready) g.onclick=doEscape;
+    loadMostWanted();
   }
+}
+/* ============ ESCAPE / PRESTIGE ============
+   Gate: cleared the city's goal AND heat<40. Effect: bank a permanent ×(1+0.75·n)
+   multiplier (D-A: keep perks, reputation and lifetime; reset only the run economy
+   — cash/total/heat/bribes/upgrades). */
+function doEscape(){
+  if(S.total < CITIES[S.cityIdx].goal || S.heat >= 40) return;   // re-guard at click time
+  if(S.lifetime < S.total) S.lifetime = S.total;                 // bank the run into all-time before wiping
+  S.prestige = (safe(S.prestige)||0) + 1;
+  Object.assign(S,{ cash:0, total:0, heat:0, bribes:0, level:1, cityIdx:0, escape:0,
+    upg:{hands:0,dryer:0,shell:0,crypto:0,offshore:0},
+    bribesBought:{cop:0,judge:0,senator:0} });   // perks, rep, repClaimed, lifetime, prestige all persist
+  busted=false; lastTotal=0;
+  recompute();
+  applyLevelScene();
+  $('#scene').animate([{filter:'brightness(2.2) saturate(1.5)'},{filter:'none'}],{duration:1100});
+  toast('Relocated to '+PRESTIGE_CITIES[Math.min(S.prestige-1,PRESTIGE_CITIES.length-1)]+' — ×'+escMult().toFixed(2)+' income forever','✈︎','good');
+  closePanel(); refresh();
+  try{ window.__cleanLayer && window.__cleanLayer.save && window.__cleanLayer.save(); }catch(e){}   // persist prestige now (local + cloud)
+}
+// HTML-escape leaderboard names (Telegram-supplied → untrusted).
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+/* ============ MOST WANTED (leaderboard, ranked by lifetime laundered) ============ */
+function loadMostWanted(){
+  if(!document.querySelector('#mostWanted .mw-list')) return;
+  fetch('/api/game/leaderboard?limit=10').then(r=>r.ok?r.json():null).then(d=>{
+    const cur=document.querySelector('#mostWanted .mw-list'); if(!cur) return;   // panel may have closed
+    const top=(d&&d.top)||[];
+    const rows = top.length
+      ? top.map((r,i)=>`<div class="mw-row"><span class="mw-rk">${i+1}</span><span class="mw-nm">${esc(r.name||'anon')}</span><span class="mw-sc">${fmt(r.score||0)}</span></div>`).join('')
+      : '<div class="mw-empty">No kingpins ranked yet — be the first.</div>';
+    cur.innerHTML = rows + `<div class="mw-row mw-you"><span class="mw-rk">★</span><span class="mw-nm">You</span><span class="mw-sc">${fmt(S.lifetime)}</span></div>`;
+  }).catch(()=>{ const cur=document.querySelector('#mostWanted .mw-list'); if(cur) cur.innerHTML='<div class="mw-empty">Leaderboard unavailable — your run is safe.</div>'; });
 }
 function upgRow(u){
   const cost=upgCost(u),can=S.cash>=cost;
@@ -1719,7 +1786,7 @@ function boot(){
   /* ================= PERSISTENCE + OFFLINE EARNINGS ================= */
   var META = { refCode:'', reffed:false, refBonusUntil:0, mute:false, musicMuted:false, lastSeen:0 };
   var DEFAULTS = {
-    cash:0,total:0,perTap:1,perSec:0,heat:0,level:1,cityIdx:0,bribes:0,escape:0,rep:0,
+    cash:0,total:0,lifetime:0,prestige:0,perTap:1,perSec:0,heat:0,level:1,cityIdx:0,bribes:0,escape:0,rep:0,
     price:0.0000127,priceChg:-0.5,
     upg:{hands:0,dryer:0,shell:0,crypto:0,offshore:0},
     perks:{scrub:0,ghost:0,speedy:0,launder_speed:0},
@@ -1737,8 +1804,15 @@ function boot(){
         if(Array.isArray(d.S.repClaimed)) S.repClaimed=d.S.repClaimed.slice();
       }
       if(d.meta) Object.assign(META, d.meta);
+      normalizePrestige();   // seed lifetime/prestige for saves that predate Phase 3
       return true;
     }catch(e){ return false; } }
+  // Saves from before prestige shipped have no lifetime/prestige: seed lifetime from
+  // the existing total (so veterans keep their leaderboard standing) and prestige=0.
+  function normalizePrestige(){
+    if(typeof S.lifetime!=='number'||!isFinite(S.lifetime)||S.lifetime<S.total) S.lifetime=S.total;
+    if(typeof S.prestige!=='number'||!isFinite(S.prestige)||S.prestige<0) S.prestige=0;
+  }
   function saveAll(){ try{ META.lastSeen=Date.now();
       localStorage.setItem(SAVE_KEY, JSON.stringify({ S:S, meta:META }));
     }catch(e){} cloudSave(); }
@@ -1771,6 +1845,7 @@ function boot(){
           ['upg','perks','bribesBought'].forEach(function(k){ if(remote.S[k]) Object.assign(S[k], remote.S[k]); });
           if(Array.isArray(remote.S.repClaimed)) S.repClaimed=remote.S.repClaimed.slice();
           if(remote.meta) Object.assign(META, remote.meta);
+          normalizePrestige();
           recompute(); refresh(); toast('Cloud save restored','☁️','good');
         }
       }).catch(function(){});
@@ -1781,7 +1856,7 @@ function boot(){
     if(!force && !document.hidden && now-_cloudSaveT<7000) return;  // throttle; always flush on hide
     _cloudSaveT=now;
     try{
-      var body=JSON.stringify({ initData:TG_INIT, state:JSON.stringify({S:S,meta:META}), score:Math.floor(S.total||0) });
+      var body=JSON.stringify({ initData:TG_INIT, state:JSON.stringify({S:S,meta:META}), score:Math.floor(S.lifetime||S.total||0) });
       fetch('/api/game/save',{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true}).catch(function(){});
     }catch(e){}
   }
@@ -1791,7 +1866,7 @@ function boot(){
     var capped=Math.min(elapsed, 8*3600);
     var earn=S.perSec*capped*0.5;            // half-rate while away, 8h cap (matches back end)
     if(earn<1) return;
-    S.cash+=earn; S.total+=earn; track('offline_return',{secs:Math.round(capped)});
+    S.cash+=earn; S.total+=earn; S.lifetime=(S.lifetime||0)+earn; track('offline_return',{secs:Math.round(capped)});
     setTimeout(function(){ toast('Away '+fmtTime(capped)+' — your crew laundered +'+fmt(earn), '💼', 'good'); }, 950);
   }
 
@@ -1828,7 +1903,7 @@ function boot(){
     if(refActive() && delta>0){
       var cap=Math.max(S.perTap*6, S.perSec*1.2, 1);   // doubles income, clips reward spikes
       var add=Math.min(delta, cap);
-      S.cash += add; S.total += add;
+      S.cash += add; S.total += add; S.lifetime=(S.lifetime||0)+add;
     }
     _prevTotal=S.total;                                  // resync (incl. our add) → never re-doubles
     requestAnimationFrame(doublerTick);
