@@ -853,6 +853,7 @@ if __name__ == "__main__":
     test_rate_limit()  # exhausts the nonce bucket — keep it after nonce users
     test_relay()
     test_tg_handshake()
+    test_game_cloud_save_and_leaderboard()
     print("\nALL STAKING TESTS PASSED")
 
 
@@ -977,3 +978,60 @@ def test_accrue_concurrent_no_double_credit():
     # Credited once (allowing only sub-second timing drift), never multiplied.
     assert race < 2 * base, f"double-credit regression: race={race} base={base}"
     print("concurrent accrual: no double-credit ✓")
+
+
+def test_game_cloud_save_and_leaderboard():
+    """Game cloud-save is keyed by verified Telegram identity, ranks by a
+    monotonic lifetime-laundered score, caps the blob, and the track/ref pings
+    no longer 404. Additive — never touches the staking tables."""
+    import app
+    from fastapi.testclient import TestClient
+    import json as _json, time as _time, hmac as _hmac, hashlib as _hashlib, urllib.parse as _url
+
+    c = TestClient(app.app)
+    TOKEN = os.environ["TG_COMMUNITY_TOKEN"]
+
+    def init_data(uid, username=None):
+        user = _json.dumps({"id": uid, "username": username or ("u" + str(uid))})
+        pairs = {"user": user, "auth_date": str(int(_time.time()))}
+        dcs = "\n".join(f"{k}={pairs[k]}" for k in sorted(pairs))
+        secret = _hmac.new(b"WebAppData", TOKEN.encode(), _hashlib.sha256).digest()
+        pairs["hash"] = _hmac.new(secret, dcs.encode(), _hashlib.sha256).hexdigest()
+        return _url.urlencode(pairs)
+
+    # forged / empty initData is rejected on every authed game route
+    assert c.post("/api/game/save", json={"initData": "garbage", "state": "{}", "score": 1}).status_code == 401
+    assert c.post("/api/game/load", json={"initData": ""}).status_code == 401
+
+    # save + load round-trips the opaque blob and the score
+    idA = init_data(1001, "alice")
+    blob = _json.dumps({"S": {"total": 5000}, "meta": {"lastSeen": 123}})
+    r = c.post("/api/game/save", json={"initData": idA, "state": blob, "score": 5000})
+    assert r.status_code == 200 and r.json().get("ok") is True
+    r = c.post("/api/game/load", json={"initData": idA}).json()
+    assert r["state"] == blob and r["score"] == 5000
+
+    # score is monotonic (a stale client can't lower a rank) but the newest
+    # state blob still persists
+    blob2 = _json.dumps({"S": {"total": 10}, "meta": {"lastSeen": 999}})
+    c.post("/api/game/save", json={"initData": idA, "state": blob2, "score": 10})
+    r = c.post("/api/game/load", json={"initData": idA}).json()
+    assert r["score"] == 5000 and r["state"] == blob2
+
+    # oversized blob is rejected
+    big = "x" * (app.GAME_STATE_MAX + 1)
+    assert c.post("/api/game/save", json={"initData": idA, "state": big, "score": 1}).status_code == 413
+
+    # leaderboard ranks by score desc, honours limit, is public (no auth needed)
+    c.post("/api/game/save", json={"initData": init_data(1002, "bob"), "state": "{}", "score": 9000})
+    c.post("/api/game/save", json={"initData": init_data(1003, "carol"), "state": "{}", "score": 1})
+    top = c.get("/api/game/leaderboard", params={"limit": 2}).json()["top"]
+    assert len(top) == 2
+    assert top[0]["name"] == "bob" and top[0]["score"] == 9000
+    assert top[1]["name"] == "alice" and top[1]["score"] == 5000
+
+    # analytics + referral pings are accepted now (no more silent 404s)
+    assert c.post("/api/track", json={"cid": "c1", "ev": []}).status_code == 204
+    assert c.get("/api/ref", params={"action": "refer", "ref": "abc123", "nid": "def456"}).status_code == 204
+
+    print("game cloud-save + leaderboard + track/ref ✓")

@@ -35,7 +35,7 @@ from nacl.utils import random as nacl_random
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, Response
 from pydantic import BaseModel
 
 import db
@@ -803,6 +803,82 @@ def api_referrals(body: Tok):
             "active_referrals": db.active_referrals(conn, wallet),
             "reward": "each active referral adds to your APR (see /api/profile apr.referral_boost)",
         }
+
+
+# --------------------------------------------------------------------------- #
+#  GAME (Clean Hands tap/idle) — cloud save + Most Wanted leaderboard.         #
+#  Identity is the Telegram user (verified initData), so progress follows the  #
+#  player across devices without a connected wallet. Opened outside Telegram   #
+#  (no initData) the client stays localStorage-only and never calls these.     #
+#  Additive routes — they never touch the staking / payment tables.            #
+# --------------------------------------------------------------------------- #
+GAME_STATE_MAX = int(os.environ.get("GAME_STATE_MAX", "8192"))  # max save-blob bytes
+
+
+class GameSaveBody(BaseModel):
+    initData: str
+    state: str = ""
+    score: int = 0
+    name: str | None = None
+
+
+class GameLoadBody(BaseModel):
+    initData: str
+
+
+def _game_player(init_data: str) -> tuple[str, str]:
+    tg = auth.verify_init_data(init_data)
+    if not tg:
+        raise HTTPException(401, "bad Telegram initData")
+    name = tg.get("username") or tg.get("first_name") or "anon"
+    return f"tg:{tg['id']}", str(name)[:32]
+
+
+@app.post("/api/game/save")
+def api_game_save(body: GameSaveBody):
+    player, tg_name = _game_player(body.initData)
+    state = body.state or ""
+    if len(state) > GAME_STATE_MAX:
+        raise HTTPException(413, "game state too large")
+    score = max(0, min(int(body.score or 0), 10**15))
+    name = str(body.name or tg_name)[:32]
+    with db.db() as conn:
+        db.game_save(conn, player, name, state, score)
+    return {"ok": True}
+
+
+@app.post("/api/game/load")
+def api_game_load(body: GameLoadBody):
+    player, _ = _game_player(body.initData)
+    with db.db() as conn:
+        row = db.game_load(conn, player)
+    if not row:
+        return {"state": None, "score": 0}
+    return {"state": row["state"], "score": row["score"], "updated_ts": row["updated_ts"]}
+
+
+@app.get("/api/game/leaderboard")
+def api_game_leaderboard(limit: int = 20):
+    limit = max(1, min(int(limit), 50))
+    with db.db() as conn:
+        rows = db.game_top(conn, limit)
+    return {"top": [{"name": (r["name"] or "anon"), "score": r["score"]} for r in rows]}
+
+
+@app.post("/api/track")
+def api_track():
+    # Anonymous, fire-and-forget product analytics from the game/mini-app. We do
+    # not persist it (no PII, no storage growth); accept and drop so the client's
+    # beacon/fetch never 404s. Payload size is already capped by the body guard.
+    return Response(status_code=204)
+
+
+@app.get("/api/ref")
+def api_ref(action: str = "", ref: str = "", nid: str = ""):
+    # The game's lightweight, anonymous (device-id) referral ping. The welcome
+    # bonus is applied client-side; there's no server-side game economy to credit
+    # yet, so acknowledge it instead of 404ing.
+    return Response(status_code=204)
 
 
 # --------------------------------------------------------------------------- #
