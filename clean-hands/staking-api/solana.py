@@ -11,25 +11,69 @@ from __future__ import annotations
 
 import os
 import time
+import asyncio
 import httpx
 
 RPC_URL = os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
 MINT = os.environ.get("DEFAULT_TOKEN_MINT", "").strip()
 TIMEOUT = 20
+# How many times to re-try a single endpoint on a transient error before moving
+# on to the next one. The public mainnet-beta node is heavily rate-limited (429),
+# and a single-shot read that fails makes a wallet's balance silently read as 0 —
+# which surfaces to users as "connected but balances don't load".
+RETRIES = int(os.environ.get("SOLANA_RPC_RETRIES", "2"))
+# Fallback read endpoints, tried in order after the configured RPC. All are
+# CORS-open public nodes; reads (getBalance / getTokenAccountsByOwner /
+# getTransaction) are idempotent, so trying another node is always safe.
+_FALLBACK_RPCS = [
+    "https://solana-rpc.publicnode.com",
+    "https://api.mainnet-beta.solana.com",
+]
+# transient HTTP statuses worth retrying / failing over (rate-limit + 5xx)
+_RETRY_STATUS = {429, 500, 502, 503, 504}
+
+
+def _endpoints() -> list[str]:
+    """The configured RPC first, then the public fallbacks — de-duplicated."""
+    out: list[str] = []
+    for u in [RPC_URL, *_FALLBACK_RPCS]:
+        if u and u not in out:
+            out.append(u)
+    return out
 
 
 async def _rpc(method: str, params: list):
+    """One JSON-RPC read, resilient to a flaky/rate-limited node: retry the same
+    endpoint a few times on a transient error, then fail over to the next one.
+    Only raises once every endpoint has been exhausted."""
+    payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    last_err: Exception | None = None
     async with httpx.AsyncClient(timeout=TIMEOUT) as c:
-        r = await c.post(
-            RPC_URL,
-            json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params},
-            headers={"content-type": "application/json"},
-        )
-    r.raise_for_status()
-    data = r.json()
-    if "error" in data:
-        raise RuntimeError(data["error"])
-    return data.get("result")
+        for url in _endpoints():
+            for attempt in range(RETRIES + 1):
+                try:
+                    r = await c.post(
+                        url, json=payload, headers={"content-type": "application/json"}
+                    )
+                    if r.status_code in _RETRY_STATUS:
+                        last_err = RuntimeError(f"HTTP {r.status_code} from {url}")
+                        await asyncio.sleep(0.4 * (attempt + 1))
+                        continue  # retry same endpoint, then fail over
+                    r.raise_for_status()
+                    data = r.json()
+                    if "error" in data:
+                        # An RPC-level error (bad params, node quirk) won't be fixed
+                        # by hammering the SAME node — try the next endpoint instead.
+                        last_err = RuntimeError(data["error"])
+                        break
+                    return data.get("result")
+                except (httpx.TimeoutException, httpx.TransportError) as e:
+                    last_err = e
+                    await asyncio.sleep(0.4 * (attempt + 1))
+                    continue
+    if last_err is not None:
+        raise last_err
+    raise RuntimeError("rpc: no endpoints configured")
 
 
 async def token_balance(wallet: str, mint: str | None = None) -> float:
