@@ -19,7 +19,7 @@ change it in **both** `:root` blocks.
 |---|---|---|
 | Primary mark | `assets/glove.png` (320×320, circular, transparent corners) | Nav, app header, favicon, OG image. Served at `/glove.png`. |
 | Small mark | `assets/glove-sm.png` (96×96) | Tiny placements, low-bandwidth favicons |
-| Alt mark | `assets/glove-raw.png` (1254×1254, raised gloved fist) | Hi-res hero art, stickers, merch, print |
+| Alt mark | `assets/glove-raw.png` (1254×1254, hands pulling on glove) | Hi-res hero art, stickers, merch, print |
 | Banner | `assets/banner.png` | Social / repo banner |
 
 **Rules**
