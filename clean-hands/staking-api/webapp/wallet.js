@@ -227,9 +227,10 @@
   function disconnect() {
     // Wipe the ephemeral secret key (dapp_sk) and shared secret too, so a stale
     // long-lived key never lingers in localStorage after logout.
-    ['wallet', 'session', 'shared', 'pubkey', 'pending', 'sign_ctx', 'state', 'dapp_sk'].forEach(
+    ['wallet', 'session', 'shared', 'pubkey', 'pending', 'sign_ctx', 'state', 'dapp_sk', 'inj_id'].forEach(
       (k) => SS.removeItem('clw_' + k),
     );
+    _chosen = null; // clear active wallet reference so sign can't use a stale one
     wcDisconnect(); // also tear down any live WalletConnect relay session
   }
 
@@ -375,6 +376,11 @@
         if (ev && ev.on) {
           ev.on('change', (props) => {
             if (!props || !('accounts' in props)) return;
+            // Only react to events from the wallet the user actually chose.
+            // Without this guard, a background wallet (e.g. MetaMask while
+            // Phantom is active) firing a change event would trigger a re-auth
+            // attempt that signs with the wrong wallet and always fails.
+            if (_chosen && _chosen.obj !== o) return;
             const acct = (o.accounts && o.accounts[0]) || (props.accounts && props.accounts[0]);
             if (acct && acct.address) {
               if (_chosen && _chosen.obj === o) _chosen.account = acct;
@@ -387,6 +393,8 @@
         }
       } else if (o.on) {
         o.on('accountChanged', (pk) => {
+          // Same guard for legacy providers — ignore events from non-chosen wallets.
+          if (_chosen && _chosen.obj !== o) return;
           if (pk) {
             const a = pk.toBase58 ? pk.toBase58() : pk.toString();
             save('pubkey', a);
@@ -395,7 +403,10 @@
             _fireAccount(null); // disconnected from inside the wallet
           }
         });
-        o.on('disconnect', () => _fireAccount(null));
+        o.on('disconnect', () => {
+          if (_chosen && _chosen.obj !== o) return;
+          _fireAccount(null);
+        });
       }
     } catch (e) {}
   }
