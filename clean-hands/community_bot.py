@@ -252,7 +252,7 @@ MEME_AI_QUALITY = os.environ.get("MEME_AI_QUALITY", "high")  # low|medium|high|a
 # api.openai.com fail in seconds (not minutes), and the overall deadline — also
 # enforced with asyncio.wait_for — guarantees the command always resolves to the
 # local stamp instead of hanging on "🫧 Soaking the image…" forever.
-MEME_AI_TIMEOUT = float(os.environ.get("MEME_AI_TIMEOUT", "90"))  # s, overall ceiling
+MEME_AI_TIMEOUT = float(os.environ.get("MEME_AI_TIMEOUT", "40"))  # s, overall ceiling
 MEME_AI_CONNECT_TIMEOUT = float(os.environ.get("MEME_AI_CONNECT_TIMEOUT", "10"))  # s
 # The signature edit, specified from the approved reference outputs:
 # exact pose kept, photoreal nitrile glove, blue pop on B&W, gloved thumbs-up
@@ -271,13 +271,15 @@ GLOVE_PROMPT = (
     "Photorealistic, seamless, professional retouching quality."
 )
 CLEANING_FRAMES = [
-    "🫧 Soaking the image…",
+    "🫧 Soaking the image… (AI wash, up to 40s)",
     "🧼 Scrubbing the pixels…",
     "🧤 Fitting the gloves…",
     "✨ Polishing the shine…",
     "🚿 Final rinse…",
 ]
 _ai_last: dict[int, float] = {}  # user_id -> last SUCCESSFUL AI run (cooldown)
+# max concurrent AI calls — prevents pile-ups when many users trigger /meme at once
+_AI_SEM = asyncio.Semaphore(3)
 _AI_LAST_ERR = ""  # last failure detail, surfaced by /memetest
 ADMIN_IDS = {
     int(x) for x in os.environ.get("TG_ADMIN_IDS", "").split(",") if x.strip().isdigit()
@@ -332,16 +334,20 @@ async def ai_glove_hands(img_bytes: bytes) -> bytes | None:
                 },
             )
 
+    # skip to stamp immediately if 3 AI calls are already in flight
+    if not _AI_SEM._value:  # type: ignore[attr-defined]
+        _AI_LAST_ERR = "AI busy (too many concurrent washes) — falling back to stamp"
+        log.info(_AI_LAST_ERR)
+        return None
     try:
-        # belt-and-suspenders: the wash can never outlive the budget, even if a
-        # connection stalls in a way httpx's own timeout doesn't catch promptly
-        r = await asyncio.wait_for(_call(), timeout=MEME_AI_TIMEOUT + 5)
-        if r.status_code != 200:
-            _AI_LAST_ERR = f"HTTP {r.status_code}: {r.text[:300]}"
-            log.warning("ai meme failed: %s", _AI_LAST_ERR)
-            return None
-        b64 = (r.json().get("data") or [{}])[0].get("b64_json")
-        return base64.b64decode(b64) if b64 else None
+        async with _AI_SEM:
+            r = await asyncio.wait_for(_call(), timeout=MEME_AI_TIMEOUT + 5)
+            if r.status_code != 200:
+                _AI_LAST_ERR = f"HTTP {r.status_code}: {r.text[:300]}"
+                log.warning("ai meme failed: %s", _AI_LAST_ERR)
+                return None
+            b64 = (r.json().get("data") or [{}])[0].get("b64_json")
+            return base64.b64decode(b64) if b64 else None
     except (asyncio.TimeoutError, httpx.TimeoutException):
         _AI_LAST_ERR = (
             f"timeout after ~{MEME_AI_TIMEOUT:.0f}s — model too slow, or egress to "
@@ -440,25 +446,28 @@ def _photo_source(update: Update):
     return None
 
 
-async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_msg, args):
-    raw = " ".join(args)
+async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_msg, args,
+                    *, photo_list=None):
+    raw = " ".join(args or [])
     if "|" in raw:
         top, bottom = (s.strip() for s in raw.split("|", 1))
     else:
         top, bottom = raw.strip(), ""
     top, bottom = top[:MAX_MEME_TEXT], bottom[:MAX_MEME_TEXT]
     chat_id = update.message.chat_id
-    buf = await _download_photo(context, photo_msg.photo[-1])
+    photos = photo_msg.photo if photo_msg else photo_list
+    buf = await _download_photo(context, photos[-1])
     if buf is None:
         await update.message.reply_text("That image is too large to meme.")
         return
 
-    # the upload disappears INSTANTLY (needs Delete-messages rights in groups)
-    for m in {photo_msg.message_id, update.message.message_id}:
-        try:
-            await context.bot.delete_message(chat_id, m)
-        except Exception:  # noqa: BLE001 — no delete rights: continue anyway
-            pass
+    # delete original messages (skip when using cached photo — no msg ref available)
+    if photo_msg:
+        for m in {photo_msg.message_id, update.message.message_id}:
+            try:
+                await context.bot.delete_message(chat_id, m)
+            except Exception:  # noqa: BLE001 — no delete rights: continue anyway
+                pass
 
     # visible cleaning FX while the wash runs
     placeholder = await context.bot.send_message(chat_id, CLEANING_FRAMES[0])
@@ -573,6 +582,15 @@ async def cmd_memetest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_meme(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo_msg = _photo_source(update)
     if not photo_msg:
+        em = update.effective_message
+        if em and em.photo:
+            photo_msg = em
+            context.user_data["last_photo"] = em.photo
+    if not photo_msg:
+        cached = context.user_data.get("last_photo")
+        if cached:
+            await _run_meme(update, context, None, context.args, photo_list=cached)
+            return
         ai = " — AI swaps every hand for the $CLEAN glove 🧤" if OPENAI_API_KEY else ""
         await update.message.reply_text(
             "Send a photo with caption  /meme  (optional: top text | bottom text)\n"
@@ -682,6 +700,9 @@ async def on_photo_caption(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cap = (update.message.caption or "").strip()
     if not cap.startswith("/"):
         return
+    # cache the photo so a later text-only /sticker or /meme can reuse it
+    if update.message.photo:
+        context.user_data["last_photo"] = update.message.photo
     parts = cap.split()
     cmd = parts[0][1:].split("@")[0].lower()
     args = parts[1:]
@@ -858,10 +879,15 @@ def main():
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("chart", cmd_chart))
     app.add_handler(CommandHandler(["trade", "buy", "sell"], cmd_trade))
-    app.add_handler(CommandHandler("meme", cmd_meme))
+    # ~filters.CAPTION: only handle text-only /command messages, NOT photo+caption.
+    # Photo+caption commands are routed exclusively through on_photo_caption below,
+    # which has direct access to update.message.photo. Without this, PTB v21's
+    # CommandHandler intercepts caption commands first and the photo is never found.
+    _no_cap = ~filters.CAPTION
+    app.add_handler(CommandHandler("meme", cmd_meme, filters=_no_cap))
     app.add_handler(CommandHandler("memetest", cmd_memetest))
-    app.add_handler(CommandHandler("glove", cmd_glove))
-    app.add_handler(CommandHandler("sticker", cmd_sticker))
+    app.add_handler(CommandHandler("glove", cmd_glove, filters=_no_cap))
+    app.add_handler(CommandHandler("sticker", cmd_sticker, filters=_no_cap))
     # photos uploaded WITH the command as caption — the natural mobile flow
     app.add_handler(
         MessageHandler(
