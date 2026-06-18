@@ -1942,13 +1942,16 @@ function boot(){
   function _playA(a){ if(!a) return; try{ var p=a.play(); if(p&&p.catch) p.catch(function(){}); }catch(e){} }
   function musicOff(){ return META.mute || META.musicMuted; }   // the 🔊 icon controls musicMuted
   // Lazily build (and cache) the looping Audio for a track URL. On a load error the
-  // entry is nulled and callers fall back to the inline mellow loop.
+  // entry is nulled and the fallback (inline mellow loop) takes over immediately.
   function getTrack(url){
     if(!url) return musicMellow;
     if(url in _trackCache) return _trackCache[url] || musicMellow;
     var a=null;
     try{ a=new Audio(url); a.loop=true; a.preload='auto'; a.volume=0;
-      a.addEventListener('error', function(){ _trackCache[url]=null; if(_curAudio===a) _curAudio=musicMellow; }, {once:true});
+      a.addEventListener('error', function(){
+        _trackCache[url]=null;
+        if(_curAudio===a){ _curAudio=musicMellow; if(_musicOn && !musicOff()) applyMusicMix(); }
+      }, {once:true});
     }catch(e){ a=null; }
     _trackCache[url]=a;
     return a || musicMellow;
@@ -1960,6 +1963,9 @@ function boot(){
     off(musicMellow); for(var k in _trackCache) off(_trackCache[k]);
   }
   function startMusic(){ if(musicOff()) return; if(!musicMellow) initMusic();
+    // Preload ALL level tracks inside the first user gesture so every Audio object
+    // is created while audio is unlocked on mobile (iOS/Android WebView policy).
+    if(!_musicOn) LEVELS.forEach(function(l){ getTrack(l.track); });
     _musicOn=true; if(!_curAudio) _curAudio=levelTrack(S.level); applyMusicMix(); }
   // Enforce the current track's play/volume state (no track switching here).
   function applyMusicMix(){ if(!musicMellow) return;
