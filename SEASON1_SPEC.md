@@ -72,6 +72,38 @@ music + fashion.
 A small holder who stays all 90 days still gets all three unlocks (smaller allocation, lighter
 discount tier). Conviction is rewarded over size.
 
+### 4.1 Stake weighting — cap · booster · wallet limit
+
+Allocation is pro-rata by **weighted** stake, not raw stake. The curve is *bracketed* (like tax
+brackets) so there is **no cliff** at the booster threshold:
+
+| Stake bracket | Weight |
+|---|---|
+| first 1,000,000 | 1.0× |
+| 1,000,000 → 10,000,000 | **1.5× (booster)** |
+| above 10,000,000 | **0 (hard cap)** |
+
+```
+weight = min(stake, 1_000_000)·1.0 + clamp(stake − 1_000_000, 0, 9_000_000)·1.5
+```
+
+Examples: 500k → 0.5M · 1M → 1.0M · 2M → 2.5M · 10M → **14.5M** · 20M → 14.5M (capped).
+So 10× the bag earns ~14.5× the share — bigger stakes rewarded, the very top capped.
+
+- **Per-wallet cap:** effective stake caps at **10,000,000** — staking beyond it earns nothing more.
+- **Booster:** the **1M–10M** bracket is weighted **1.5×** (multiplier is a knob; default 1.5).
+- **Wallet limit:** a user (Telegram identity) may link **max 20 wallets**.
+
+**Known interaction (surfaced, not a bug):** 20 wallets × 10M cap = **200M effective max per user**
+(20% of supply). The wallet limit is *soft* — tied to Telegram login, so it raises sybil cost but a
+determined user could make more accounts. Net: friction, not a hard wall. Acceptable because 200M
+staked from one user is unrealistic and self-defeating (buy pressure + their own rate compresses);
+no hard per-user cap is added (it would invite custody/KYC-flavored complexity for a threshold
+nobody reaches).
+
+This shifts $CLEAN toward mid/large stakers; small holders stay protected on **access** (unlocks are
+milestone-gated, §4) even as their token slice shrinks.
+
 ---
 
 ## 5. Mechanic — snapshot soft-stake (no custody)
@@ -133,7 +165,8 @@ That sentence + the fixed-pool model removes ~all of the legal exposure the audi
 
 ## 9. Build scope (next, after #75 merges)
 
-1. **Season engine** — Season config loader, fixed daily pool (333,333/day), pro-rata allocation.
+1. **Season engine** — Season config loader, fixed daily pool (333,333/day), **weighted** pro-rata
+   allocation (§4.1 cap + booster + 20-wallet limit).
 2. **Snapshot soft-stake** — sign-to-enter, daily balance snapshot, continuous-streak tracking.
 3. **Staged unlocks** — checkpoint gates at day 0 / 30 / 60, forfeit-on-early-unstake.
 4. **Kill MM** — remove `/api/mm/*` flow + UI.
