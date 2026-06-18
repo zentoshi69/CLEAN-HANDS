@@ -1381,6 +1381,7 @@ function refresh(light){
   D.heatFlav.textContent=heatFlav();
   app.classList.toggle('heaty',S.heat>60);
   // top bar — LEVEL n · CITY · GOAL n (no $ on goal, matches mockup "10K")
+  applyLevelScene();
   D.cityName.textContent=LEVELS[S.level-1].city;
   D.lvlNum.textContent=S.level;
   D.goalAmt.textContent = S.level<MAXLEVEL ? fmt(nextGoal(S.level)).replace('$','') : 'MAX';
@@ -2397,8 +2398,7 @@ function boot(){
   ensureRefCode();
   captureRef();              // inbound ?ref= → welcome 2×
   applyOffline();            // credit time-away earnings
-  applyLevelScene();         // set correct backdrop on first load (not just on level-up)
-  try{ G.refresh(); }catch(e){}
+  try{ G.refresh(); }catch(e){}   // refresh() now calls applyLevelScene() internally
 
   mountUI();
   initSfx(); initMusic();    // real backbone audio (mp3) ready to fire on first gesture
