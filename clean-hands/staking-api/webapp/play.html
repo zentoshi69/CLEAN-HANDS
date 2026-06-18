@@ -2050,9 +2050,19 @@ function boot(){
     off(musicMellow); for(var k in _trackCache) off(_trackCache[k]);
   }
   function startMusic(){ if(musicOff()) return; if(!musicMellow) initMusic();
-    // Preload ALL level tracks inside the first user gesture so every Audio object
-    // is created while audio is unlocked on mobile (iOS/Android WebView policy).
-    if(!_musicOn) LEVELS.forEach(function(l){ getTrack(l.track); });
+    if(!_musicOn){
+      // Inside the first user gesture: CREATE and WARM-UP every level track so iOS
+      // WebView allows play() later (outside a gesture). Pattern mirrors warmSfx().
+      LEVELS.forEach(function(l){
+        var a=getTrack(l.track);
+        if(a && a!==musicMellow){
+          try{ a.muted=true; var p=a.play();
+            if(p&&p.then) p.then(function(){ try{ a.pause(); a.currentTime=0; a.muted=false; }catch(e){} })
+                           .catch(function(){ try{ a.muted=false; }catch(e){} });
+          }catch(e){}
+        }
+      });
+    }
     _musicOn=true; if(!_curAudio) _curAudio=levelTrack(S.level); applyMusicMix(); }
   // Enforce the current track's play/volume state (no track switching here).
   function applyMusicMix(){ if(!musicMellow) return;
@@ -2063,34 +2073,33 @@ function boot(){
     _curAudio.volume=MUSIC_BASE;
     if(_curAudio.paused) _playA(_curAudio);
   }
-  // Every new scene (level-up backdrop swap) crossfades from the current track to
-  // the new level's own track over ~0.7s. Respects the 🔊 toggle: if muted / not
-  // yet started, just remember the new track and apply it on resume.
+  // Called on every level-up: HARD-STOP the current track immediately (milestone
+  // achieved = that city's music ends right there), then fade the new track IN
+  // over 400ms in sync with the new backdrop. If muted/not started, just records
+  // the track for when the player un-mutes or first taps.
   function switchSceneTrack(){
     if(!musicMellow) initMusic();
-    var next=levelTrack(S.level);
-    if(musicOff() || !_musicOn){ _curAudio=next; return; }
-    _crossfadeTo(next);
-  }
-  function _crossfadeTo(next){
-    if(!next){ applyMusicMix(); return; }
-    var prev=_curAudio; _curAudio=next;
-    if(next===prev){ applyMusicMix(); return; }           // same track for both levels → keep playing
-    try{ next.currentTime=0; }catch(e){}
-    next.volume=0; _playA(next);
-    if(_xfTimer) clearInterval(_xfTimer);
-    var t=0, dur=700, step=50;
+    if(_xfTimer){ clearInterval(_xfTimer); _xfTimer=null; }
+    var prev=_curAudio;
+    _curAudio=levelTrack(S.level);
+    // Hard-stop the old track the moment the score milestone is crossed
+    if(prev && prev!==_curAudio){ try{ prev.pause(); prev.currentTime=0; }catch(e){} prev.volume=0; }
+    if(musicOff() || !_musicOn) return;
+    if(_curAudio===prev){ applyMusicMix(); return; }   // same file reused across levels
+    // Fade the new city's track in from silence
+    try{ _curAudio.currentTime=0; }catch(e){}
+    _curAudio.volume=0; _playA(_curAudio);
+    var t=0, dur=400, step=40;
     _xfTimer=setInterval(function(){
-      t+=step; var k=t/dur; if(k>1) k=1;
-      if(!musicOff()){ next.volume=MUSIC_BASE*k; if(prev) prev.volume=MUSIC_BASE*(1-k); }
-      if(k>=1){ clearInterval(_xfTimer); _xfTimer=null;
-        if(prev && prev!==next){ try{ prev.pause(); }catch(e){} prev.volume=0; } }
+      t+=step; var k=Math.min(1, t/dur);
+      if(!musicOff() && _curAudio) _curAudio.volume=MUSIC_BASE*k;
+      if(k>=1){ clearInterval(_xfTimer); _xfTimer=null; }
     }, step);
   }
-  // Snap straight to the current level's track, no crossfade (reset / escape).
+  // Snap straight to the current level's track with no animation (reset / escape).
   function resetSceneTrack(){
     if(_xfTimer){ clearInterval(_xfTimer); _xfTimer=null; }
-    _curAudio=levelTrack(S.level); applyMusicMix();
+    _allTracksPause(); _curAudio=levelTrack(S.level); applyMusicMix();
   }
   // Top-right 🔊 icon: turn the MUSIC on/off only (SFX are unaffected).
   function toggleMusic(){
