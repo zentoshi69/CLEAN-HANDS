@@ -109,6 +109,15 @@ async def sol_balance(wallet: str) -> float:
     return float(lamports or 0) / 1_000_000_000
 
 
+async def rpc_health() -> bool:
+    """Cheap dependency probe for /readyz."""
+    try:
+        res = await _rpc("getHealth", [])
+        return res in ("ok", None) or bool(res)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 async def verify_burn(signature: str, wallet: str, mint: str | None = None) -> float:
     """Return the amount of `mint` BURNED by `wallet` in transaction `signature`,
     or 0.0 if the tx isn't a successful burn by that wallet. Parses both
@@ -157,6 +166,52 @@ async def verify_burn(signature: str, wallet: str, mint: str | None = None) -> f
             decimals = int(dec) if dec is not None else int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
             burned += float(info["amount"]) / (10**decimals)
     return burned
+
+
+async def verify_transfer(
+    signature: str,
+    destination_wallet: str,
+    amount_base: int,
+    mint: str | None = None,
+) -> bool:
+    """True iff a finalized tx increased `destination_wallet`'s `mint` balance
+    by at least `amount_base` raw units.
+
+    Token accounts are not wallets; the authoritative signal is the
+    owner-attributed token balance delta emitted by finalized transaction
+    metadata.
+    """
+    mint = mint or MINT
+    if not (mint and signature and destination_wallet and amount_base > 0):
+        return False
+    tx = await _rpc(
+        "getTransaction",
+        [
+            signature,
+            {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0, "commitment": "finalized"},
+        ],
+    )
+    if not tx or (tx.get("meta") or {}).get("err") is not None:
+        return False
+    meta = tx.get("meta") or {}
+
+    def raw_amount(entry) -> int:
+        ui = (entry or {}).get("uiTokenAmount") or {}
+        try:
+            return int(ui.get("amount") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    pre = {}
+    for entry in meta.get("preTokenBalances") or []:
+        if entry.get("mint") == mint and entry.get("owner") == destination_wallet:
+            pre[entry.get("accountIndex")] = raw_amount(entry)
+    delta = 0
+    for entry in meta.get("postTokenBalances") or []:
+        if entry.get("mint") != mint or entry.get("owner") != destination_wallet:
+            continue
+        delta += raw_amount(entry) - pre.get(entry.get("accountIndex"), 0)
+    return delta >= int(amount_base)
 
 
 SOL_MINT = "So11111111111111111111111111111111111111112"

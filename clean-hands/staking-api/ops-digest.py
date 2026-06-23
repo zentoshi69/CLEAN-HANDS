@@ -30,9 +30,11 @@ def build() -> str:
         pend = db.list_pending_claims(conn)
         total = sum(r["amount"] for r in pend)
         rec = reconcile.reconcile(conn)
+        eff = db.effective_staked_expr()
+        # eff is an internal SQL constant, not user input.
         s = conn.execute(
-            "SELECT COUNT(*) AS n, COALESCE(SUM(recorded_staked),0) AS s "
-            "FROM stakers WHERE recorded_staked > 0"
+            f"SELECT COUNT(*) AS n, COALESCE(SUM({eff}),0) AS s "  # nosec B608
+            f"FROM stakers WHERE ({eff}) > 0"
         ).fetchone()
     lines = [
         "🧤 CLEAN ops digest",

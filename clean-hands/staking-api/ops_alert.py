@@ -46,7 +46,7 @@ def main() -> int:
         ).encode()
         req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=15) as r:  # noqa: S310 — fixed TG host
+            with urllib.request.urlopen(req, timeout=15) as r:  # noqa: S310  # nosec B310
                 ok = ok and (r.status == 200)
         except Exception as e:  # noqa: BLE001 — best-effort alert
             print(f"ops_alert: send failed for {chat_id}: {e}", file=sys.stderr)

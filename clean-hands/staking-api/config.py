@@ -12,6 +12,8 @@ from __future__ import annotations
 import os
 import sys
 
+import base58
+
 
 def env() -> str:
     return os.environ.get("STAKE_ENV", "dev").lower()
@@ -25,28 +27,64 @@ def _missing(name: str) -> bool:
     return not os.environ.get(name, "").strip()
 
 
+def _truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _valid_solana_address(value: str) -> bool:
+    try:
+        return len(base58.b58decode(value)) == 32
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def validate_config() -> dict:
     """Validate environment. In prod, exit(1) on any hard failure. Returns a
     non-secret status summary for /healthz."""
     hard, warn = [], []
 
-    if _missing("STAKE_SERVER_SECRET"):
+    secret = os.environ.get("STAKE_SERVER_SECRET", "")
+    if not secret:
         msg = "STAKE_SERVER_SECRET is unset — sessions won't survive a restart and break across workers."
         (hard if is_prod() else warn).append(msg)
-    _secret = os.environ.get("STAKE_SERVER_SECRET", "").strip()
-    if _secret and len(_secret) < 32:
-        msg = "STAKE_SERVER_SECRET is shorter than 32 chars — generate one with `openssl rand -hex 32`."
+    elif len(secret) < 32:
+        msg = "STAKE_SERVER_SECRET is too short — use `openssl rand -hex 32`."
         (hard if is_prod() else warn).append(msg)
-    if _missing("STAKE_ADMIN_TOKEN"):
-        warn.append("STAKE_ADMIN_TOKEN unset — admin/payout endpoints are disabled (they fail closed).")
-    if _missing("DEFAULT_TOKEN_MINT"):
+
+    mint = os.environ.get("DEFAULT_TOKEN_MINT", "").strip()
+    if not mint:
         msg = "DEFAULT_TOKEN_MINT is unset — wallet balances and burns will read as 0."
         (hard if is_prod() else warn).append(msg)
+    elif not _valid_solana_address(mint):
+        msg = "DEFAULT_TOKEN_MINT is not a valid Solana mint address."
+        (hard if is_prod() else warn).append(msg)
+
     if _missing("TG_COMMUNITY_TOKEN"):
-        warn.append("TG_COMMUNITY_TOKEN unset — Telegram initData binding disabled (wallet-only login).")
+        msg = "TG_COMMUNITY_TOKEN unset — Telegram initData binding disabled (wallet-only login)."
+        (hard if is_prod() else warn).append(msg)
+
+    admin = os.environ.get("STAKE_ADMIN_TOKEN", "")
+    if not admin:
+        msg = "STAKE_ADMIN_TOKEN unset — payout settlement and kill-switch admin endpoints are unusable."
+        (hard if is_prod() else warn).append(msg)
+    elif len(admin) < 32:
+        msg = "STAKE_ADMIN_TOKEN is too short — use `openssl rand -hex 32`."
+        (hard if is_prod() else warn).append(msg)
+
     rpc = os.environ.get("SOLANA_RPC_URL", "")
-    if is_prod() and ("api.mainnet-beta.solana.com" in rpc or not rpc):
-        warn.append("Using the public Solana RPC in prod — it WILL rate-limit at scale. Use Helius/Triton.")
+    if is_prod() and not rpc:
+        hard.append("SOLANA_RPC_URL is required in prod.")
+    elif is_prod() and "api.mainnet-beta.solana.com" in rpc and not _truthy("STAKE_ALLOW_PUBLIC_RPC"):
+        hard.append("Public Solana RPC is refused in prod for a 10k-user launch. Use Helius/Triton.")
+
+    if is_prod() and _missing("REDIS_URL") and not _truthy("STAKE_ALLOW_MEMORY_STORE"):
+        hard.append("REDIS_URL is required in prod so nonces/rate limits survive multiple workers.")
+
+    if is_prod() and _missing("DATABASE_URL") and not _truthy("STAKE_ALLOW_SQLITE"):
+        warn.append("DATABASE_URL unset — SQLite is acceptable only for a single-node canary, not horizontal scale.")
+
+    if is_prod() and _missing("STAKE_CORS_ORIGINS"):
+        warn.append("STAKE_CORS_ORIGINS unset — external website origins cannot call the API.")
 
     # No Stains Bridge (white-label EasyBit) — only checked when API mode is on.
     if os.environ.get("EASYBIT_API_KEY", "").strip():
@@ -77,7 +115,14 @@ def validate_config() -> dict:
 
     return {
         "env": env(),
-        "mint_set": not _missing("DEFAULT_TOKEN_MINT"),
-        "secret_set": not _missing("STAKE_SERVER_SECRET"),
+        "ok": not hard,
+        "warnings": warn,
+        "mint_set": bool(mint),
+        "secret_set": bool(secret),
         "tg_set": not _missing("TG_COMMUNITY_TOKEN"),
+        "admin_set": bool(admin),
+        "redis_set": not _missing("REDIS_URL"),
+        "database": "postgres"
+        if os.environ.get("DATABASE_URL", "").startswith(("postgres://", "postgresql://"))
+        else "sqlite",
     }

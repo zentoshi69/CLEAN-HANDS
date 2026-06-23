@@ -25,7 +25,9 @@ check() { # name, url, expected-substring
 
 echo "Checking $BASE …"
 check "API health"      "$BASE/healthz"        '"ok"'
+check "API readiness"   "$BASE/readyz"         '"ok":true'
 check "Mini App served" "$BASE/"               "CLEAN"
+check "Terms page"      "$BASE/whitepaper"     "Payouts are requests"
 check "Price endpoint"  "$BASE/api/price"      "price_usd"
 check "Economics/config" "$BASE/api/economics" "base_apr"
 check "Wallet.js asset"  "$BASE/wallet.js"     "CleanWallet"

@@ -35,7 +35,7 @@ def _harden_db_perms() -> None:
 # --------------------------------------------------------------------------- #
 DECIMALS = int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
 BASE = 10**DECIMALS
-SCHEMA_VERSION = 9  # bumped by migrations (v9: game_state cloud save + leaderboard)
+SCHEMA_VERSION = 10  # bumped by migrations (v10: immutable claim snapshots + ops flags)
 
 
 def to_base(ui_amount: float) -> int:
@@ -155,16 +155,31 @@ CREATE INDEX IF NOT EXISTS idx_stakers_ref ON stakers(referred_by);
 CREATE INDEX IF NOT EXISTS idx_ledger_wallet ON ledger(wallet, ts);
 CREATE TABLE IF NOT EXISTS claims (
     id BIGSERIAL PRIMARY KEY, wallet TEXT NOT NULL, amount BIGINT NOT NULL,
+    gross_amount BIGINT NOT NULL DEFAULT 0, fee_amount BIGINT NOT NULL DEFAULT 0,
+    fee_usd DOUBLE PRECISION NOT NULL DEFAULT 0, destination TEXT,
+    rules_version TEXT NOT NULL DEFAULT 'v1',
     status TEXT NOT NULL DEFAULT 'requested', tx_sig TEXT,
     created_at BIGINT NOT NULL, paid_at BIGINT);
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS gross_amount BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS fee_amount BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS fee_usd DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS destination TEXT;
+ALTER TABLE claims ADD COLUMN IF NOT EXISTS rules_version TEXT NOT NULL DEFAULT 'v1';
 CREATE INDEX IF NOT EXISTS idx_claims_wallet ON claims(wallet, created_at);
 CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_claims_tx_sig_unique ON claims(tx_sig) WHERE tx_sig IS NOT NULL;
 CREATE TABLE IF NOT EXISTS notifs (
     wallet TEXT NOT NULL, kind TEXT NOT NULL, last_ts BIGINT NOT NULL,
     PRIMARY KEY (wallet, kind));
+CREATE TABLE IF NOT EXISTS ops_flags (
+    key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at BIGINT NOT NULL);
 CREATE TABLE IF NOT EXISTS wallet_links (
     wallet TEXT PRIMARY KEY, owner TEXT NOT NULL, ts BIGINT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_links_owner ON wallet_links(owner);
+CREATE TABLE IF NOT EXISTS game_state (
+    player TEXT PRIMARY KEY, name TEXT, state TEXT NOT NULL,
+    score BIGINT NOT NULL DEFAULT 0, updated_ts BIGINT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_game_score ON game_state(score DESC);
 CREATE TABLE IF NOT EXISTS bridge_orders (
     order_id TEXT PRIMARY KEY, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
     send_coin TEXT NOT NULL, send_network TEXT, recv_coin TEXT NOT NULL, recv_network TEXT,
@@ -235,6 +250,11 @@ def init_db():
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 wallet     TEXT NOT NULL,
                 amount     INTEGER NOT NULL,              -- base units
+                gross_amount INTEGER NOT NULL DEFAULT 0,  -- rewards before fee
+                fee_amount INTEGER NOT NULL DEFAULT 0,    -- fee deducted
+                fee_usd    REAL NOT NULL DEFAULT 0,
+                destination TEXT,                         -- immutable payout wallet snapshot
+                rules_version TEXT NOT NULL DEFAULT 'v1',
                 status     TEXT NOT NULL DEFAULT 'requested',  -- requested|paid|failed
                 tx_sig     TEXT,
                 created_at INTEGER NOT NULL,
@@ -242,11 +262,17 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_claims_wallet ON claims(wallet, created_at);
             CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(status);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_claims_tx_sig_unique ON claims(tx_sig) WHERE tx_sig IS NOT NULL;
             CREATE TABLE IF NOT EXISTS notifs (
                 wallet  TEXT NOT NULL,
                 kind    TEXT NOT NULL,
                 last_ts INTEGER NOT NULL,
                 PRIMARY KEY (wallet, kind)
+            );
+            CREATE TABLE IF NOT EXISTS ops_flags (
+                key        TEXT PRIMARY KEY,
+                value      TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
             );
             -- Multi-wallet portfolio: a wallet may be LINKED under one owner
             -- (the cluster's anchor). Ownership of BOTH sides is proven by
@@ -307,7 +333,7 @@ def _migrate(conn) -> None:
         for table, cols in _MONEY_COLS.items():
             for col in cols:
                 conn.execute(
-                    f"UPDATE {table} SET {col} = CAST(ROUND({col} * ?) AS INTEGER) "
+                    f"UPDATE {table} SET {col} = CAST(ROUND({col} * ?) AS INTEGER) "  # nosec B608
                     f"WHERE {col} IS NOT NULL",
                     (BASE,),
                 )
@@ -413,6 +439,38 @@ def _migrate(conn) -> None:
         )
         conn.execute("PRAGMA user_version = 9")
         conn.commit()
+        ver = 9
+    if ver < 10:
+        # v10: immutable claim economics + payout destination snapshots, a
+        # unique settlement tx guard, and operator kill-switch flags. Existing
+        # claims are backfilled conservatively.
+        existing = _column_names(conn, "claims")
+        if "gross_amount" not in existing:
+            conn.execute("ALTER TABLE claims ADD COLUMN gross_amount INTEGER NOT NULL DEFAULT 0")
+        if "fee_amount" not in existing:
+            conn.execute("ALTER TABLE claims ADD COLUMN fee_amount INTEGER NOT NULL DEFAULT 0")
+        if "fee_usd" not in existing:
+            conn.execute("ALTER TABLE claims ADD COLUMN fee_usd REAL NOT NULL DEFAULT 0")
+        if "destination" not in existing:
+            conn.execute("ALTER TABLE claims ADD COLUMN destination TEXT")
+        if "rules_version" not in existing:
+            conn.execute("ALTER TABLE claims ADD COLUMN rules_version TEXT NOT NULL DEFAULT 'v1'")
+        conn.execute("UPDATE claims SET gross_amount=amount WHERE COALESCE(gross_amount,0)=0")
+        conn.execute("UPDATE claims SET destination=wallet WHERE destination IS NULL OR destination=''")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_claims_tx_sig_unique "
+            "ON claims(tx_sig) WHERE tx_sig IS NOT NULL"
+        )
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS ops_flags ("
+            "key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)"
+        )
+        conn.execute("PRAGMA user_version = 10")
+        conn.commit()
+
+
+def _column_names(conn, table: str) -> set[str]:
+    return {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
 
 
 def get_staker(conn, wallet: str):
@@ -486,10 +544,40 @@ def upsert_staker(conn, wallet: str, tg_id=None, username=None, referred_by=None
     return get_staker(conn, wallet)
 
 
+def effective_staked_expr() -> str:
+    """Portable SQL expression for canonical effective stake.
+
+    Use this everywhere public/economic ranking is computed so ghost stakes
+    (recorded stake with no verified on-chain balance) do not count.
+    """
+    return (
+        "CASE "
+        "WHEN recorded_staked <= 0 OR cached_balance <= 0 THEN 0 "
+        "WHEN recorded_staked < cached_balance THEN recorded_staked "
+        "ELSE cached_balance END"
+    )
+
+
+def referral_min_base() -> int:
+    return to_base(float(os.environ.get("STAKE_REFERRAL_MIN_TOKENS", "1") or 0))
+
+
+def referral_min_age_secs() -> int:
+    return int(os.environ.get("STAKE_REFERRAL_MIN_AGE_SECS", "0") or 0)
+
+
 def active_referrals(conn, wallet: str) -> int:
+    eff = effective_staked_expr()
+    params = [wallet, referral_min_base()]
+    age = referral_min_age_secs()
+    age_clause = ""
+    if age > 0:
+        age_clause = " AND stake_start_ts > 0 AND stake_start_ts <= ?"
+        params.append(int(time.time()) - age)
+    # eff/age_clause are internal SQL constants, not user input.
     return conn.execute(
-        "SELECT COUNT(*) AS n FROM stakers WHERE referred_by=? AND recorded_staked > 0",
-        (wallet,),
+        f"SELECT COUNT(*) AS n FROM stakers WHERE referred_by=? AND ({eff}) >= ?{age_clause}",  # nosec B608
+        tuple(params),
     ).fetchone()["n"]
 
 
@@ -547,10 +635,33 @@ def list_vips(conn) -> list[dict]:
     ]
 
 
-def create_claim(conn, wallet: str, amount_base: int, status: str = "requested") -> None:
+def create_claim(
+    conn,
+    wallet: str,
+    amount_base: int,
+    *,
+    gross_amount_base: int,
+    fee_amount_base: int = 0,
+    fee_usd: float = 0.0,
+    destination: str,
+    rules_version: str = "v1",
+    status: str = "requested",
+) -> None:
     conn.execute(
-        "INSERT INTO claims (wallet, amount, status, created_at) VALUES (?,?,?,?)",
-        (wallet, int(amount_base), status, int(time.time())),
+        "INSERT INTO claims "
+        "(wallet, amount, gross_amount, fee_amount, fee_usd, destination, rules_version, status, created_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (
+            wallet,
+            int(amount_base),
+            int(gross_amount_base),
+            int(fee_amount_base),
+            float(fee_usd),
+            destination,
+            rules_version,
+            status,
+            int(time.time()),
+        ),
     )
     conn.commit()
 
@@ -559,6 +670,10 @@ def list_pending_claims(conn, limit: int = 200):
     return conn.execute(
         "SELECT * FROM claims WHERE status='requested' ORDER BY created_at LIMIT ?", (limit,)
     ).fetchall()
+
+
+def get_claim(conn, claim_id: int):
+    return conn.execute("SELECT * FROM claims WHERE id=?", (int(claim_id),)).fetchone()
 
 
 def notif_last(conn, wallet: str, kind: str) -> int:
@@ -576,19 +691,59 @@ def notif_mark(conn, wallet: str, kind: str, ts: int) -> None:
 
 
 def stakers_with_tg(conn):
+    eff = effective_staked_expr()
+    # eff is an internal SQL constant, not user input.
     return conn.execute(
-        "SELECT * FROM stakers WHERE tg_id IS NOT NULL AND recorded_staked > 0"
+        f"SELECT * FROM stakers WHERE tg_id IS NOT NULL AND ({eff}) > 0"  # nosec B608
     ).fetchall()
 
 
 def mark_claim_paid(conn, claim_id: int, tx_sig: str) -> int:
     """Idempotent: only a still-'requested' claim transitions to 'paid'."""
+    if conn.execute("SELECT 1 FROM claims WHERE tx_sig=?", (tx_sig,)).fetchone() is not None:
+        return 0
     cur = conn.execute(
         "UPDATE claims SET status='paid', tx_sig=?, paid_at=? WHERE id=? AND status='requested'",
         (tx_sig, int(time.time()), claim_id),
     )
     conn.commit()
     return cur.rowcount
+
+
+_OPS_FLAGS = {
+    "halt_all",
+    "halt_staking",
+    "halt_claims",
+    "halt_burns",
+    "halt_payout_setup",
+    "halt_mm",
+    "halt_bridge",
+}
+
+
+def set_flag(conn, key: str, value: str) -> None:
+    if key not in _OPS_FLAGS:
+        raise ValueError("unknown ops flag")
+    conn.execute("DELETE FROM ops_flags WHERE key=?", (key,))
+    conn.execute(
+        "INSERT INTO ops_flags (key, value, updated_at) VALUES (?,?,?)",
+        (key, str(value), int(time.time())),
+    )
+    conn.commit()
+
+
+def get_flag(conn, key: str) -> str | None:
+    row = conn.execute("SELECT value FROM ops_flags WHERE key=?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def flag_enabled(conn, key: str) -> bool:
+    v = get_flag(conn, key)
+    return str(v).lower() in ("1", "true", "yes", "on")
+
+
+def list_flags(conn):
+    return conn.execute("SELECT key, value, updated_at FROM ops_flags ORDER BY key").fetchall()
 
 
 # ---- multi-wallet portfolio links ----------------------------------------- #

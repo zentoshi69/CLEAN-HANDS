@@ -14,29 +14,29 @@ then record its signature. `mark` only ever transitions a 'requested' claim to
 
 from __future__ import annotations
 
+import asyncio
 import sys
 import db
+import solana
 
 
 def cmd_list() -> int:
     with db.db() as conn:
         rows = db.list_pending_claims(conn)
-        payout = {}
-        for r in rows:
-            if r["wallet"] not in payout:
-                s = db.get_staker(conn, r["wallet"])
-                payout[r["wallet"]] = (s["payout_wallet"] if s else None) or r["wallet"]
     if not rows:
         print("No pending claims. 🎉")
         return 0
-    print(f"{'ID':>6}  {'AMOUNT ($CLEAN)':>18}  PAY TO  (staker)")
+    print(f"{'ID':>6}  {'NET ($CLEAN)':>14}  {'FEE':>10}  PAY TO  (staker)")
     print("-" * 100)
     total = 0
     for r in rows:
         total += r["amount"]
-        dest = payout[r["wallet"]]
+        dest = r["destination"] or r["wallet"]
         suffix = "" if dest == r["wallet"] else f"  (staker {r['wallet']})"
-        print(f"{r['id']:>6}  {db.to_ui(r['amount']):>18,.6f}  {dest}{suffix}")
+        print(
+            f"{r['id']:>6}  {db.to_ui(r['amount']):>14,.6f}  "
+            f"{db.to_ui(r['fee_amount']):>10,.6f}  {dest}{suffix}"
+        )
     print("-" * 100)
     print(f"{len(rows)} claim(s) — pay {db.to_ui(total):,.6f} $CLEAN total from the treasury.")
     return 0
@@ -47,6 +47,24 @@ def cmd_mark(claim_id: str, tx_sig: str) -> int:
         print("Refusing: tx_sig looks invalid (paste the real treasury transfer signature).", file=sys.stderr)
         return 2
     with db.db() as conn:
+        claim = db.get_claim(conn, int(claim_id))
+        if not claim or claim["status"] != "requested":
+            print(f"⚠️ claim {claim_id} not found or already paid.", file=sys.stderr)
+            return 1
+        ok = asyncio.run(
+            solana.verify_transfer(
+                tx_sig,
+                claim["destination"] or claim["wallet"],
+                int(claim["amount"]),
+            )
+        )
+        if not ok:
+            print(
+                "Refusing: tx does not show a finalized $CLEAN transfer "
+                "to the claim destination for the exact net amount.",
+                file=sys.stderr,
+            )
+            return 2
         n = db.mark_claim_paid(conn, int(claim_id), tx_sig)
     if n == 1:
         print(f"✅ claim {claim_id} marked paid (tx {tx_sig[:8]}…).")

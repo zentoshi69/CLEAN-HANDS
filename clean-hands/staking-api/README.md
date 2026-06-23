@@ -51,8 +51,9 @@ Override any of these with env vars (`STAKE_BASE_APR`, `STAKE_BURN_APR_PER_UNIT`
 
 > **Soft staking** = tokens never leave the user's wallet. "Stake" snapshots the
 > wallet's balance and accrues yield on it; if they move tokens out, earnings
-> drop to what they still hold. Rewards accrue in the DB; wire your treasury /
-> on-chain payout into the `/api/claim` handler (marked with a TODO).
+> drop to what they still hold. Rewards accrue in the DB, vest after the
+> configured continuous staking window, and are paid through manual treasury
+> payout requests.
 
 ## Run
 
@@ -64,7 +65,10 @@ export DEFAULT_TOKEN_MINT=...          # the $CLEAN mint
 export DEFAULT_TOKEN_DECIMALS=6        # for raw-burn conversion
 export SOLANA_RPC_URL=https://...      # a paid RPC (Helius/Triton) in prod
 export STAKE_SERVER_SECRET=$(openssl rand -hex 32)
-python app.py                          # :8090
+export STAKE_ADMIN_TOKEN=$(openssl rand -hex 32)
+export REDIS_URL=redis://127.0.0.1:6379/0  # required for prod multi-worker readiness
+python app.py                          # localhost:8090 by default
+# set STAKE_HOST=0.0.0.0 only when a container/proxy needs it
 ```
 
 Test it: `python test_staking.py` (economics + signature + full API flow, no network).
@@ -85,13 +89,17 @@ Test it: `python test_staking.py` (economics + signature + full API flow, no net
 | `GET /api/nonce`        | `?wallet=`                                | login challenge                                         |
 | `POST /api/login`       | wallet, signature, nonce, initData?, ref? | verify → session + profile                              |
 | `POST /api/stake`       | token                                     | snapshot balance → start earning                        |
-| `POST /api/unstake`     | token                                     | stop earning (keep accrued)                             |
-| `POST /api/claim`       | token                                     | move pending rewards to claimed (hook payout here)      |
+| `POST /api/unstake`     | token                                     | stop earning; forfeits pending rewards and resets clock  |
+| `POST /api/payout/nonce`| token, address?                           | one-time message for payout-wallet approval             |
+| `POST /api/payout`      | token, address?, nonce, signature         | confirm payout wallet with fresh staking-wallet sig      |
+| `POST /api/claim`       | token                                     | request manual payout; snapshots destination + fee       |
 | `POST /api/burn`        | token, signature                          | verify on-chain burn → permanent APR boost (idempotent) |
 | `POST /api/profile`     | token                                     | full live profile + APR breakdown                       |
 | `POST /api/leaderboard` | token                                     | top 50 stakers                                          |
 | `POST /api/referrals`   | token                                     | your referral code + active count                       |
 | `GET /api/economics`    | —                                         | public rule config (so site/app render the same)        |
+| `GET /healthz`          | —                                         | liveness only                                           |
+| `GET /readyz`           | —                                         | dependency-aware readiness for deploy/canary gates      |
 
 ## Security
 
@@ -100,7 +108,11 @@ Test it: `python test_staking.py` (economics + signature + full API flow, no net
 - **Sessions** are short-lived HMAC tokens (set `STAKE_SERVER_SECRET`).
 - **Burns** are verified against the actual transaction on-chain and credited
   once (idempotent by signature).
-- **Anti-gaming**: you only earn on tokens you still hold.
+- **Anti-gaming**: rewards, referrals, ranks, and stats use effective stake:
+  `min(recorded_staked, verified_balance)`.
+- **Payout changes** require a fresh wallet signature over the exact destination.
+- **Operator freeze switch** can pause staking, claims, burns, payout setup, or
+  all risky writes without taking the app offline.
 - The server **never holds funds or keys** — soft staking, signatures only.
 
 ## Deploy 24/7
@@ -149,12 +161,17 @@ idempotent under concurrency on both. (PG path needs a live DB to validate.)
 
 **Phase 3.2 (claims / payout) — done (manual mode):** `/api/claim` uses an atomic
 compare-and-swap so a claim can't be double-counted/double-paid; each claim writes
-a `claims` row (`requested`). Pay out from the treasury and settle via the
-admin endpoints (gated by `STAKE_ADMIN_TOKEN`):
+an immutable `claims` row (`requested`) with destination, gross, fee, net, and
+rule snapshot. Pay out from the treasury and settle via the admin endpoints
+(gated by `STAKE_ADMIN_TOKEN`):
 
 - `POST /api/admin/pending {admin_token}` → list unpaid claims.
-- `POST /api/admin/mark_paid {admin_token, claim_id, tx_sig}` → mark one paid
-  (idempotent). No private key ever lives on the server.
+- `POST /api/admin/mark_paid {admin_token, claim_id, tx_sig}` → verify the
+  finalized on-chain transfer to that claim's snapshotted destination/net amount,
+  then mark one paid (idempotent). No private key ever lives on the server.
+- `POST /api/admin/set_flag {admin_token, key, value}` → set `halt_all`,
+  `halt_staking`, `halt_claims`, `halt_burns`, or `halt_payout_setup`.
+- `POST /api/admin/flags {admin_token}` → list current freeze flags.
 
 **Phase 3.3 (reconciliation) — done:** `python reconcile.py` checks the money
 invariants (claimed_total == Σ claims == Σ ledger claims; total_burned == Σ ledger
@@ -170,12 +187,18 @@ sudo systemctl enable --now degen-reconcile.timer    # daily money-invariant che
 ```bash
 python pay.py list                  # pending claims + total to send
 # …send $CLEAN from the treasury wallet…
-python pay.py mark <claim_id> <tx>  # record the payout tx (idempotent)
+python pay.py mark <claim_id> <tx>  # verifies destination/amount, then records tx
 ```
 
 **Edge hardening:** request body-size cap (413), security headers (nosniff /
-Referrer-Policy / HSTS / Permissions-Policy), interactive docs disabled when
-`STAKE_ENV=prod`, malformed input rejected cleanly (no 500s), deps pinned.
+Referrer-Policy / HSTS / Permissions-Policy / CSP), interactive docs disabled
+when `STAKE_ENV=prod`, malformed input rejected cleanly (no 500s), dependency
+lower bounds held above known-vulnerable resolver outputs.
+
+**Prod config hard gates:** with `STAKE_ENV=prod`, startup refuses missing/weak
+session/admin secrets, missing Telegram token, invalid mint, public Solana RPC
+(unless explicitly overridden), and missing Redis. SQLite is warned as canary-only
+unless `STAKE_ALLOW_SQLITE=1` acknowledges it.
 
 Optional future: **P3.2b** server-signed `transfer` payout (a treasury hot key or
 KMS) if you ever want auto-payout instead of the cron — deliberately not built, to

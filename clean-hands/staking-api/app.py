@@ -123,6 +123,13 @@ async def _guard(request: Request, call_next):
                 return JSONResponse({"detail": "payload too large"}, status_code=413)
         except ValueError:
             return JSONResponse({"detail": "bad content-length"}, status_code=400)
+    body = b""
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > MAX_BODY:
+            return JSONResponse({"detail": "payload too large"}, status_code=413)
+    # Starlette/FastAPI read the cached body downstream for JSON parsing.
+    request._body = body
     resp = await call_next(request)
     resp.headers["X-Content-Type-Options"] = "nosniff"
     resp.headers["Referrer-Policy"] = "no-referrer"
@@ -166,15 +173,15 @@ async def _refresh_wallet_usd(wallet: str, force: bool = False) -> None:
     try:
         await asyncio.wait_for(market.refresh_prices(), timeout=5.0)
     except Exception:  # noqa: BLE001
-        pass
+        pass  # nosec B110
     now = time.time()
     hit = _sol_cache.get(wallet)
     if hit and not force and (now - hit[0]) < BALANCE_TTL:
         return
     try:
         _sol_cache[wallet] = (now, await asyncio.wait_for(solana.sol_balance(wallet), timeout=5.0))
-    except Exception:  # noqa: BLE001 — RPC hiccup: keep last known SOL balance
-        pass
+    except Exception:  # noqa: BLE001
+        pass  # nosec B110
 
 
 def _wallet_usd(wallet: str, row) -> tuple[float, float]:
@@ -189,7 +196,7 @@ def _wallet_usd(wallet: str, row) -> tuple[float, float]:
     return sol_usd, clean_usd
 
 
-async def _refresh_balance(conn, row, force: bool = False) -> int:
+async def _refresh_balance(conn, row, force: bool = False, fail_closed: bool = False) -> int:
     """Returns the wallet's $CLEAN balance in integer base units (cached)."""
     now = int(time.time())
     # opportunistically refresh SOL + prices for the wallet-balance booster
@@ -198,7 +205,9 @@ async def _refresh_balance(conn, row, force: bool = False) -> int:
         return row["cached_balance"]
     try:
         bal_base = db.to_base(await asyncio.wait_for(solana.token_balance(row["wallet"]), timeout=8.0))
-    except Exception:  # noqa: BLE001 — RPC hiccup or timeout: keep last known balance
+    except Exception:  # noqa: BLE001 — cache is OK for reads, not money-finalizing actions
+        if fail_closed:
+            raise HTTPException(503, "live balance check unavailable — try again shortly")
         return row["cached_balance"]
     conn.execute(
         "UPDATE stakers SET cached_balance=?, balance_ts=? WHERE wallet=?",
@@ -227,35 +236,42 @@ def _apr_for(conn, wallet: str, row):
 def _accrue(conn, wallet: str) -> None:
     """Bring a staker's rewards up to `now`. All arithmetic in integer base units
     (floored), so there is no float drift over many small accruals."""
-    row = db.get_staker(conn, wallet)
-    prev_ts = row["last_accrual_ts"]
-    now = int(time.time())
-    dt = now - prev_ts
-    if dt <= 0:
-        return  # nothing to settle (or clock went backwards — never credit that)
-    eff_base, _secs, _refs, apr = _apr_for(conn, wallet, row)
-    reward_base = int(econ.accrue(eff_base, apr.effective_apr, dt))  # floor
     # Compare-and-swap on last_accrual_ts: every money path opens its own
-    # connection, so two concurrent accruals would each read the SAME prev_ts
-    # and both add reward for the SAME [prev_ts, now] window — minting rewards.
-    # Conditioning the write on last_accrual_ts == prev_ts means only the first
-    # writer credits the interval; the loser's UPDATE matches 0 rows and is
-    # dropped (the interval it would credit was already credited).
-    conn.execute(
-        "UPDATE stakers SET accrued = accrued + ?, last_accrual_ts=? "
-        "WHERE wallet=? AND last_accrual_ts=?",
-        (reward_base, now, wallet, prev_ts),
-    )
-    conn.commit()
+    # connection, so two concurrent accruals could otherwise credit the same
+    # [old_ts, now] window twice. Retry a few times instead of silently dropping
+    # the loser; if the row keeps changing, ask the client to retry.
+    for _ in range(5):
+        row = db.get_staker(conn, wallet)
+        if not row:
+            return
+        now = int(time.time())
+        old_ts = int(row["last_accrual_ts"] or 0)
+        dt = now - old_ts
+        if dt <= 0:
+            return
+        eff_base, _secs, _refs, apr = _apr_for(conn, wallet, row)
+        reward_base = int(econ.accrue(eff_base, apr.effective_apr, dt))  # floor
+        cur = conn.execute(
+            "UPDATE stakers SET accrued = accrued + ?, last_accrual_ts=? "
+            "WHERE wallet=? AND last_accrual_ts=?",
+            (reward_base, now, wallet, old_ts),
+        )
+        if cur.rowcount == 1:
+            conn.commit()
+            return
+        conn.rollback()
+    raise HTTPException(409, "staking balance changed — retry")
 
 
 def _profile(conn, wallet: str) -> dict:
     row = db.get_staker(conn, wallet)
     eff_base, secs, refs, apr = _apr_for(conn, wallet, row)
     vest_secs = int(time.time()) - row["stake_start_ts"] if row["stake_start_ts"] else 0
+    eff_expr = db.effective_staked_expr()
+    # eff_expr is an internal SQL constant, not user input.
     rank = conn.execute(
-        "SELECT COUNT(*)+1 AS r FROM stakers WHERE recorded_staked > ?",
-        (row["recorded_staked"],),
+        f"SELECT COUNT(*)+1 AS r FROM stakers WHERE ({eff_expr}) > ?",  # nosec B608
+        (eff_base,),
     ).fetchone()["r"]
     return {
         "wallet": row["wallet"],
@@ -299,6 +315,7 @@ def _profile(conn, wallet: str) -> dict:
             and vest_secs >= max(0, (CLAIM_LOCK_DAYS - _payout_setup_days())) * 86400
         ),
         "claim_fee_usd": _claim_fee_usd(),
+        "balance_verified_at": row["balance_ts"],
         "apr": apr.to_dict(),
     }
 
@@ -336,8 +353,13 @@ class MmBody(BaseModel):
 class PayoutBody(BaseModel):
     token: str
     address: str | None = None  # default: the staking wallet itself
-    nonce: str | None = None
     signature: str | None = None
+    nonce: str | None = None
+
+
+class PayoutNonceBody(BaseModel):
+    token: str
+    address: str | None = None
 
 
 class TgStart(BaseModel):
@@ -439,6 +461,7 @@ async def api_stake(body: StakeBody, request: Request):
     ratelimit.hit(request, "write", extra_key=wallet)
     now = int(time.time())
     with db.db() as conn:
+        _assert_ops_open(conn, "halt_staking")
         row = db.get_staker(conn, wallet)
         if not row:
             raise HTTPException(404, "unknown wallet")
@@ -447,7 +470,7 @@ async def api_stake(body: StakeBody, request: Request):
         # able to stake the new tokens immediately. Honouring the 5-min balance
         # cache here made staking feel like a one-time snapshot — a re-stake right
         # after buying saw the stale (pre-purchase) balance and added nothing.
-        bal = await _refresh_balance(conn, db.get_staker(conn, wallet), force=True)
+        bal = await _refresh_balance(conn, db.get_staker(conn, wallet), force=True, fail_closed=True)
         if bal <= 0:
             raise HTTPException(400, "no $CLEAN in wallet to stake")
         pct = 100 if body.percent is None else int(body.percent)
@@ -471,6 +494,7 @@ async def api_unstake(body: Tok, request: Request):
     wallet = _require(body.token)["w"]
     ratelimit.hit(request, "write", extra_key=wallet)
     with db.db() as conn:
+        _assert_ops_open(conn, "halt_staking")
         row = db.get_staker(conn, wallet)
         if not row:
             raise HTTPException(404, "unknown wallet")
@@ -492,39 +516,67 @@ async def api_unstake(body: Tok, request: Request):
         return _profile(conn, wallet)
 
 
-@app.post("/api/payout")
-def api_payout(body: PayoutBody, request: Request):
-    """Confirm where claim payouts go. Opens STAKE_PAYOUT_SETUP_DAYS before the
-    claim unlock (and stays open after). Wallet-session gated; the address
-    defaults to the staking wallet itself."""
+def _payout_addr(wallet: str, address: str | None) -> str:
+    addr = (address or wallet).strip()
+    if not auth.is_valid_wallet(addr):
+        raise HTTPException(400, "invalid payout wallet address")
+    return addr
+
+
+def _assert_payout_window(row) -> None:
+    if _payout_setup_days() > 0 and CLAIM_LOCK_DAYS > 0:
+        start = row["stake_start_ts"] or 0
+        secs = int(time.time()) - start if start else 0
+        open_from = max(0, (CLAIM_LOCK_DAYS - _payout_setup_days())) * 86400
+        if not start or secs < open_from:
+            left = -(-(open_from - secs) // 86400) if start else CLAIM_LOCK_DAYS
+            raise HTTPException(
+                400,
+                f"payout setup opens {_payout_setup_days()} days before your claim "
+                f"unlocks — {left}d to go",
+            )
+
+
+@app.post("/api/payout/nonce")
+def api_payout_nonce(body: PayoutNonceBody, request: Request):
+    """Issue a one-time payout-change approval message for the staking wallet."""
     wallet = _require(body.token)["w"]
     ratelimit.hit(request, "write", extra_key=wallet)
-    # Redirecting payouts is high-value, so require a FRESH wallet signature (a
-    # stolen session token alone can't produce one) — not just the bearer token.
-    if not (body.nonce and body.signature):
-        raise HTTPException(401, "a fresh wallet signature is required to set the payout address")
-    if not auth.consume_nonce(wallet, body.nonce):
-        raise HTTPException(401, "bad or expired nonce — request a new one")
-    if not auth.verify_wallet_signature(wallet, auth.login_message(wallet, body.nonce), body.signature):
-        raise HTTPException(401, "bad wallet signature")
     with db.db() as conn:
+        _assert_ops_open(conn, "halt_payout_setup")
         row = db.get_staker(conn, wallet)
         if not row:
             raise HTTPException(404, "unknown wallet")
-        if _payout_setup_days() > 0 and CLAIM_LOCK_DAYS > 0:
-            start = row["stake_start_ts"] or 0
-            secs = int(time.time()) - start if start else 0
-            open_from = max(0, (CLAIM_LOCK_DAYS - _payout_setup_days())) * 86400
-            if not start or secs < open_from:
-                left = -(-(open_from - secs) // 86400) if start else CLAIM_LOCK_DAYS
-                raise HTTPException(
-                    400,
-                    f"payout setup opens {_payout_setup_days()} days before your claim "
-                    f"unlocks — {left}d to go",
-                )
-        addr = (body.address or wallet).strip()
-        if not auth.is_valid_wallet(addr):
-            raise HTTPException(400, "invalid payout wallet address")
+        _assert_payout_window(row)
+    addr = _payout_addr(wallet, body.address)
+    nonce = auth.issue_action_nonce(wallet, "payout")
+    return {"nonce": nonce, "message": auth.payout_message(wallet, addr, nonce), "address": addr}
+
+
+@app.post("/api/payout")
+async def api_payout(body: PayoutBody, request: Request):
+    """Confirm where claim payouts go.
+
+    A valid session can start the flow, but the staking wallet must freshly sign
+    the exact destination so a stolen bearer token cannot redirect rewards.
+    """
+    wallet = _require(body.token)["w"]
+    ratelimit.hit(request, "write", extra_key=wallet)
+    if not (body.nonce and body.signature):
+        raise HTTPException(401, "a fresh wallet signature is required to set the payout address")
+    addr = _payout_addr(wallet, body.address)
+    msg = auth.payout_message(wallet, addr, body.nonce)
+    if not auth.consume_action_nonce(wallet, "payout", body.nonce):
+        raise HTTPException(401, "bad or expired payout nonce — try again")
+    if not auth.verify_wallet_signature(wallet, msg, body.signature):
+        raise HTTPException(401, "bad payout wallet signature")
+    with db.db() as conn:
+        _assert_ops_open(conn, "halt_payout_setup")
+        row = db.get_staker(conn, wallet)
+        if not row:
+            raise HTTPException(404, "unknown wallet")
+        _assert_payout_window(row)
+        await _refresh_balance(conn, row, force=True, fail_closed=True)
         conn.execute(
             "UPDATE stakers SET payout_wallet=?, payout_confirmed_ts=? WHERE wallet=?",
             (addr, int(time.time()), wallet),
@@ -539,12 +591,13 @@ async def api_claim(body: Tok, request: Request):
     wallet = _require(body.token)["w"]
     ratelimit.hit(request, "write", extra_key=wallet)
     with db.db() as conn:
+        _assert_ops_open(conn, "halt_claims")
         row = db.get_staker(conn, wallet)
         if not row:
             raise HTTPException(404, "unknown wallet")
         # Settle at the user's REAL current holdings, not a stale cache, so you
         # can't briefly over-accrue by selling right before claiming.
-        await _refresh_balance(conn, row, force=True)
+        await _refresh_balance(conn, row, force=True, fail_closed=True)
         _accrue(conn, wallet)
         row = db.get_staker(conn, wallet)
         # 90-day vesting gate: the stake_start_ts clock must have run the full
@@ -569,6 +622,7 @@ async def api_claim(body: Tok, request: Request):
                 "confirm your payout wallet first — setup opens "
                 f"{_payout_setup_days()} days before your claim unlocks",
             )
+        destination = row["payout_wallet"] or wallet
         amount = row["accrued"]
         if amount <= 0:
             raise HTTPException(400, "nothing to claim")
@@ -609,14 +663,26 @@ async def api_claim(body: Tok, request: Request):
         # Manual payout (PAYOUT_MODE=manual): record a 'requested' claim. An
         # operator/cron pays it from the treasury and marks it paid with the tx.
         # No funds move here and NO private key lives on the server.
-        db.create_claim(conn, wallet, net, status="requested")
+        db.create_claim(
+            conn,
+            wallet,
+            net,
+            gross_amount_base=amount,
+            fee_amount_base=fee_base,
+            fee_usd=fee_usd,
+            destination=destination,
+            rules_version=f"claim_lock_{CLAIM_LOCK_DAYS}d_fee_usd_{fee_usd:g}",
+            status="requested",
+        )
         db.record(conn, wallet, "claim", net)
         if fee_base > 0:
             db.record(conn, wallet, "fee", fee_base, detail=f"claim fee ${fee_usd:g}")
         return {
             "claimed": db.to_ui(net),
+            "requested": db.to_ui(net),
             "fee": db.to_ui(fee_base),
             "fee_usd": fee_usd,
+            "destination": destination,
             "status": "requested",
             "profile": _profile(conn, wallet),
         }
@@ -627,6 +693,7 @@ async def api_burn(body: BurnBody, request: Request):
     wallet = _require(body.token)["w"]
     ratelimit.hit(request, "burn", extra_key=wallet)
     with db.db() as conn:
+        _assert_ops_open(conn, "halt_burns")
         if not db.get_staker(conn, wallet):
             raise HTTPException(404, "unknown wallet")
         if db.burn_seen(conn, body.signature):
@@ -637,6 +704,7 @@ async def api_burn(body: BurnBody, request: Request):
     burned_base = db.to_base(burned)
     now = int(time.time())
     with db.db() as conn:
+        _assert_ops_open(conn, "halt_burns")
         if not db.get_staker(conn, wallet):
             raise HTTPException(404, "unknown wallet")
         # Atomic idempotency: the `burns` PRIMARY KEY (signature) lets exactly one
@@ -675,6 +743,7 @@ async def api_mm_add(body: MmBody, request: Request):
     wallet = _require(body.token)["w"]
     ratelimit.hit(request, "mm", extra_key=wallet)
     with db.db() as conn:
+        _assert_ops_open(conn, "halt_mm")
         if not db.get_staker(conn, wallet):
             raise HTTPException(404, "unknown wallet")
         if db.mm_seen(conn, body.signature):
@@ -785,15 +854,19 @@ async def api_profile(body: Tok):
 def api_leaderboard(body: Tok):
     wallet = _require(body.token)["w"]
     with db.db() as conn:
+        eff_expr = db.effective_staked_expr()
+        # eff_expr is an internal SQL constant, not user input.
         rows = conn.execute(
-            "SELECT wallet, username, recorded_staked, total_burned FROM stakers "
-            "ORDER BY recorded_staked DESC LIMIT 50"
+            f"SELECT wallet, username, recorded_staked, cached_balance, total_burned, "  # nosec B608
+            f"({eff_expr}) AS effective_staked FROM stakers "
+            f"WHERE ({eff_expr}) > 0 ORDER BY effective_staked DESC LIMIT 50"
         ).fetchall()
         board = [
             {
                 "rank": i + 1,
                 "name": r["username"] or (r["wallet"][:4] + "…" + r["wallet"][-4:]),
-                "staked": db.to_ui(r["recorded_staked"]),
+                "staked": db.to_ui(r["effective_staked"]),
+                "recorded_staked": db.to_ui(r["recorded_staked"]),
                 "burned": db.to_ui(r["total_burned"]),
                 "me": r["wallet"] == wallet,
             }
@@ -993,6 +1066,7 @@ async def api_unlink(body: UnlinkBody, request: Request):
 #  ADMIN — manual payout workflow (treasury/cron). Gate with STAKE_ADMIN_TOKEN. #
 # --------------------------------------------------------------------------- #
 ADMIN_TOKEN = os.environ.get("STAKE_ADMIN_TOKEN", "")
+OPS_FLAGS = {"halt_all", "halt_staking", "halt_claims", "halt_burns", "halt_payout_setup", "halt_mm", "halt_bridge"}
 
 
 class AdminTok(BaseModel):
@@ -1005,9 +1079,20 @@ class AdminMark(BaseModel):
     tx_sig: str
 
 
+class AdminFlag(BaseModel):
+    admin_token: str
+    key: str
+    value: bool
+
+
 def _require_admin(tok: str) -> None:
     if not ADMIN_TOKEN or not hmac.compare_digest(tok or "", ADMIN_TOKEN):
         raise HTTPException(403, "admin only")
+
+
+def _assert_ops_open(conn, flag: str) -> None:
+    if db.flag_enabled(conn, "halt_all") or db.flag_enabled(conn, flag):
+        raise HTTPException(503, "temporarily paused by operator")
 
 
 @app.post("/api/admin/pending")
@@ -1021,6 +1106,11 @@ def api_admin_pending(body: AdminTok):
                     "claim_id": r["id"],
                     "wallet": r["wallet"],
                     "amount": db.to_ui(r["amount"]),
+                    "gross": db.to_ui(r["gross_amount"]),
+                    "fee": db.to_ui(r["fee_amount"]),
+                    "fee_usd": r["fee_usd"],
+                    "destination": r["destination"] or r["wallet"],
+                    "rules_version": r["rules_version"],
                     "created_at": r["created_at"],
                 }
                 for r in rows
@@ -1038,13 +1128,47 @@ def api_admin_vip(body: AdminTok):
 
 
 @app.post("/api/admin/mark_paid")
-def api_admin_mark_paid(body: AdminMark):
+async def api_admin_mark_paid(body: AdminMark):
     _require_admin(body.admin_token)
     with db.db() as conn:
+        claim = db.get_claim(conn, body.claim_id)
+        if not claim or claim["status"] != "requested":
+            raise HTTPException(409, "claim not found or already paid")
+        ok = await solana.verify_transfer(
+            body.tx_sig,
+            claim["destination"] or claim["wallet"],
+            int(claim["amount"]),
+        )
+        if not ok:
+            raise HTTPException(400, "treasury transfer was not confirmed for this claim")
         n = db.mark_claim_paid(conn, body.claim_id, body.tx_sig)
         if n != 1:
             raise HTTPException(409, "claim not found or already paid")
         return {"ok": True, "claim_id": body.claim_id, "status": "paid"}
+
+
+@app.post("/api/admin/flags")
+def api_admin_flags(body: AdminTok):
+    _require_admin(body.admin_token)
+    with db.db() as conn:
+        return {
+            "flags": [
+                {"key": r["key"], "value": r["value"], "updated_at": r["updated_at"]}
+                for r in db.list_flags(conn)
+            ],
+            "known_flags": sorted(OPS_FLAGS),
+        }
+
+
+@app.post("/api/admin/set_flag")
+def api_admin_set_flag(body: AdminFlag):
+    _require_admin(body.admin_token)
+    key = body.key.strip()
+    if key not in OPS_FLAGS:
+        raise HTTPException(400, "unknown ops flag")
+    with db.db() as conn:
+        db.set_flag(conn, key, "1" if body.value else "0")
+    return {"ok": True, "key": key, "value": body.value}
 
 
 @app.get("/api/economics")
@@ -1127,11 +1251,13 @@ def api_stats():
     """Public, aggregate-only protocol stats for the app's 'Supply washed' panel
     and the season campaign card. Real DB aggregates only — never invented."""
     with db.db() as conn:
+        eff_expr = db.effective_staked_expr()
+        # eff_expr is an internal SQL constant, not user input.
         row = conn.execute(
             "SELECT COALESCE(SUM(total_burned),0) AS burned,"
             " SUM(CASE WHEN total_burned > 0 THEN 1 ELSE 0 END) AS burners,"
-            " SUM(CASE WHEN recorded_staked > 0 THEN 1 ELSE 0 END) AS stakers,"
-            " COALESCE(SUM(recorded_staked),0) AS staked"
+            f" SUM(CASE WHEN ({eff_expr}) > 0 THEN 1 ELSE 0 END) AS stakers,"  # nosec B608
+            f" COALESCE(SUM({eff_expr}),0) AS staked"
             " FROM stakers"
         ).fetchone()
     out = {
@@ -1533,6 +1659,8 @@ def _bridge_err(e: Exception) -> HTTPException:
 def _bridge_ready():
     if not easybit.enabled():
         raise HTTPException(503, "bridge is not configured")
+    with db.db() as conn:
+        _assert_ops_open(conn, "halt_bridge")
 
 
 def _trim_currency(c: dict) -> dict:
@@ -1627,6 +1755,57 @@ def healthz():
         db_ok = False
     status = {"ok": db_ok, "db": db_ok, "store": store.backend_name(), **CONFIG_STATUS}
     return JSONResponse(status, status_code=200 if db_ok else 503)
+
+
+@app.get("/readyz")
+async def readyz():
+    """Dependency-aware readiness for deploy/canary gates.
+
+    /healthz is liveness. /readyz answers "should traffic be routed here?" and
+    checks the dependencies that matter before a 10k-user launch.
+    """
+    db_ok = False
+    flags = {}
+    pending_claims = {"count": 0, "oldest_age_seconds": 0}
+    try:
+        with db.db() as conn:
+            conn.execute("SELECT 1").fetchone()
+            db_ok = True
+            flags = {r["key"]: r["value"] for r in db.list_flags(conn)}
+            row = conn.execute(
+                "SELECT COUNT(*) AS n, MIN(created_at) AS oldest "
+                "FROM claims WHERE status='requested'"
+            ).fetchone()
+            now = int(time.time())
+            pending_claims = {
+                "count": int(row["n"] or 0),
+                "oldest_age_seconds": int(now - row["oldest"]) if row["oldest"] else 0,
+            }
+    except Exception:  # noqa: BLE001
+        db_ok = False
+
+    store_ok = store.healthy()
+    check_rpc = os.environ.get("STAKE_READYZ_CHECK_RPC", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    rpc_ok = await solana.rpc_health() if check_rpc else None
+    halted = flags.get("halt_all", "").lower() in ("1", "true", "yes", "on")
+    ready = db_ok and store_ok and CONFIG_STATUS.get("ok", True) and not halted
+    if check_rpc:
+        ready = ready and bool(rpc_ok)
+    out = {
+        "ok": ready,
+        "db": db_ok,
+        "store": {"backend": store.backend_name(), "ok": store_ok},
+        "config": CONFIG_STATUS,
+        "rpc": {"checked": check_rpc, "ok": rpc_ok},
+        "ops_flags": flags,
+        "pending_claims": pending_claims,
+    }
+    return JSONResponse(out, status_code=200 if ready else 503)
 
 
 # --------------------------------------------------------------------------- #

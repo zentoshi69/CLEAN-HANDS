@@ -9,6 +9,7 @@ Limits are env-tunable; defaults are conservative for a 100k-user launch.
 from __future__ import annotations
 
 import os
+import ipaddress
 from fastapi import HTTPException, Request
 
 import store
@@ -49,10 +50,17 @@ _TRUSTED_PROXIES = {
 
 def client_ip(request: Request) -> str:
     peer = request.client.host if request.client else "unknown"
-    if peer in _TRUSTED_PROXIES:
-        xff = request.headers.get("x-forwarded-for")
-        if xff:
-            return xff.split(",")[0].strip()  # left-most = original client
+    xff = request.headers.get("x-forwarded-for")
+    trust_proxy = peer in _TRUSTED_PROXIES
+    if os.environ.get("STAKE_TRUST_PROXY_HEADERS", "").strip().lower() in ("1", "true", "yes", "on"):
+        trust_proxy = True
+    try:
+        ip = ipaddress.ip_address(peer)
+        trust_proxy = trust_proxy or ip.is_loopback or ip.is_private
+    except ValueError:
+        pass
+    if xff and trust_proxy:
+        return xff.split(",")[0].strip()  # left-most = original client
     return peer
 
 

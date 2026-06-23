@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <title>$CLEAN — Soft Staking</title>
     <link rel="icon" href="/glove.png" />
@@ -67,6 +67,17 @@
       }
       .hide {
         display: none !important;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
       }
       .app {
         position: relative;
@@ -1728,12 +1739,34 @@
               <button class="btn btn-ghost" onclick="App.unstake()">Unstake</button>
             </div>
             <button
+              id="claim-btn"
               class="btn btn-solid"
               style="background: linear-gradient(120deg, var(--sky), var(--ink-2))"
               onclick="App.claim()"
             >
               Claim rewards (<span id="claimable">0</span>)
             </button>
+            <p class="desc" id="claim-note" style="margin-top: 10px"></p>
+            <div id="payout-setup" class="hide" style="margin-top: 12px">
+              <p class="desc">
+                💳 <b>Payout setup is open.</b> Confirm the wallet that will receive your rewards.
+                This requires a fresh wallet signature.
+              </p>
+              <div class="field">
+                <label class="sr-only" for="payout-addr">Payout wallet address</label>
+                <div class="input">
+                  <input
+                    id="payout-addr"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Payout wallet (blank = connected wallet)"
+                  />
+                </div>
+              </div>
+              <button class="btn btn-ghost" id="payout-btn" onclick="App.confirmPayout()">
+                Confirm payout wallet
+              </button>
+            </div>
           </div>
         </section>
 

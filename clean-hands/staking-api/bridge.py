@@ -458,8 +458,8 @@ def _persist(order_id, send, send_net, recv, recv_net, send_amt, recv_amt, recv_
                  status, _hash_ip(client_ip)),
             )
             conn.commit()
-    except Exception:  # noqa: BLE001 — record-keeping must never break the swap
-        pass
+    except Exception:  # noqa: BLE001
+        pass  # nosec B110
 
 
 def _update_status(order_id, status, recv_amount) -> None:
@@ -473,7 +473,7 @@ def _update_status(order_id, status, recv_amount) -> None:
             )
             conn.commit()
     except Exception:  # noqa: BLE001
-        pass
+        pass  # nosec B110
 
 
 def public_config() -> dict:

@@ -279,7 +279,7 @@ def test_integer_migration():
 
 def test_claims_manual():
     """Claim creates an idempotent 'requested' claim; admin marks it paid once."""
-    import db as _db, app, auth as _auth
+    import db as _db, app, auth as _auth, solana
     from fastapi.testclient import TestClient
 
     c = TestClient(app.app)
@@ -313,6 +313,10 @@ def test_claims_manual():
     mine = [p for p in pend if p["wallet"] == wallet]
     assert len(mine) == 1 and mine[0]["amount"] == 5.0
     cid = mine[0]["claim_id"]
+    async def fake_verify_transfer(tx_sig, destination_wallet, amount_base, mint=None):
+        return tx_sig == "TX123" and destination_wallet == wallet and amount_base == 5_000_000
+
+    solana.verify_transfer = fake_verify_transfer
     paid = c.post("/api/admin/mark_paid", json={"admin_token": adm, "claim_id": cid, "tx_sig": "TX123"}).json()
     assert paid["status"] == "paid"
     # idempotent: a second mark of the same claim fails
@@ -683,12 +687,23 @@ def test_payout_and_fee():
             )
             conn.commit()
         def _payout(address=None):
-            n = c.get("/api/nonce", params={"wallet": wallet}).json()["nonce"]
-            s = base58.b58encode(sk.sign(_auth.login_message(wallet, n).encode()).signature).decode()
-            body = {"token": token, "nonce": n, "signature": s}
+            body = {"token": token}
             if address is not None:
                 body["address"] = address
-            return c.post("/api/payout", json=body)
+            nr = c.post("/api/payout/nonce", json=body)
+            if nr.status_code != 200:
+                return nr
+            nonce_body = nr.json()
+            s = base58.b58encode(sk.sign(nonce_body["message"].encode()).signature).decode()
+            return c.post(
+                "/api/payout",
+                json={
+                    "token": token,
+                    "address": nonce_body.get("address"),
+                    "nonce": nonce_body["nonce"],
+                    "signature": s,
+                },
+            )
 
         # a stolen session token alone (no fresh signature) cannot set the payout
         assert c.post("/api/payout", json={"token": token, "address": "x"}).status_code == 401
@@ -749,6 +764,87 @@ def test_payout_and_fee():
         os.environ["STAKE_PAYOUT_SETUP_DAYS"] = "0"
         os.environ["STAKE_CLAIM_FEE_USD"] = "0"
     print("payout setup window + $5 claim fee ✓")
+
+
+def test_readyz_ops_flags_and_effective_rank():
+    """Readiness endpoint, operator pause flags, ghost-stake exclusion, and
+    finalized-transfer settlement are all 10k-launch gates."""
+    import app, db as _db, solana
+    import time as _t
+    from fastapi.testclient import TestClient
+
+    c = TestClient(app.app)
+    adm = os.environ["STAKE_ADMIN_TOKEN"]
+
+    async def fake_balance(wallet, mint=None):
+        return 1_000.0
+
+    solana.token_balance = fake_balance
+
+    rz = c.get("/readyz")
+    assert rz.status_code == 200, rz.text
+    body = rz.json()
+    assert body["ok"] is True and body["db"] is True and body["store"]["ok"] is True
+
+    # Operator kill switch fails closed for staking and makes readyz non-ready.
+    assert c.post(
+        "/api/admin/set_flag",
+        json={"admin_token": adm, "key": "halt_staking", "value": True},
+    ).json()["ok"] is True
+    assert c.post(
+        "/api/admin/flags",
+        json={"admin_token": adm},
+    ).json()["flags"]
+
+    sk = SigningKey.generate()
+    wallet = base58.b58encode(bytes(sk.verify_key)).decode()
+    n = c.get("/api/nonce", params={"wallet": wallet}).json()["nonce"]
+    sig = base58.b58encode(sk.sign(auth.login_message(wallet, n).encode()).signature).decode()
+    token = c.post("/api/login", json={"wallet": wallet, "signature": sig, "nonce": n}).json()["token"]
+    halted = c.post("/api/stake", json={"token": token})
+    assert halted.status_code == 503 and "paused" in halted.json()["detail"]
+    c.post("/api/admin/set_flag", json={"admin_token": adm, "key": "halt_staking", "value": False})
+
+    # Ghost stake: recorded_staked alone must not rank/count if cached balance is zero.
+    with _db.db() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO stakers "
+            "(wallet, recorded_staked, cached_balance, balance_ts, stake_start_ts, last_accrual_ts, created_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            ("Ghost111111111111111111111111111111111111", 9_999_000_000_000, 0, int(_t.time()), 1, 1, 1),
+        )
+        conn.commit()
+    lb = c.post("/api/leaderboard", json={"token": token}).json()["leaderboard"]
+    assert all(r["name"] != "Ghos…1111" for r in lb)
+    stats = c.get("/api/stats").json()
+    assert stats["total_staked"] < 9_999_000
+
+    # Admin settlement refuses an unverified tx, then accepts a verified transfer once.
+    with _db.db() as conn:
+        _db.create_claim(
+            conn,
+            wallet,
+            7_000_000,
+            gross_amount_base=7_000_000,
+            destination=wallet,
+            status="requested",
+        )
+        cid = conn.execute("SELECT MAX(id) AS id FROM claims WHERE wallet=?", (wallet,)).fetchone()["id"]
+
+    async def no_transfer(*args, **kwargs):
+        return False
+
+    solana.verify_transfer = no_transfer
+    bad = c.post("/api/admin/mark_paid", json={"admin_token": adm, "claim_id": cid, "tx_sig": "BADTX"})
+    assert bad.status_code == 400
+
+    async def yes_transfer(tx_sig, destination_wallet, amount_base, mint=None):
+        return tx_sig == "GOODTX" and destination_wallet == wallet and amount_base == 7_000_000
+
+    solana.verify_transfer = yes_transfer
+    ok = c.post("/api/admin/mark_paid", json={"admin_token": adm, "claim_id": cid, "tx_sig": "GOODTX"})
+    assert ok.status_code == 200 and ok.json()["status"] == "paid", ok.text
+    print("readyz + ops flags + effective rank + settlement verify ✓")
 
 
 def test_partial_stake():
@@ -831,30 +927,6 @@ def test_csp_permits_the_webapps_inline_handlers():
             "no inline handlers remain \u2014 tighten the CSP back (drop 'unsafe-inline')"
         )
     print(f"CSP vs inline handlers ({inline}) \u2713")
-
-
-if __name__ == "__main__":
-    test_economics()
-    test_auth_signature()
-    test_sessions_and_nonce()
-    test_api_flow()
-    test_partial_stake()
-    test_sliding_sessions_and_headers()
-    test_csp_permits_the_webapps_inline_handlers()
-    test_tg_collision()
-    test_integer_migration()
-    test_pg_translation()
-    test_claims_manual()
-    test_robustness()
-    test_reconcile()
-    test_ref_codes()
-    test_claim_lock_and_forfeit()
-    test_payout_and_fee()
-    test_rate_limit()  # exhausts the nonce bucket — keep it after nonce users
-    test_relay()
-    test_tg_handshake()
-    test_game_cloud_save_and_leaderboard()
-    print("\nALL STAKING TESTS PASSED")
 
 
 def test_portfolio_multi_wallet():
@@ -1035,3 +1107,31 @@ def test_game_cloud_save_and_leaderboard():
     assert c.get("/api/ref", params={"action": "refer", "ref": "abc123", "nid": "def456"}).status_code == 204
 
     print("game cloud-save + leaderboard + track/ref ✓")
+
+
+if __name__ == "__main__":
+    test_economics()
+    test_price_guards()
+    test_auth_signature()
+    test_sessions_and_nonce()
+    test_api_flow()
+    test_partial_stake()
+    test_sliding_sessions_and_headers()
+    test_csp_permits_the_webapps_inline_handlers()
+    test_tg_collision()
+    test_integer_migration()
+    test_pg_translation()
+    test_claims_manual()
+    test_robustness()
+    test_reconcile()
+    test_ref_codes()
+    test_claim_lock_and_forfeit()
+    test_payout_and_fee()
+    test_readyz_ops_flags_and_effective_rank()
+    test_portfolio_multi_wallet()
+    test_accrue_concurrent_no_double_credit()
+    test_relay()
+    test_tg_handshake()
+    test_game_cloud_save_and_leaderboard()
+    test_rate_limit()  # exhausts the nonce bucket — keep it last
+    print("\nALL STAKING TESTS PASSED")

@@ -42,6 +42,7 @@ LOGIN_PREFIX = "CLEAN soft-staking login"
 # look-alike clone over our nonce can't be relayed here, because the message
 # the wallet signs names this app's domain and we verify against it.
 LOGIN_DOMAIN = os.environ.get("STAKE_LOGIN_DOMAIN", "cleanhands.fun")
+PAYOUT_PREFIX = "CLEAN payout wallet confirmation"
 
 
 # --------------------------------------------------------------------------- #
@@ -52,6 +53,21 @@ def login_message(wallet: str, nonce: str) -> str:
     Carries the app domain so a signature phished by a clone site can't be
     replayed against this server (server issues AND re-verifies this message)."""
     return f"{LOGIN_PREFIX}\ndomain: {LOGIN_DOMAIN}\nwallet: {wallet}\nnonce: {nonce}"
+
+
+def payout_message(wallet: str, payout_wallet: str, nonce: str) -> str:
+    """Domain-separated approval for payout-destination changes.
+
+    A stolen browser session token alone must not be enough to redirect rewards.
+    The staking wallet signs the exact destination that will be stored.
+    """
+    return (
+        f"{PAYOUT_PREFIX}\n"
+        f"domain: {LOGIN_DOMAIN}\n"
+        f"staking wallet: {wallet}\n"
+        f"payout wallet: {payout_wallet}\n"
+        f"nonce: {nonce}"
+    )
 
 
 def is_valid_wallet(wallet: str) -> bool:
@@ -174,4 +190,15 @@ def issue_nonce(wallet: str) -> str:
 
 def consume_nonce(wallet: str, nonce: str) -> bool:
     saved = store.get_store().getdel(f"nonce:{wallet}")  # atomic single-use
+    return bool(saved and hmac.compare_digest(saved, nonce))
+
+
+def issue_action_nonce(wallet: str, action: str) -> str:
+    nonce = secrets.token_urlsafe(16)
+    store.get_store().setex(f"nonce:{action}:{wallet}", NONCE_TTL, nonce)
+    return nonce
+
+
+def consume_action_nonce(wallet: str, action: str, nonce: str) -> bool:
+    saved = store.get_store().getdel(f"nonce:{action}:{wallet}")
     return bool(saved and hmac.compare_digest(saved, nonce))

@@ -66,6 +66,9 @@ class MemoryStore:
                     self._counts.pop(ck, None)
         return count
 
+    def ping(self) -> bool:
+        return True
+
 
 class RedisStore:
     def __init__(self, url: str):
@@ -100,6 +103,9 @@ class RedisStore:
         p.expire(k, window + 1)
         return int(p.execute()[0])
 
+    def ping(self) -> bool:
+        return bool(self._r.ping())
+
 
 _store = None
 
@@ -114,3 +120,10 @@ def get_store():
 
 def backend_name() -> str:
     return "redis" if os.environ.get("REDIS_URL", "").strip() else "memory"
+
+
+def healthy() -> bool:
+    try:
+        return bool(get_store().ping())
+    except Exception:  # noqa: BLE001
+        return False

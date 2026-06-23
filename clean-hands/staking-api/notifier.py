@@ -56,6 +56,17 @@ def should_notify_claim(pending: int, min_base: int, last_ts: int, now: int, coo
     return pending >= min_base and (now - last_ts) >= cooldown
 
 
+def claim_ready_by_rules(row, now: int) -> bool:
+    lock_days = int(os.environ.get("STAKE_CLAIM_LOCK_DAYS", "90") or 0)
+    setup_days = int(os.environ.get("STAKE_PAYOUT_SETUP_DAYS", "3") or 0)
+    start = int(row["stake_start_ts"] or 0)
+    if lock_days > 0 and (not start or now - start < lock_days * 86400):
+        return False
+    if setup_days > 0 and not row["payout_confirmed_ts"]:
+        return False
+    return True
+
+
 # --------------------------------------------------------------------------- #
 #  RUNTIME                                                                     #
 # --------------------------------------------------------------------------- #
@@ -79,13 +90,15 @@ async def sweep_once() -> int:
             refs = db.active_referrals(conn, r["wallet"])
             pending = pending_base(r, refs, now)
             last = db.notif_last(conn, r["wallet"], "claim_ready")
+            if not claim_ready_by_rules(r, now):
+                continue
             if not should_notify_claim(pending, CLAIM_MIN_BASE, last, now, COOLDOWN):
                 continue
             ok = await dm(
                 r["tg_id"],
-                f"🧤 <b>${'CLEAN'}</b> rewards ready!\n"
-                f"You have <b>{db.to_ui(pending):,.2f}</b> $CLEAN to claim. "
-                f"Open the app to claim and keep your APR compounding.",
+                f"🧤 <b>${'CLEAN'}</b> payout window ready!\n"
+                f"You have <b>{db.to_ui(pending):,.2f}</b> $CLEAN available to request. "
+                f"Open the app to request payout.",
             )
             if ok:
                 db.notif_mark(conn, r["wallet"], "claim_ready", now)

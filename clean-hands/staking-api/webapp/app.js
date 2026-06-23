@@ -397,6 +397,7 @@
     $('rank').textContent = '#' + fmt(p.rank);
     $('balance').textContent = fmt(p.balance) + ' $CLEAN';
     $('claimable').textContent = fmt(p.pending_rewards);
+    paintClaimState(p);
     $('burned').textContent = fmt(p.total_burned) + ' $CLEAN';
     $('ref-count').textContent = fmt(p.active_referrals);
     $('inv-earned').textContent = fmt(p.active_referrals);
@@ -434,6 +435,34 @@
     document.querySelectorAll('.inv-count').forEach((e) => (e.textContent = fmt(p.active_referrals)));
     updatePortfolio();
     startTicker();
+  }
+
+  function paintClaimState(p) {
+    const note = $('claim-note');
+    const btn = $('claim-btn');
+    const setup = $('payout-setup');
+    const locked = !!(p.claim_locked && p.claim_lock_days > 0);
+    const needsPayout = !!(p.payout_setup_open && !p.payout_confirmed);
+    if (setup) setup.classList.toggle('hide', !needsPayout);
+    if (btn) btn.disabled = locked || needsPayout;
+    if (!note) return;
+    if (locked) {
+      note.textContent =
+        '🔒 Rewards unlock after ' +
+        p.claim_lock_days +
+        ' continuous days — ' +
+        p.claim_unlock_in_days +
+        'd to go. Unstaking resets pending rewards.';
+    } else if (needsPayout) {
+      note.textContent = '💳 Confirm a payout wallet before requesting rewards.';
+    } else if (Number(p.claim_fee_usd) > 0) {
+      note.textContent =
+        'Payouts are manual requests. A $' +
+        p.claim_fee_usd +
+        ' processing fee is deducted in $CLEAN.';
+    } else {
+      note.textContent = 'Payouts are manual requests from the treasury.';
+    }
   }
 
   let _tick = null;
@@ -599,9 +628,40 @@
       const r = await api('/api/claim', authedBody());
       paint(r.profile);
       haptic('medium');
-      toast('Claimed ' + fmt(r.claimed) + ' $CLEAN ✦');
+      toast('Payout requested: ' + fmt(r.requested || r.claimed) + ' $CLEAN ✦');
     } catch (e) {
       toast(String(e.message));
+    }
+  }
+  async function confirmPayout() {
+    if (!PROFILE || !TOKEN) return toast('Connect your wallet first');
+    const raw = ($('payout-addr') && $('payout-addr').value.trim()) || '';
+    const requested = raw || PROFILE.wallet;
+    const live = (CleanWallet.currentPubkey && CleanWallet.currentPubkey()) || '';
+    if (live && PROFILE.wallet && live !== PROFILE.wallet)
+      return toast('Reconnect the staking wallet before changing payout.');
+    try {
+      const n = await api('/api/payout/nonce', authedBody({ address: requested }));
+      const mode = SS.getItem('clw_wallet') || '';
+      let sig = '';
+      if (mode === 'injected' && CleanWallet.signInjected) {
+        sig = await withTimeout(CleanWallet.signInjected(n.message), 60000, 'Wallet sign');
+      } else if (mode === 'walletconnect' && CleanWallet.wcSign) {
+        sig = await withTimeout(CleanWallet.wcSign(n.message), 60000, 'WalletConnect sign');
+      } else {
+        throw new Error(
+          'Fresh wallet signature required — reconnect in a wallet/browser session, then confirm payout.',
+        );
+      }
+      const p = await api(
+        '/api/payout',
+        authedBody({ address: n.address || requested, nonce: n.nonce, signature: sig }),
+      );
+      paint(p);
+      haptic('medium');
+      toast('Payout wallet confirmed ✦');
+    } catch (e) {
+      toast('Payout setup failed: ' + String(e.message || e));
     }
   }
   async function submitBurn() {
@@ -2163,6 +2223,7 @@
     stake,
     unstake,
     claim,
+    confirmPayout,
     submitBurn,
     invite,
     copyLink,
