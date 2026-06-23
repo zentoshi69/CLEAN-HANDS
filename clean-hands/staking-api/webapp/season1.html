@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>$CLEAN — Clean Season 1</title>
+<meta name="description" content="Clean Season 1 — 90 days, one fixed pool, soft-staking. Stake to unlock the game, the music, the fashion. Perks, boosters & utility, explained clean."/>
+<meta property="og:title" content="$CLEAN — Clean Season 1"/>
+<meta property="og:description" content="90 days. One pool. Your keys. Stake to unlock the game, music & fashion. No promises — just your slice of a fixed pot."/>
+<meta property="og:image" content="https://cleanhands.fun/glove.png"/>
+<meta name="theme-color" content="#F4FAFF"/>
+<link rel="icon" href="/glove.png"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --sky:#86BFF8; --sky-2:#A9D3FB; --sky-soft:#D6EAFD; --glove:#EAF4FE;
+  --ink:#1B5DA6; --ink-2:#2E74C0; --ink-deep:#0F3E73; --text:#16385C; --muted:#4D6E93;
+  --sol:#9945FF; --sol-2:#14F195; --fire:#FF7A3C; --skin:#E7B492; --pos:#2F9E63;
+  --paper:#F4FAFF; --white:#FFFFFF;
+  --line:rgba(27,93,166,.16); --line-2:rgba(27,93,166,.28);
+  --shadow:0 24px 60px -28px rgba(27,93,166,.35);
+  --shadow-sm:0 10px 30px -18px rgba(27,93,166,.45);
+  --r:26px;
+}
+@property --p{syntax:'<number>';inherits:false;initial-value:0}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--paper);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(60% 50% at 12% 6%,rgba(134,191,248,.30),transparent 60%),radial-gradient(55% 45% at 92% 14%,rgba(169,211,251,.26),transparent 60%),radial-gradient(70% 60% at 50% 118%,rgba(134,191,248,.20),transparent 60%)}
+body::after{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E")}
+a{color:inherit;text-decoration:none}
+
+/* progress */
+#prog{position:fixed;top:0;left:0;height:3px;width:0;z-index:60;background:linear-gradient(90deg,var(--sky),var(--ink-2));box-shadow:0 0 12px rgba(134,191,248,.9)}
+
+/* nav */
+nav{position:fixed;top:0;left:0;right:0;z-index:50}
+nav .bar{margin:14px auto;max-width:1080px;display:flex;align-items:center;justify-content:space-between;padding:9px 12px 9px 14px;border-radius:20px;border:1.5px solid transparent;transition:.35s}
+nav.scrolled .bar{background:rgba(255,255,255,.72);backdrop-filter:blur(16px);border-color:var(--line);box-shadow:var(--shadow-sm)}
+.brand{display:flex;align-items:center;gap:11px;cursor:pointer}
+.gv{display:grid;place-items:center;border-radius:50%;border:1.5px solid var(--line);background:#fff;line-height:1}
+.brand .gv{width:42px;height:42px;font-size:1.3rem}
+.brand .lock{display:flex;flex-direction:column;line-height:.92}
+.brand b{font-family:'Fraunces',serif;font-size:1.04rem;font-weight:700;letter-spacing:.07em;color:var(--ink-deep)}
+.brand .sub{font-family:'Caveat',cursive;font-size:1.15rem;color:var(--ink-2);margin-top:-1px}
+.btn{font-family:inherit;font-weight:600;font-size:.92rem;cursor:pointer;border-radius:14px;padding:11px 20px;transition:.22s;border:1.5px solid var(--ink-2);white-space:nowrap;display:inline-flex;align-items:center;gap:8px}
+.btn-solid{background:var(--ink-2);color:#fff;box-shadow:0 10px 24px -12px rgba(46,116,192,.8)}
+.btn-solid:hover{background:var(--ink);transform:translateY(-2px)}
+.btn-ghost{background:rgba(255,255,255,.6);color:var(--ink);border-color:var(--line-2)}
+.btn-ghost:hover{background:#fff;transform:translateY(-2px)}
+
+/* layout */
+main{position:relative;z-index:2;max-width:1080px;margin:0 auto;padding:0 clamp(18px,4vw,40px) 60px}
+section{padding:60px 0;border-bottom:1.5px dashed var(--line)}
+section:last-of-type{border-bottom:none}
+.eyebrow{font-family:'Caveat',cursive;font-size:1.6rem;color:var(--ink-2);font-weight:700}
+h2.h{font-family:'Fraunces',serif;font-weight:600;color:var(--ink-deep);font-size:clamp(1.7rem,4vw,2.6rem);line-height:1.05;letter-spacing:-.01em;margin:2px 0 10px}
+.lede{color:var(--muted);font-size:1.05rem;max-width:640px;margin-bottom:6px}
+.lede b{color:var(--ink-deep)}
+h3.sub{font-family:'Fraunces',serif;font-weight:600;color:var(--ink-deep);font-size:1.15rem;margin:26px 0 12px}
+.card{background:rgba(255,255,255,.66);backdrop-filter:blur(10px);border:1.5px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow-sm)}
+.muted{color:var(--muted)} .mono{font-family:'JetBrains Mono',monospace}
+.pos{color:var(--pos)} .fire{color:var(--fire)}
+
+/* shine */
+.shine{background:linear-gradient(100deg,var(--ink-deep) 26%,var(--sky) 44%,var(--ink-2) 54%,var(--ink-deep) 72%);background-size:240% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;animation:shineMove 7s linear infinite}
+@keyframes shineMove{to{background-position:-240% 0}}
+
+/* hero */
+.hero{position:relative;padding:130px 0 60px;text-align:center;overflow:hidden;border-bottom:1.5px dashed var(--line)}
+.aurora{position:absolute;inset:-30% -10% auto;height:520px;z-index:0;pointer-events:none;filter:blur(64px);opacity:.7}
+.aurora i{position:absolute;border-radius:50%;mix-blend-mode:multiply;animation:auroraDrift 22s ease-in-out infinite alternate}
+.aurora i:nth-child(1){width:420px;height:420px;left:6%;top:0;background:radial-gradient(circle,rgba(134,191,248,.5),transparent 70%)}
+.aurora i:nth-child(2){width:360px;height:360px;right:8%;top:30px;background:radial-gradient(circle,rgba(169,211,251,.45),transparent 70%);animation-duration:26s}
+.aurora i:nth-child(3){width:280px;height:280px;left:46%;top:120px;background:radial-gradient(circle,rgba(20,241,149,.16),transparent 70%);animation-duration:30s}
+@keyframes auroraDrift{to{transform:translate(46px,32px) scale(1.12)}}
+.hero .gv{width:108px;height:108px;font-size:3.1rem;margin:0 auto;box-shadow:var(--shadow);animation:bob 5s ease-in-out infinite;position:relative;z-index:2}
+@keyframes bob{50%{transform:translateY(-10px)}}
+.hero h1{font-family:'Fraunces',serif;font-weight:700;font-size:clamp(2.8rem,10vw,6rem);line-height:.92;letter-spacing:-.02em;margin-top:18px;position:relative;z-index:2}
+.hero .scr{display:block;font-family:'Caveat',cursive;color:var(--ink-2);font-size:clamp(2rem,6vw,3.4rem);line-height:.8;margin-top:8px}
+.hero .lede{margin:24px auto 0;font-weight:600}
+.metarow{margin-top:26px;display:flex;gap:9px;flex-wrap:wrap;justify-content:center;position:relative;z-index:2}
+.pill{display:inline-flex;align-items:center;gap:8px;font-size:.74rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);border:1.5px solid var(--line-2);border-radius:100px;padding:8px 15px;background:rgba(255,255,255,.6)}
+.pill .dot{width:7px;height:7px;border-radius:50%;background:var(--sol-2);box-shadow:0 0 0 4px rgba(20,241,149,.18)}
+.stars{position:absolute;inset:0;pointer-events:none;z-index:1;overflow:hidden}
+.cstar{position:absolute;color:#fff;font-family:'Fraunces',serif;opacity:0;text-shadow:0 0 12px rgba(134,191,248,.95),0 0 30px rgba(169,211,251,.7);animation:cstar var(--d,3.4s) ease-in-out var(--w,0s) infinite}
+@keyframes cstar{0%{opacity:0;transform:translate(var(--fx),var(--fy)) scale(.2) rotate(-32deg)}45%{opacity:var(--o,1);transform:translate(0,0) scale(1) rotate(0)}62%{opacity:var(--o,1)}100%{opacity:0;transform:translate(calc(var(--fx)*-.5),calc(var(--fy)*-.5)) scale(.5) rotate(36deg)}}
+
+/* stat band */
+.statband{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:8px}
+@media(max-width:680px){.statband{grid-template-columns:1fr}}
+.stat{padding:22px}
+.stat .big{font-family:'Fraunces',serif;font-weight:700;color:var(--ink-deep);font-size:2rem;line-height:1}
+.stat .lab{font-size:.78rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-top:8px}
+.stat .note{font-size:.86rem;color:var(--muted);margin-top:6px}
+.gauge{height:11px;border-radius:100px;background:var(--glove);border:1.5px solid var(--line);overflow:hidden;margin:12px 0 4px}
+.gauge i{display:block;height:100%;width:0;border-radius:100px;background:linear-gradient(90deg,var(--sky),var(--ink-2));transition:width 1.2s cubic-bezier(.2,.8,.2,1)}
+
+/* timeline */
+.tl{position:relative;margin-top:24px}
+.tl .track{position:absolute;left:0;right:0;top:22px;height:4px;border-radius:100px;background:var(--glove);border:1px solid var(--line);overflow:hidden}
+.tl .track i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--sky),var(--ink-2),var(--sol));transition:width 1.6s cubic-bezier(.2,.8,.2,1)}
+.stops{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+@media(max-width:760px){.tl .track{display:none}.stops{grid-template-columns:1fr 1fr}}
+@media(max-width:460px){.stops{grid-template-columns:1fr}}
+.stop{text-align:center}
+.stop .node{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-size:1.4rem;margin:0 auto 12px;background:#fff;border:1.5px solid var(--line-2);box-shadow:var(--shadow-sm);position:relative;z-index:2}
+.stop.close .node{background:linear-gradient(160deg,var(--ink-2),var(--ink-deep));border-color:transparent}
+.stop .day{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:.74rem;letter-spacing:.1em;color:var(--ink-2);text-transform:uppercase}
+.stop h4{font-family:'Fraunces',serif;font-weight:600;color:var(--ink-deep);font-size:1.05rem;margin:4px 0 4px}
+.stop p{font-size:.84rem;color:var(--muted);line-height:1.45}
+
+/* two-earn */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
+@media(max-width:680px){.two{grid-template-columns:1fr}}
+.two .card{padding:24px}
+.two .tag{font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2)}
+.two h4{font-family:'Fraunces',serif;font-weight:600;color:var(--ink-deep);font-size:1.3rem;margin:6px 0 8px}
+
+/* booster ladder */
+.ladder{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:20px}
+@media(max-width:760px){.ladder{grid-template-columns:1fr}}
+.boost{padding:26px 22px;text-align:center;position:relative;overflow:hidden}
+.boost .dial{--p:0;width:118px;height:118px;border-radius:50%;margin:0 auto 16px;position:relative;display:grid;place-items:center;
+  background:conic-gradient(from -90deg,var(--sky),var(--ink-2) calc(var(--p)*1%),var(--glove) calc(var(--p)*1%));
+  transition:--p 1.3s cubic-bezier(.2,.8,.2,1);box-shadow:0 14px 30px -18px rgba(27,93,166,.5)}
+.boost.fire .dial{background:conic-gradient(from -90deg,#ffb38c,var(--fire) calc(var(--p)*1%),var(--glove) calc(var(--p)*1%))}
+.boost.gold .dial{background:conic-gradient(from -90deg,var(--sol-2),var(--sol) calc(var(--p)*1%),var(--glove) calc(var(--p)*1%))}
+.boost .dial::before{content:"";position:absolute;inset:14px;border-radius:50%;background:#fff;box-shadow:inset 0 2px 10px rgba(27,93,166,.14)}
+.boost .dial b{position:relative;font-family:'Fraunces',serif;color:var(--ink-deep);font-size:1.7rem}
+.boost .tag{font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.boost h4{font-family:'Fraunces',serif;font-weight:600;color:var(--ink-deep);font-size:1.25rem;margin:5px 0 8px}
+.boost p{font-size:.9rem;color:var(--muted)}
+.boost .seal{display:inline-block;margin-top:12px;font-size:.7rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;border-radius:100px;padding:5px 12px;border:1.5px solid var(--line-2);color:var(--ink-2);background:rgba(255,255,255,.6)}
+.boost.fire .seal{color:var(--fire);border-color:rgba(255,122,60,.4)}
+.boost.gold .seal{color:var(--sol);border-color:rgba(153,69,255,.35)}
+.sheen{position:absolute;top:0;left:-70%;width:55%;height:100%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.7),transparent);transform:skewX(-18deg);animation:sheen 4.5s ease-in-out infinite;pointer-events:none}
+@keyframes sheen{0%{left:-70%}55%,100%{left:160%}}
+
+/* math table */
+.tbl{width:100%;border-collapse:collapse;margin-top:14px;font-size:.95rem;overflow:hidden;border-radius:18px;border:1.5px solid var(--line)}
+.tbl th,.tbl td{padding:13px 16px;text-align:left;border-bottom:1px dashed var(--line)}
+.tbl th{font-size:.72rem;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:rgba(255,255,255,.5)}
+.tbl tr:last-child td{border-bottom:none}
+.tbl td:first-child{font-weight:700;color:var(--ink-deep)}
+.tbl .hl{color:var(--pos);font-weight:800}
+.tbl tr.spot td{background:rgba(20,241,149,.07)}
+.note-card{margin-top:16px;border-radius:18px;padding:18px 20px;border:1.5px solid rgba(46,116,192,.28);background:rgba(134,191,248,.10);font-size:.95rem;color:var(--ink-deep)}
+.note-card b{color:var(--ink-deep)}
+
+/* caps */
+.caps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
+@media(max-width:760px){.caps{grid-template-columns:1fr}}
+.cap-i{padding:22px}
+.cap-i .ic{font-size:1.6rem}
+.cap-i h4{font-family:'Fraunces',serif;font-weight:600;color:var(--ink-deep);font-size:1.05rem;margin:8px 0 6px}
+.cap-i p{font-size:.88rem;color:var(--muted)}
+
+/* pillars */
+.pillars{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:20px}
+@media(max-width:760px){.pillars{grid-template-columns:1fr}}
+.pil{padding:24px;position:relative;overflow:hidden}
+.pil .kic{font-size:1.8rem}
+.pil .ktag{font-size:.72rem;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2);margin-top:10px}
+.pil h4{font-family:'Fraunces',serif;font-weight:600;color:var(--ink-deep);font-size:1.3rem;margin:2px 0 12px}
+.pil ul{list-style:none}
+.pil li{padding:6px 0 6px 22px;position:relative;font-size:.92rem;color:var(--text)}
+.pil li::before{content:"✦";position:absolute;left:0;color:var(--ink-2)}
+.pass-line{margin-top:18px;text-align:center;font-family:'Caveat',cursive;font-size:1.5rem;color:var(--ink-2)}
+
+/* honesty */
+.honesty{border-radius:var(--r);padding:30px;border:1.5px solid rgba(47,158,99,.3);background:rgba(47,158,99,.06);margin-top:8px}
+.honesty h3{font-family:'Fraunces',serif;color:var(--pos);font-size:1.2rem;margin-bottom:10px}
+.honesty p{color:var(--text);font-size:.98rem;max-width:680px}
+.honesty p b{color:var(--ink-deep)}
+.dd{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}
+@media(max-width:680px){.dd{grid-template-columns:1fr}}
+.do,.dont{border-radius:18px;padding:20px;border:1.5px solid var(--line)}
+.do{background:rgba(47,158,99,.07);border-color:rgba(47,158,99,.3)}
+.dont{background:rgba(255,122,60,.07);border-color:rgba(255,122,60,.32)}
+.do h4,.dont h4{font-family:'Fraunces',serif;font-size:1rem;margin-bottom:8px}
+.do h4{color:var(--pos)}.dont h4{color:var(--fire)}
+.do li,.dont li{list-style:none;padding:5px 0 5px 24px;position:relative;font-size:.9rem;color:var(--text)}
+.do li::before{content:"✓";position:absolute;left:0;color:var(--pos);font-weight:800}
+.dont li::before{content:"✕";position:absolute;left:0;color:var(--fire);font-weight:800}
+
+/* cta + foot */
+.endcta{text-align:center;padding:70px 0 30px}
+.endcta .gv{width:84px;height:84px;font-size:2.4rem;margin:0 auto 18px;border:2px solid var(--line)}
+.endcta h2{font-family:'Fraunces',serif;font-weight:700;color:var(--ink-deep);font-size:clamp(1.8rem,5vw,2.8rem);line-height:1}
+.endcta .scr{display:block;font-family:'Caveat',cursive;color:var(--ink-2);font-size:clamp(1.8rem,5vw,2.6rem);line-height:.9;margin-top:2px}
+.endcta .row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:28px}
+.foot{text-align:center;padding:34px 0 10px;color:var(--muted);font-size:.84rem}
+.foot .cv{font-family:'Caveat',cursive;color:var(--ink-2);font-size:1.25rem}
+.disc{max-width:680px;margin:14px auto 0;font-size:.78rem;color:var(--muted);line-height:1.6}
+
+/* burst */
+.burst{position:fixed;left:0;top:0;z-index:120;pointer-events:none;color:var(--ink-2);font-family:'Fraunces',serif;will-change:transform,opacity}
+@keyframes burstfly{0%{opacity:1;transform:translate(0,0) scale(.4) rotate(0)}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1.15) rotate(var(--dr))}}
+
+@media(prefers-reduced-motion:reduce){*{animation:none!important}.shine{-webkit-text-fill-color:var(--ink-deep);color:var(--ink-deep);background:none}}
+</style>
+</head>
+<body>
+<div id="prog"></div>
+
+<nav id="nav">
+  <div class="bar">
+    <a class="brand" href="https://cleanhands.fun/"><span class="gv">🧤</span><span class="lock"><b>CLEAN HANDS.</b><span class="sub">Clean Season 1</span></span></a>
+    <a class="btn btn-solid" href="https://app.cleanhands.fun/">Start the wash ↗</a>
+  </div>
+</nav>
+
+<!-- ===== HERO ===== -->
+<header class="hero">
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="stars" id="heroStars" aria-hidden="true"></div>
+  <span class="gv">🧤</span>
+  <h1><span class="shine">CLEAN SEASON</span><span class="scr">season one ✦</span></h1>
+  <p class="lede">90 days. One fixed pool. Your keys, the whole time. <b>Soft-stake to unlock the game, the music and the fashion</b> — and earn your slice of a pot that can never run dry. No promises. Just the wash.</p>
+  <div class="metarow">
+    <span class="pill"><span class="dot"></span>Soft-staking · live</span>
+    <span class="pill">90 days</span>
+    <span class="pill">3% of supply pool</span>
+    <span class="pill">your tokens never move</span>
+  </div>
+</header>
+
+<main>
+  <!-- ===== THE POOL ===== -->
+  <section id="pool">
+    <span class="eyebrow">The pot</span>
+    <h2 class="h">One fixed pool. Shared pro-rata.</h2>
+    <p class="lede">We don't promise a rate. We set aside a fixed amount of $CLEAN, split it evenly across 90 days, and every day the stakers <b>share that day's pot</b> by their slice of the total staked. The pool can never owe more than it holds — so it can never run dry on you.</p>
+    <div class="statband">
+      <div class="card stat"><div class="big mono">30,000,000</div><div class="lab">$CLEAN · the season pool</div><div class="note">3% of total supply, reserved up front in a dedicated treasury wallet. Real tokens, ready to pay.</div></div>
+      <div class="card stat"><div class="big mono">333,333</div><div class="lab">$CLEAN · every day</div><div class="note">The daily pot. Split pro-rata across everyone staked that day.</div><div class="gauge"><i class="gfill" data-w="74%"></i></div></div>
+      <div class="card stat"><div class="big mono">90</div><div class="lab">days · one season</div><div class="note">Tied to the game beta. When it ends, Season 2 opens — new pool, new perks, new feature.</div></div>
+    </div>
+  </section>
+
+  <!-- ===== TIMELINE ===== -->
+  <section id="unlocks">
+    <span class="eyebrow">The wash cycle</span>
+    <h2 class="h">Stake once. Unlock more every 30 days.</h2>
+    <p class="lede">Staying staked is the whole game. Each checkpoint opens the next pillar of the brand — <b>but only for wallets still in the wash.</b> Unstake early and you keep what you've unlocked, but forfeit what's ahead.</p>
+    <div class="tl">
+      <div class="track"><i class="tlfill" data-w="100%"></i></div>
+      <div class="stops">
+        <div class="stop"><div class="node">🎮</div><div class="day">Day 0 · beta</div><h4>Game package</h4><p>Enter the season and the first game package unlocks instantly — the beta drops with Day 0.</p></div>
+        <div class="stop"><div class="node">🎵</div><div class="day">Day 30</div><h4>Music drop</h4><p>The first track / collectible, for stakers who stayed in through the first 30 days.</p></div>
+        <div class="stop"><div class="node">👕</div><div class="day">Day 60</div><h4>Fashion pre-sale</h4><p>Allowlist for the physical drop, plus a staged discount that deepens with your tier.</p></div>
+        <div class="stop close"><div class="node" style="color:#fff">✦</div><div class="day">Day 90</div><h4>Season close</h4><p>Allocations finalize, $CLEAN is claimable, your Founder status locks — and Season 2 is announced.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== TWO THINGS ===== -->
+  <section id="earn">
+    <span class="eyebrow">What you walk away with</span>
+    <h2 class="h">Two rewards, kept separate on purpose.</h2>
+    <p class="lede">Your stake size decides <b>how much</b> $CLEAN you earn. Your loyalty decides <b>what you get into.</b> That split is deliberate — it means a small bag that holds the distance still gets every unlock.</p>
+    <div class="two">
+      <div class="card">
+        <div class="tag">① Allocation — how much</div>
+        <h4>Your slice of the pot</h4>
+        <p class="muted">Pro-rata by your weighted stake. Bigger / longer stake = a bigger $CLEAN slice <i>and</i> a higher tier (deeper fashion discount, earlier allowlist).</p>
+      </div>
+      <div class="card">
+        <div class="tag">② Unlocks — what you get</div>
+        <h4>Access across the brand</h4>
+        <p class="muted">Milestone-gated, <b>not</b> size-gated. Stay 90 days with a small bag and you still unlock the game, the music and the fashion — just a smaller token slice.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== BOOSTERS ===== -->
+  <section id="boosters">
+    <span class="eyebrow">Crank the dial</span>
+    <h2 class="h">The commitment ladder.</h2>
+    <p class="lede">Three ways to weigh heavier in the pool — each a deeper level of commitment. All three feed the <b>same fixed pool</b>, so boosters only change how the pot is split. They can never make it bigger than it is, and they can never make us insolvent.</p>
+    <div class="ladder">
+      <div class="card boost"><span class="sheen"></span>
+        <div class="dial" data-p="30"><b>1.5×</b></div>
+        <div class="tag">Level 1 · soft-stake</div>
+        <h4>Hold to earn</h4>
+        <p>Tokens stay in your wallet. First 1M counts 1.0×; the 1M–10M band earns a <b>1.5× boost</b>. Fully reversible.</p>
+        <span class="seal">🤲 no custody</span>
+      </div>
+      <div class="card boost fire"><span class="sheen"></span>
+        <div class="dial" data-p="60"><b>3×</b></div>
+        <div class="tag">Level 2 · burn</div>
+        <h4>Burn to boost</h4>
+        <p>Permanently destroy $CLEAN for a <b>3× weight</b> on what you burn. Deflationary, on-chain, good for every holder.</p>
+        <span class="seal">🔥 permanent</span>
+      </div>
+      <div class="card boost gold"><span class="sheen"></span>
+        <div class="dial" data-p="100"><b>5×</b></div>
+        <div class="tag">Level 3 · Founder Pass</div>
+        <h4>Buy the Pass</h4>
+        <p>A one-time, non-refundable <b>membership</b> — allowlist priority, exclusive cosmetics, drops, a Founder badge, and a <b>5× multiplier</b>. A product, not a deposit.</p>
+        <span class="seal">🎟️ founder perk</span>
+      </div>
+    </div>
+    <div class="note-card"><b>How they stack:</b> the soft-stake bracket caps at <b>10M effective</b> per wallet. Burn adds on top (<span class="mono">+3× burned</span>); the Founder Pass multiplies your stake lane. The pool stays fixed regardless — so even a big stack only shifts the <i>token</i> split, never the unlocks.</div>
+  </section>
+
+  <!-- ===== HONEST MATH ===== -->
+  <section id="math">
+    <span class="eyebrow">The honest part</span>
+    <h2 class="h">We don't quote an APR. Here's why.</h2>
+    <p class="lede">Because the pool is fixed, your real return isn't a promise — it's a function of how many people show up. The less that's staked, the bigger everyone's slice. It self-balances, and it rewards being early.</p>
+    <p class="mono" style="margin-top:14px;color:var(--ink-deep);font-weight:700;font-size:1.05rem">season return ≈ 3% ÷ (share of supply staked)</p>
+    <table class="tbl">
+      <tr><th>If this much of supply is staked</th><th>Season return (90 days)</th><th>≈ annualized</th></tr>
+      <tr class="spot"><td>3% (30M)</td><td class="hl">100%</td><td>~400%</td></tr>
+      <tr><td>10% (100M)</td><td class="hl">30%</td><td>~120%</td></tr>
+      <tr><td>30% (300M)</td><td class="hl">10%</td><td>~40%</td></tr>
+      <tr><td>50% (500M)</td><td class="hl">6%</td><td>~24%</td></tr>
+    </table>
+    <div class="note-card">Numbers are <b>illustrative outcomes</b> of a fixed pool, not a rate we promise or owe. Your live share is always shown in-app as <b>"your slice of today's pot."</b></div>
+  </section>
+
+  <!-- ===== CAPS / FAIRNESS ===== -->
+  <section id="fair">
+    <span class="eyebrow">Keeping it clean</span>
+    <h2 class="h">Caps so whales can't hog the wash.</h2>
+    <div class="caps">
+      <div class="card cap-i"><div class="ic">🧢</div><h4>10M wallet cap</h4><p>Effective stake maxes out at 10M per wallet. Stake past it and you earn nothing extra — the top is capped.</p></div>
+      <div class="card cap-i"><div class="ic">👛</div><h4>20 wallets / user</h4><p>Each account can link up to 20 wallets. It raises the cost of gaming the split with sybil wallets.</p></div>
+      <div class="card cap-i"><div class="ic">🤲</div><h4>Access is protected</h4><p>Unlocks are milestone-gated, never size-gated. A whale can take more <i>tokens</i>, never more of the game, music or fashion than you.</p></div>
+    </div>
+  </section>
+
+  <!-- ===== PILLARS ===== -->
+  <section id="pillars">
+    <span class="eyebrow">The bigger picture</span>
+    <h2 class="h">$CLEAN is the membership layer for the whole brand.</h2>
+    <p class="lede">The token isn't the product — it's the key. Staking earns your way across three pillars, and the Season Pass converts your loyalty into <b>real things you use.</b></p>
+    <div class="pillars">
+      <div class="pil"><span class="sheen"></span><div class="kic">🤖</div><div class="ktag">Digital</div><h4>Made by us</h4><ul><li>AI influencer</li><li>The game</li><li>Music drops</li></ul></div>
+      <div class="pil"><span class="sheen"></span><div class="kic">⛓️</div><div class="ktag">Web3</div><h4>On-chain</h4><ul><li>$CLEAN memecoin</li><li>The dApp</li><li>Telegram bots</li></ul></div>
+      <div class="pil"><span class="sheen"></span><div class="kic">👟</div><div class="ktag">Physical</div><h4>In your hands</h4><ul><li>Fashion</li><li>Items</li><li>Collabs</li></ul></div>
+    </div>
+    <div class="pass-line">one stake → access across all three ✦</div>
+  </section>
+
+  <!-- ===== HONESTY ===== -->
+  <section id="honesty">
+    <span class="eyebrow">No smoke</span>
+    <h2 class="h">The fine print, said plainly.</h2>
+    <div class="honesty">
+      <h3>What Clean Season actually is</h3>
+      <p>Clean Season is a <b>discretionary loyalty program</b> with a fixed reward pool. The rewards are <b>ecosystem access</b> — game, music, fashion — and your slice of a fixed pot. It is <b>not an investment</b>: there is no guaranteed yield, no promised return, and <b>your tokens never leave your wallet.</b> The Founder Pass is a one-time purchase of a membership, not a deposit. This project is satire — please don't actually launder money. 🧤</p>
+    </div>
+    <div class="dd">
+      <div class="do"><h4>What we do</h4><ul><li>Fixed, pre-funded pool — we can always pay it</li><li>Soft-staking — your keys, the whole time</li><li>Show your live slice, never a fake APR</li><li>Burn that's permanent, on-chain, deflationary</li></ul></div>
+      <div class="dont"><h4>What we never do</h4><ul><li>"GUARANTEED 1000× APY 🚀"</li><li>Custody your funds or owe you a deposit back</li><li>Fake scarcity or FOMO pressure</li><li>Promise a rate the pool can't cover</li></ul></div>
+    </div>
+  </section>
+
+  <!-- ===== END CTA ===== -->
+  <div class="endcta">
+    <span class="gv">🧤</span>
+    <h2>Wash your bags.<span class="scr">come out spotless ✦</span></h2>
+    <div class="row">
+      <a class="btn btn-solid" href="https://app.cleanhands.fun/">Start the wash ↗</a>
+      <a class="btn btn-ghost" href="https://cleanhands.fun/whitepaper">Read the paper</a>
+    </div>
+  </div>
+
+  <div class="foot">
+    <div class="cv">made with gloves on ✦</div>
+    <p style="margin-top:6px">CLEAN — Clean Season 1 · Clean hands. Dirty money. · <a href="https://cleanhands.fun/" style="color:var(--ink-2);font-weight:700">cleanhands.fun</a></p>
+    <p class="disc">Illustrative figures describe the mechanics of a fixed reward pool and are not a promise, guarantee, or offer of yield, profit, or financial return. $CLEAN is a community memecoin and this page is satire. Nothing here is financial advice. Soft-staking is non-custodial — tokens remain in your wallet at all times.</p>
+  </div>
+</main>
+
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+
+/* nav + progress */
+const nav=$('#nav'),prog=$('#prog');
+addEventListener('scroll',()=>{
+  const h=document.documentElement;
+  nav.classList.toggle('scrolled',scrollY>20);
+  prog.style.width=(scrollY/(h.scrollHeight-h.clientHeight)*100)+'%';
+},{passive:true});
+
+/* hero twinkle stars */
+(function(){const host=$('#heroStars');if(!host)return;const G=['✦','✧','✶','✷'];
+  for(let i=0;i<20;i++){const s=document.createElement('span');s.className='cstar';s.textContent=G[i%G.length];
+    const ang=Math.random()*6.283,d=30+Math.random()*70;
+    s.style.cssText='left:'+(8+Math.random()*84)+'%;top:'+(12+Math.random()*64)+'%;font-size:'+(9+Math.random()*18)+'px;--fx:'+(Math.cos(ang)*d).toFixed(0)+'px;--fy:'+(Math.sin(ang)*d).toFixed(0)+'px;--d:'+(2.6+Math.random()*3)+'s;--w:-'+(Math.random()*4)+'s;--o:'+(0.5+Math.random()*0.45);
+    host.appendChild(s);}})();
+
+/* reveal: gauges, timeline, booster dials */
+const io=new IntersectionObserver((es)=>es.forEach(e=>{
+  if(!e.isIntersecting)return;
+  e.target.querySelectorAll('.gfill,.tlfill').forEach(g=>g.style.width=g.dataset.w);
+  e.target.querySelectorAll('.dial').forEach(d=>d.style.setProperty('--p',d.dataset.p));
+  io.unobserve(e.target);
+}),{threshold:.25});
+$$('section, .hero').forEach(s=>io.observe(s));
+
+/* sparkle burst on click — the signature interaction */
+function starBurst(x,y){if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  for(let i=0;i<16;i++){const s=document.createElement('div');s.className='burst';s.textContent='✦';
+    const a=Math.random()*6.283,d=46+Math.random()*110;s.style.left=x+'px';s.style.top=y+'px';
+    s.style.fontSize=(.7+Math.random()*1.2).toFixed(2)+'rem';
+    s.style.setProperty('--dx',(Math.cos(a)*d).toFixed(0)+'px');s.style.setProperty('--dy',(Math.sin(a)*d).toFixed(0)+'px');
+    s.style.setProperty('--dr',(Math.random()*180-90).toFixed(0)+'deg');
+    s.style.animation='burstfly '+(.7+Math.random()*.5).toFixed(2)+'s cubic-bezier(.2,.7,.3,1) forwards';
+    document.body.appendChild(s);setTimeout(()=>s.remove(),1300);}}
+addEventListener('click',e=>{if(e.target.closest('a,button'))return;starBurst(e.clientX,e.clientY);});
+</script>
+</body>
+</html>

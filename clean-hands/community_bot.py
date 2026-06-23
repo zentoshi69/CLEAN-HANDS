@@ -563,7 +563,9 @@ async def _run_meme(update: Update, context: ContextTypes.DEFAULT_TYPE, photo_ms
 async def cmd_memetest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin-only: end-to-end diagnosis of the AI wash engine, from inside TG."""
     uid = update.effective_user.id if update.effective_user else 0
-    if ADMIN_IDS and uid not in ADMIN_IDS:
+    # Fail CLOSED: with no ADMIN_IDS configured, deny everyone rather than letting
+    # any user trigger billed OpenAI calls (cost/DoS) via this admin diagnostic.
+    if not ADMIN_IDS or uid not in ADMIN_IDS:
         return
     if not OPENAI_API_KEY:
         await update.message.reply_text(

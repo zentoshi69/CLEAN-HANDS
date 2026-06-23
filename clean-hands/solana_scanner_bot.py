@@ -31,6 +31,7 @@ To MERGE into the Guardian bot instead of running separately: copy the three
 handlers registered in main() into guardian_bot.py's main() and share one token.
 """
 
+import html
 import os
 import re
 import time
@@ -129,8 +130,12 @@ def _fmt_usd(n) -> str:
 def build_verdict(report: dict) -> tuple[str, bool, str]:
     """Return (band, should_delete, message_html)."""
     meta = report.get("tokenMeta") or {}
-    name = meta.get("name") or "Unknown"
-    symbol = meta.get("symbol") or "?"
+    # Token name/symbol are attacker-controlled (anyone can mint a token). This
+    # message is sent with ParseMode.HTML, so escape them or a token named
+    # `</b><a href="…drainer">claim</a>` injects a clickable phishing link into
+    # the safety bot's own trusted warning.
+    name = html.escape(meta.get("name") or "Unknown")
+    symbol = html.escape(meta.get("symbol") or "?")
     score = report.get("score_normalised")
     rugged = bool(report.get("rugged"))
     mint_auth = report.get("mintAuthority")
@@ -191,7 +196,7 @@ def build_verdict(report: dict) -> tuple[str, bool, str]:
     if warnings:
         lines.append("⚠️ " + "; ".join(warnings))
     if not criticals and not warnings and danger_risks:
-        lines.append("⚠️ " + "; ".join(d.get("name", "") for d in danger_risks[:3]))
+        lines.append("⚠️ " + "; ".join(html.escape(d.get("name", "")) for d in danger_risks[:3]))
     lines.append("<i>Not financial advice. A score is not a guarantee — DYOR.</i>")
 
     return band, should_delete, "\n".join(lines)

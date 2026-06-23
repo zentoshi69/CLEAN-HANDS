@@ -6,6 +6,10 @@ Wants=network-online.target
 [Service]
 WorkingDirectory=/home/youruser/bots/staking-api
 EnvironmentFile=/home/youruser/bots/.env
+# Force fail-fast config in production regardless of what .env says: a missing/weak
+# STAKE_SERVER_SECRET (or mint) must REFUSE to boot, never silently fall back to a
+# random per-process key. Overrides any STAKE_ENV in the EnvironmentFile above.
+Environment=STAKE_ENV=prod
 ExecStart=/home/youruser/bots/staking-api/venv/bin/python app.py
 Restart=always
 RestartSec=5
