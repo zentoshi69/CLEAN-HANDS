@@ -4,8 +4,8 @@ ops-digest.py — DM the owner a daily ops digest: pending payouts + reconcile
 status + staking stats. Runs on the VPS (reads the DB directly). Schedule it in
 OpenClaw Cron or system cron once a day.
 
-  TG_NOTIFY_TOKEN=123:ABC OWNER_CHAT=<your telegram id> python ops-digest.py
-  python ops-digest.py --dry-run     # print the digest, don't send
+  TG_NOTIFY_TOKEN=123:ABC OWNER_CHAT=<your telegram id> ./venv/bin/python ops-digest.py
+  ./venv/bin/python ops-digest.py --dry-run     # print the digest, don't send
 
 (OWNER_CHAT falls back to the first id in TG_ADMIN_IDS; token falls back to
 TG_COMMUNITY_TOKEN. You must have started the bot in DM for it to message you.)
@@ -43,7 +43,7 @@ def build() -> str:
         f"• Reconcile: {'✅ clean' if rec['ok'] else '❌ DRIFT — ' + str(len(rec['issues'])) + ' issue(s)!'}",
     ]
     if pend:
-        lines.append("→ run `python pay.py list` to pay them out.")
+        lines.append("→ run `./venv/bin/python pay.py list` from staking-api to pay them out.")
     return "\n".join(lines)
 
 

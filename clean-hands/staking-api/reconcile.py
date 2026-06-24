@@ -10,7 +10,7 @@ Invariants (all in integer base units):
   • global:     Σ stakers.total_burned == Σ burns.amount
 
 Usage:
-    python reconcile.py            # prints report, exit 1 if any drift
+    ./venv/bin/python reconcile.py # prints report, exit 1 if any drift
 """
 
 from __future__ import annotations

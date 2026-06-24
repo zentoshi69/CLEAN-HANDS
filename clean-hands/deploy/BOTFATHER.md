@@ -43,7 +43,7 @@ referral links `…/app?startapp=<wallet>` work.
 On the server, with `.env` filled in:
 
 ```
-cd bots && python configure.py
+cd bots && venv/bin/python configure.py
 ```
 
 Sets each bot's name/description, the slash-command menus, default group admin

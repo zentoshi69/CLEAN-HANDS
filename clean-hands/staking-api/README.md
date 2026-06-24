@@ -173,7 +173,7 @@ rule snapshot. Pay out from the treasury and settle via the admin endpoints
   `halt_staking`, `halt_claims`, `halt_burns`, or `halt_payout_setup`.
 - `POST /api/admin/flags {admin_token}` → list current freeze flags.
 
-**Phase 3.3 (reconciliation) — done:** `python reconcile.py` checks the money
+**Phase 3.3 (reconciliation) — done:** `./venv/bin/python reconcile.py` checks the money
 invariants (claimed_total == Σ claims == Σ ledger claims; total_burned == Σ ledger
 burns == Σ burns) and exits non-zero on drift. Install the timer to run it daily:
 
@@ -185,9 +185,9 @@ sudo systemctl enable --now degen-reconcile.timer    # daily money-invariant che
 **Payout cheat-sheet (manual mode):**
 
 ```bash
-python pay.py list                  # pending claims + total to send
+./venv/bin/python pay.py list       # pending claims + total to send
 # …send $CLEAN from the treasury wallet…
-python pay.py mark <claim_id> <tx>  # verifies destination/amount, then records tx
+./venv/bin/python pay.py mark <claim_id> <tx>  # verifies destination/amount, then records tx
 ```
 
 **Edge hardening:** request body-size cap (413), security headers (nosniff /

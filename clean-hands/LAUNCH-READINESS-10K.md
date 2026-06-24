@@ -15,7 +15,7 @@ Do not launch if any of these are true:
 - `SOLANA_RPC_URL` points at the public Solana RPC.
 - `STAKE_SERVER_SECRET` or `STAKE_ADMIN_TOKEN` is shorter than 32 characters.
 - `TG_COMMUNITY_TOKEN`, `DEFAULT_TOKEN_MINT`, `MINIAPP_URL`, `MINIAPP_BOT_USERNAME`, or `MINIAPP_SHORT_NAME` is missing.
-- Payout operator cannot access the treasury wallet and cannot run `python staking-api/pay.py list`.
+- Payout operator cannot access the treasury wallet and cannot run `staking-api/venv/bin/python staking-api/pay.py list`.
 - No one has tested connect → stake → payout setup → claim error/success states on a real iPhone and Android Telegram webview.
 
 ## Required production env
@@ -47,7 +47,7 @@ SQLite is acceptable only for a single-node canary. For a full 10k push, prefer 
 
 - [ ] Commit and push the release.
 - [ ] Back up the current DB.
-- [ ] Run `python staking-api/test_staking.py`.
+- [ ] Run `staking-api/venv/bin/python staking-api/test_staking.py`.
 - [ ] Run `node staking-api/webapp/test_wallet_flow.mjs`.
 - [ ] Run `pip-audit -r staking-api/requirements.txt`.
 - [ ] Run `bandit -q -r staking-api -x staking-api/test_staking.py -s B101`.
@@ -122,8 +122,8 @@ Never mark a claim paid from a screenshot, explorer memory, or pasted text alone
 Use:
 
 ```bash
-python staking-api/pay.py list
-python staking-api/pay.py mark <claim_id> <tx_sig>
+staking-api/venv/bin/python staking-api/pay.py list
+staking-api/venv/bin/python staking-api/pay.py mark <claim_id> <tx_sig>
 ```
 
 `mark` verifies the finalized token transfer increased the snapshotted payout destination by at least the claim net amount before changing DB state.

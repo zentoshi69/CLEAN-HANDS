@@ -3,9 +3,9 @@
 pay.py — operator CLI for the manual payout flow. Runs on the server against the
 same DB (STAKE_DB / DATABASE_URL) as the API.
 
-  python pay.py list                  # list unpaid (requested) claims + total
-  python pay.py mark <id> <tx_sig>    # after sending $CLEAN from the treasury,
-                                      #   record the payout tx (idempotent)
+  ./venv/bin/python pay.py list                  # list unpaid claims + total
+  ./venv/bin/python pay.py mark <id> <tx_sig>    # after sending $CLEAN from the treasury,
+                                                 #   record the payout tx (idempotent)
 
 No private key is used here — you sign the treasury transfer in your own wallet,
 then record its signature. `mark` only ever transitions a 'requested' claim to

@@ -57,7 +57,7 @@ Edit `deploy/Caddyfile` (your domain) → install → restart Caddy.
 ## Phase 5 — @BotFather
 
 Follow `BOTFATHER.md`: privacy off, register the Mini App URL
-`https://app.cleanhands.fun/`, allow groups, then `python configure.py`, then
+`https://app.cleanhands.fun/`, allow groups, then `venv/bin/python configure.py`, then
 `/setup` in the group.
 ✅ Check: typing `/` in the group shows the command menus; the bot's menu button
 opens the app.
@@ -67,9 +67,9 @@ opens the app.
 - Open the Mini App → **connect wallet** (Phantom/Solflare/Backpack) → **stake** →
   see APR; **burn** (paste a burn tx or in-app if enabled) → APR rises.
 - **Leaderboard** + **invite link** work.
-- **Claim** → an entry appears in `python pay.py list`. Pay it from the treasury,
-  then `python pay.py mark <id> <tx>`.
-- `python reconcile.py` → "no drift".
+- **Claim** → an entry appears in `./venv/bin/python pay.py list`. Pay it from the treasury,
+  then `./venv/bin/python pay.py mark <id> <tx>`.
+- `./venv/bin/python reconcile.py` → "no drift".
 
 ## Phase 7 — Put it on the website (sync)
 
@@ -83,6 +83,6 @@ identical state. (See `site-sdk/README.md`.)
 
 - Logs: `journalctl -u degen-staking -u degen-community -f`
 - Restart one: `sudo systemctl restart degen-staking`
-- Payouts: `python pay.py list` → pay → `python pay.py mark <id> <tx>`
+- Payouts: `./venv/bin/python pay.py list` → pay → `./venv/bin/python pay.py mark <id> <tx>`
 - Integrity: `degen-reconcile.timer` runs `reconcile.py` daily (alerts on drift)
 - Rotate a leaked token: `/revoke` in @BotFather → update `.env` → restart

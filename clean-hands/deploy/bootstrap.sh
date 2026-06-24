@@ -239,5 +239,5 @@ echo  "   2. cd $STACK && venv/bin/python configure.py   (names/commands/menu)"
 echo  "   3. Open the Mini App on your phone -> connect wallet -> stake."
 echo
 echo  " Add a skipped token later: nano $ENVF  then re-run this script."
-echo  " Payouts: cd $STACK/staking-api && ../venv/bin/python pay.py list"
+echo  " Payouts: cd $STACK/staking-api && ./venv/bin/python pay.py list"
 c_grn "──────────────────────────────────────────────────────────"

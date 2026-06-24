@@ -40,6 +40,6 @@ content and draft actions, but never bans or payouts.
 ## Preview now (no posting)
 
 ```bash
-python clean-gm.py --dry-run
-python staking-api/ops-digest.py --dry-run
+venv/bin/python clean-gm.py --dry-run
+staking-api/venv/bin/python staking-api/ops-digest.py --dry-run
 ```
