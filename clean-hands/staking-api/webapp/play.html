@@ -1003,6 +1003,7 @@ function tapEarn(){
 function critChance(){ return Math.min(0.20, 0.018 + S.perks.ghost*0.03); }
 // Each Escape banks a permanent income multiplier: ×(1 + 0.75·prestige).
 function escMult(){ return 1 + 0.75*(safe(S.prestige)||0); }
+function stakingEscapeScore(){ return Math.max(0, escMult()); }
 function recompute(){
   // tap power
   let pt=1;
@@ -1556,7 +1557,7 @@ function doEscape(){
   $('#scene').animate([{filter:'brightness(2.2) saturate(1.5)'},{filter:'none'}],{duration:1100});
   toast('Relocated to '+PRESTIGE_CITIES[Math.min(S.prestige-1,PRESTIGE_CITIES.length-1)]+' — ×'+escMult().toFixed(2)+' income forever','✈︎','good');
   closePanel(); refresh();
-  try{ window.__cleanLayer && window.__cleanLayer.save && window.__cleanLayer.save(); }catch(e){}   // persist prestige now (local + cloud)
+  try{ saveAll(true); }catch(e){}   // persist prestige now (local + cloud)
 }
 // Lightweight reusable confirm dialog (built on demand, auto-removed on close).
 function confirmModal(o){
@@ -1900,9 +1901,9 @@ function boot(){
     if(typeof S.lifetime!=='number'||!isFinite(S.lifetime)||S.lifetime<S.total) S.lifetime=S.total;
     if(typeof S.prestige!=='number'||!isFinite(S.prestige)||S.prestige<0) S.prestige=0;
   }
-  function saveAll(){ try{ META.lastSeen=Date.now();
+  function saveAll(force){ try{ META.lastSeen=Date.now();
       localStorage.setItem(SAVE_KEY, JSON.stringify({ S:S, meta:META }));
-    }catch(e){} cloudSave(); }
+    }catch(e){} cloudSave(!!force); }
 
   /* ===== CLOUD SAVE (Mini App only) =================================
      Inside Telegram the host (app.js) postMessages our verified initData in;
@@ -1933,9 +1934,15 @@ function boot(){
           if(Array.isArray(remote.S.repClaimed)) S.repClaimed=remote.S.repClaimed.slice();
           if(remote.meta) Object.assign(META, remote.meta);
           normalizePrestige();
+          notifyHostEscapeSaved();
           recompute(); refresh(); toast('Cloud save restored','☁️','good');
         }
       }).catch(function(){});
+  }
+  function notifyHostEscapeSaved(){
+    try{
+      if(parent && parent!==window) parent.postMessage({type:'clean:escape-saved', escapeScore:stakingEscapeScore()}, window.location.origin);
+    }catch(e){}
   }
   function cloudSave(force){
     if(!TG_INIT) return;
@@ -1944,7 +1951,9 @@ function boot(){
     _cloudSaveT=now;
     try{
       var body=JSON.stringify({ initData:TG_INIT, state:JSON.stringify({S:S,meta:META}), score:Math.floor(S.lifetime||S.total||0) });
-      fetch('/api/game/save',{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true}).catch(function(){});
+      fetch('/api/game/save',{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true})
+        .then(function(r){ if(r.ok) notifyHostEscapeSaved(); })
+        .catch(function(){});
     }catch(e){}
   }
   function applyOffline(){

@@ -42,12 +42,26 @@ log = logging.getLogger("notifier")
 # --------------------------------------------------------------------------- #
 #  PURE LOGIC (unit-tested via --selftest)                                     #
 # --------------------------------------------------------------------------- #
-def pending_base(row, refs: int, now: int) -> int:
+def escape_score_for(conn, row) -> float:
+    tg_id = row["tg_id"] if row and row["tg_id"] is not None else None
+    if tg_id is None:
+        return 0.0
+    game = db.game_load(conn, f"tg:{int(tg_id)}")
+    return econ.escape_score_from_state(game["state"]) if game else 0.0
+
+
+def pending_base(row, refs: int, now: int, escape_score: float = 0.0) -> int:
     """Read-only projection of a staker's claimable rewards at `now` (base units),
     mirroring the API's accrual without writing."""
     eff = econ.effective_staked(row["recorded_staked"], row["cached_balance"])
     secs = now - row["stake_start_ts"] if (eff > 0 and row["stake_start_ts"]) else 0
-    apr = econ.effective_apr(db.to_ui(eff), secs, refs, db.to_ui(row["total_burned"])).effective_apr
+    apr = econ.effective_apr(
+        db.to_ui(eff),
+        secs,
+        refs,
+        db.to_ui(row["total_burned"]),
+        escape_score=escape_score,
+    ).effective_apr
     dt = now - row["last_accrual_ts"]
     return int(row["accrued"]) + int(econ.accrue(eff, apr, dt))
 
@@ -88,7 +102,7 @@ async def sweep_once() -> int:
         rows = db.stakers_with_tg(conn)
         for r in rows:
             refs = db.active_referrals(conn, r["wallet"])
-            pending = pending_base(r, refs, now)
+            pending = pending_base(r, refs, now, escape_score_for(conn, r))
             last = db.notif_last(conn, r["wallet"], "claim_ready")
             if not claim_ready_by_rules(r, now):
                 continue

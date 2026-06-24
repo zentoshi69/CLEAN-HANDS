@@ -196,6 +196,19 @@ def _wallet_usd(wallet: str, row) -> tuple[float, float]:
     return sol_usd, clean_usd
 
 
+def _escape_score_for(conn, row) -> float:
+    """Telegram-bound game progress -> staking Escape score.
+
+    Wallet-only sessions get no game reward boost. For Telegram users, we read
+    their saved game state and derive the same Escape multiplier the game shows.
+    """
+    tg_id = row["tg_id"] if row and row["tg_id"] is not None else None
+    if tg_id is None:
+        return 0.0
+    game = db.game_load(conn, f"tg:{int(tg_id)}")
+    return econ.escape_score_from_state(game["state"]) if game else 0.0
+
+
 async def _refresh_balance(conn, row, force: bool = False, fail_closed: bool = False) -> int:
     """Returns the wallet's $CLEAN balance in integer base units (cached)."""
     now = int(time.time())
@@ -225,10 +238,12 @@ def _apr_for(conn, wallet: str, row):
     secs = now - row["stake_start_ts"] if (eff_base > 0 and row["stake_start_ts"]) else 0
     refs = db.active_referrals(conn, wallet)
     sol_usd, clean_usd = _wallet_usd(wallet, row)
+    escape_score = _escape_score_for(conn, row)
     apr = econ.effective_apr(
         db.to_ui(eff_base), secs, refs, db.to_ui(row["total_burned"]),
         (row["mm_liquidity_cents"] or 0) / 100.0, sol_usd, clean_usd,
         vip=bool(row["mm_vip"]),
+        escape_score=escape_score,
     )
     return eff_base, secs, refs, apr
 
@@ -918,6 +933,31 @@ def _game_player(init_data: str) -> tuple[str, str]:
     return f"tg:{tg['id']}", str(name)[:32]
 
 
+def _game_state_with_escape_floor(state: str, floor_score: float) -> str | None:
+    """Preserve the highest permanent Escape multiplier across stale saves."""
+    try:
+        data = json.loads(state or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    cur = econ.escape_score_from_state(data)
+    if cur >= floor_score:
+        return state
+    s = data.get("S")
+    if not isinstance(s, dict):
+        s = {}
+        data["S"] = s
+    # In the current game, Escape multiplier = 1 + 0.75 * prestige.
+    prestige_floor = int(max(0.0, ((float(floor_score) - 1.0) / 0.75)) + 0.999999)
+    try:
+        cur_prestige = float(s.get("prestige") or 0)
+    except (TypeError, ValueError):
+        cur_prestige = 0.0
+    s["prestige"] = max(cur_prestige, prestige_floor)
+    return json.dumps(data, separators=(",", ":"))
+
+
 @app.post("/api/game/save")
 def api_game_save(body: GameSaveBody):
     player, tg_name = _game_player(body.initData)
@@ -926,9 +966,16 @@ def api_game_save(body: GameSaveBody):
         raise HTTPException(413, "game state too large")
     score = max(0, min(int(body.score or 0), 10**15))
     name = str(body.name or tg_name)[:32]
+    escape_score = econ.escape_score_from_state(state)
     with db.db() as conn:
+        existing = db.game_load(conn, player)
+        if existing:
+            prior_escape = econ.escape_score_from_state(existing["state"])
+            if prior_escape > escape_score:
+                state = _game_state_with_escape_floor(state, prior_escape) or existing["state"]
+                escape_score = econ.escape_score_from_state(state)
         db.game_save(conn, player, name, state, score)
-    return {"ok": True}
+    return {"ok": True, "escape_score": escape_score, "escape_boost": econ.escape_boost(escape_score)}
 
 
 @app.post("/api/game/load")
@@ -1181,6 +1228,9 @@ def api_economics():
             "loyalty_cap": econ.LOYALTY_CAP,
             "referral_per": econ.REFERRAL_PER,
             "referral_cap": econ.REFERRAL_CAP,
+            "escape_tiers": econ.ESCAPE_TIERS,
+            "escape_cap": econ.ESCAPE_TIERS[0][0],
+            "escape_cap_boost": econ.ESCAPE_TIERS[0][1],
             "burn_unit": econ.BURN_UNIT,
             "burn_apr_per_unit": econ.BURN_APR_PER_UNIT,
             "burn_cap_apr": econ.BURN_CAP_APR,

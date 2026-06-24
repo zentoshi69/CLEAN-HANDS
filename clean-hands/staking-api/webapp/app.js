@@ -68,6 +68,17 @@
   function pct(x) {
     return '+' + Math.round(Number(x || 0) * 100) + '%';
   }
+  function escapeScoreLabel(score) {
+    score = Number(score || 0);
+    if (!score) return '—';
+    return '×' + (score >= 10 ? score.toFixed(0) : score.toFixed(2));
+  }
+  function escapeBoostLabel(a) {
+    const score = Number((a && a.escape_score) || 0);
+    const boost = Number((a && a.escape_boost) || 0);
+    if (!score) return 'play to unlock';
+    return escapeScoreLabel(score) + ' → ' + pct(boost);
+  }
   function esc(s) {
     return String(s).replace(
       /[&<>"']/g,
@@ -422,6 +433,7 @@
     $('b-amount').textContent = pct(a.amount_boost);
     $('b-loyalty').textContent = pct(a.loyalty_boost);
     $('b-ref').textContent = pct(a.referral_boost);
+    $('b-escape').textContent = pct(a.escape_boost);
     $('b-burn').textContent = pct(a.burn_bonus_apr);
     $('inv-bonus').textContent = pct(a.referral_boost);
     // grey out boosters that are still zero (matches the design's .zero style)
@@ -429,6 +441,7 @@
       ['b-amount', a.amount_boost],
       ['b-loyalty', a.loyalty_boost],
       ['b-ref', a.referral_boost],
+      ['b-escape', a.escape_boost],
       ['b-burn', a.burn_bonus_apr],
     ].forEach(([id, v]) => {
       const el = $(id);
@@ -520,6 +533,18 @@
       } else toast(String(e.message));
     }
   }
+
+  let _escapeProfileRefresh = 0;
+  window.addEventListener('message', (e) => {
+    if (e.origin !== window.location.origin) return;
+    const d = e.data || {};
+    if (d.type !== 'clean:escape-saved') return;
+    if (!TOKEN) return;
+    const now = Date.now();
+    if (now - _escapeProfileRefresh < 1500) return;
+    _escapeProfileRefresh = now;
+    setTimeout(refresh, 350);
+  });
 
   // The saved session token authenticated a DIFFERENT, EMPTY wallet than the one
   // live in the extension right now. Classic Brave case: its built-in wallet
@@ -1255,8 +1280,8 @@
 
   // ---- Boost Lab -------------------------------------------------------- //
   // Drives the booster dial + milestones from REAL profile data. Boosters are
-  // additive: multiplier = 1 + amount + loyalty + referral + liquidity. Burn is
-  // a flat APR bonus on top (shown separately).
+  // additive: multiplier = 1 + amount + wallet + loyalty + referral + liquidity
+  // + Escape. Burn is a flat APR bonus on top (shown separately).
   function paintBoostLab(a, prevBurn) {
     const add =
       (Number(a.amount_boost) || 0) +
@@ -1264,6 +1289,7 @@
       (Number(a.loyalty_boost) || 0) +
       (Number(a.referral_boost) || 0) +
       (Number(a.liquidity_boost) || 0) +
+      (Number(a.escape_boost) || 0) +
       (Number(a.vip_boost) || 0);
     const mult = 1 + add;
     const set = (id, v) => {
@@ -1284,6 +1310,7 @@
     set('bl-loyalty', pct(a.loyalty_boost));
     set('bl-ref', pct(a.referral_boost));
     set('bl-lp', a.liquidity_boost ? pct(a.liquidity_boost) : 'soon');
+    set('bl-escape', escapeBoostLabel(a));
     set('bl-vip', a.vip_boost ? '3× locked ✦' : '—');
     set('bl-burn', pct(a.burn_bonus_apr));
     [
@@ -1292,6 +1319,7 @@
       ['bl-loyalty', a.loyalty_boost],
       ['bl-ref', a.referral_boost],
       ['bl-lp', a.liquidity_boost],
+      ['bl-escape', a.escape_boost],
       ['bl-vip', a.vip_boost],
       ['bl-burn', a.burn_bonus_apr],
     ].forEach(([id, v]) => {
