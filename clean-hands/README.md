@@ -46,9 +46,18 @@ Telegram + Website ─→ Caddy (HTTPS app.cleanhands.fun) ─→ staking-api :8
 ## Soft staking, in one line
 
 Tokens never leave the user's wallet. The backend snapshots the wallet's $CLEAN and
-accrues yield (base APR × amount/loyalty/referral boosts + burn-to-boost), all in
-integer base units, with an append-only ledger + daily reconciliation. Payout is
-**manual** — no private key on the server. See `staking-api/README.md`.
+accrues yield from base APR, verified staking-power boosters, and burn-to-boost,
+all in integer base units, with an append-only ledger + daily reconciliation.
+Payout is **manual** — no private key on the server. See `staking-api/README.md`.
+
+## Mechanics docs
+
+- [`APP-MECHANICS.md`](APP-MECHANICS.md) — full GitHub-readable explanation of
+  wallet login, soft staking, boosters, game/social verification, claims, data
+  model, and operator safety controls.
+- [`docs/CLEAN-STAKING-ONE-PAGER.md`](docs/CLEAN-STAKING-ONE-PAGER.md) and
+  [`docs/CLEAN-STAKING-ONE-PAGER.pdf`](docs/CLEAN-STAKING-ONE-PAGER.pdf) —
+  branded one-page staking explainer for users, partners, and moderators.
 
 **Boosters & burn:** full user + dev guide in [`BOOSTERS.md`](BOOSTERS.md) — how the
 additive APR stack works, the on-chain burn mechanic, the liquidity booster, and the
