@@ -1363,7 +1363,7 @@ def _tg_page(title: str, body: str, err: bool = False) -> HTMLResponse:
         "a.btn{display:block;background:#2E74C0;color:#fff;text-decoration:none;font-weight:700;"
         "border-radius:14px;padding:14px;box-shadow:0 12px 24px -12px rgba(46,116,192,.8)}"
         "</style></head><body><div class='c'>"
-        "<img src='/glove.png' alt='$CLEAN'>"
+        "<img src='/glove.png?v=2' alt='$CLEAN'>"
         f"<h1>{title}</h1>{body}</div></body></html>"
     )
     return HTMLResponse(html)
@@ -1876,16 +1876,24 @@ def wallet_return():
 
 @app.get("/glove.png")
 def glove_png():
-    return FileResponse(
-        os.path.join(os.path.dirname(_WEB), "..", "assets", "glove.png"), headers=_DAY_CACHE
-    )
+    for path in (
+        os.path.join(_WEB, "glove.png"),
+        os.path.join(os.path.dirname(_WEB), "..", "assets", "glove.png"),
+    ):
+        if os.path.isfile(path):
+            return FileResponse(path, headers=_DAY_CACHE)
+    raise HTTPException(404, "asset missing")
 
 
 @app.get("/banner.png")
 def banner_png():
-    return FileResponse(
-        os.path.join(os.path.dirname(_WEB), "..", "assets", "banner.png"), headers=_DAY_CACHE
-    )
+    for path in (
+        os.path.join(_WEB, "banner.png"),
+        os.path.join(os.path.dirname(_WEB), "..", "assets", "banner.png"),
+    ):
+        if os.path.isfile(path):
+            return FileResponse(path, headers=_DAY_CACHE)
+    raise HTTPException(404, "asset missing")
 
 
 @app.get("/scenes/{filename}")
@@ -1960,7 +1968,7 @@ def glove_link(code: str, request: Request):
         "a.btn{display:block;background:#2E74C0;color:#fff;text-decoration:none;font-weight:700;"
         "border-radius:14px;padding:15px;box-shadow:0 12px 24px -12px rgba(46,116,192,.8)}"
         "</style></head><body><div class='c'>"
-        "<img src='/glove.png' alt='$CLEAN'>"
+        "<img src='/glove.png?v=2' alt='$CLEAN'>"
         "<h1>You're invited to $CLEAN</h1>"
         f"<div class='code'>{code}</div>"
         f"<p>{desc}<br>Connect, stake, and you BOTH get the referral boost.</p>"

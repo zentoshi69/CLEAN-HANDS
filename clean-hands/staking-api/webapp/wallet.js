@@ -619,7 +619,7 @@
     name: '$CLEAN Staking',
     description: 'CLEAN soft staking — clean hands, dirty money',
     url: location.origin,
-    icons: [location.origin + '/glove.png'],
+    icons: [location.origin + '/glove.png?v=2'],
   });
   const _wcAccount = (session) => {
     const accounts = (session && session.namespaces.solana.accounts) || [];
