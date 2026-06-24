@@ -851,8 +851,13 @@ def test_readyz_ops_flags_and_effective_rank():
 
 def test_partial_stake():
     """Stake only a percent of the bag: floor math, bounds, re-stake updates."""
-    import app, db as _db
+    import app, db as _db, solana
     from fastapi.testclient import TestClient
+
+    async def fake_balance(wallet, mint=None):
+        return 2_000_000.0
+
+    solana.token_balance = fake_balance
 
     c = TestClient(app.app)
     sk = SigningKey.generate()
@@ -861,7 +866,8 @@ def test_partial_stake():
     sig = base58.b58encode(sk.sign(auth.login_message(wallet, nonce).encode()).signature).decode()
     token = c.post("/api/login", json={"wallet": wallet, "signature": sig, "nonce": nonce}).json()["token"]
 
-    # fake balance comes from the suite-wide solana monkeypatch (2,000,000)
+    # Pin the balance locally so the test does not depend on any previous
+    # suite-wide monkeypatch state.
     half = c.post("/api/stake", json={"token": token, "percent": 50}).json()
     assert half["staked"] == 1_000_000, half
     # bounds rejected

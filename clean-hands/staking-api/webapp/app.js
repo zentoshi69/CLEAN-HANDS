@@ -842,6 +842,18 @@
     if (tg && tg.openLink) tg.openLink(u);
     else window.open(u, '_blank');
   }
+  function appSurfaceUrl(serverPath, localFile) {
+    if (location.protocol !== 'file:') return location.origin + serverPath;
+    try {
+      const here = new URL(location.href);
+      here.hash = '';
+      here.search = '';
+      here.pathname = here.pathname.replace(/[^/]*$/, localFile);
+      return here.href;
+    } catch (e) {
+      return localFile;
+    }
+  }
   function buy() {
     if (MINT)
       openExt(`https://jup.ag/swap?sell=So11111111111111111111111111111111111111112&buy=${MINT}`);
@@ -854,7 +866,7 @@
     if (MINT) openExt(`https://birdeye.so/token/${MINT}?chain=solana`);
   }
   function whitepaper() {
-    openExt(location.origin + '/whitepaper');
+    openExt(appSurfaceUrl('/whitepaper', 'whitepaper.html'));
   }
   function loadSwap() {
     if (!MINT) return toast('Price still loading…');

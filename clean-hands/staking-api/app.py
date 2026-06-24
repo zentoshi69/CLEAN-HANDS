@@ -1846,6 +1846,11 @@ def whitepaper():
     return FileResponse(os.path.join(_WEB, "whitepaper.html"), headers=_NO_CACHE)
 
 
+@app.get("/whitepaper.html")
+def whitepaper_html():
+    return whitepaper()
+
+
 @app.get("/whitepaper.js")
 def whitepaper_js():
     # The whitepaper's ambience script lives in its own file because the CSP
