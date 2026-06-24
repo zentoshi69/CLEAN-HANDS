@@ -786,6 +786,57 @@
         margin-top: 10px;
         text-align: center;
       }
+      #view-boost .mm-soon-card {
+        position: relative;
+        overflow: hidden;
+      }
+      #view-boost .mm-soon-content {
+        filter: blur(1.1px);
+        opacity: 0.58;
+        pointer-events: none;
+        user-select: none;
+      }
+      #view-boost .mm-soon-card::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        background:
+          radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.46), rgba(244, 250, 255, 0.28) 58%, rgba(244, 250, 255, 0.18)),
+          rgba(255, 255, 255, 0.16);
+        backdrop-filter: blur(1.8px);
+        pointer-events: none;
+      }
+      #view-boost .mm-soon-badge {
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        display: grid;
+        place-items: center;
+        pointer-events: none;
+        padding: 22px;
+      }
+      #view-boost .mm-soon-badge span {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 172px;
+        padding: 12px 20px 13px;
+        border-radius: 999px;
+        border: 1.5px solid rgba(46, 116, 192, 0.28);
+        background: rgba(255, 255, 255, 0.74);
+        box-shadow:
+          0 18px 34px -24px rgba(27, 93, 166, 0.65),
+          inset 0 1px 0 rgba(255, 255, 255, 0.86);
+        color: var(--ink-deep);
+        font-family: 'Fraunces', serif;
+        font-size: 1.02rem;
+        font-weight: 800;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+        text-align: center;
+        backdrop-filter: blur(8px) saturate(1.08);
+      }
 
       /* leaderboard */
       .lb {
@@ -1934,28 +1985,31 @@
               <button class="chip" data-burn="100000">🔥 100K</button>
             </div>
           </div>
-          <div class="card panel">
-            <h3>💧 Market-maker liquidity</h3>
-            <p class="desc">
-              Add <b>$CLEAN + SOL</b> to the pool to earn up to <b>+0.70×</b> — the tier that tops
-              your stack to a clean 3×. Real liquidity, real swap fees.
-            </p>
-            <div class="field">
-              <div class="top-l"><span>$CLEAN</span><span id="bl-lp-clean-bal">—</span></div>
-              <div class="input">
-                <input id="bl-lp-clean" type="number" inputmode="decimal" min="0" placeholder="CLEAN amount" />
-                <button type="button" class="max" id="bl-lp-clean-max" style="margin-left: 8px">Max</button>
+          <div class="card panel mm-soon-card" aria-label="Market-maker liquidity coming soon">
+            <div class="mm-soon-content" aria-hidden="true">
+              <h3>💧 Market-maker liquidity</h3>
+              <p class="desc">
+                Add <b>$CLEAN + SOL</b> to the pool to earn up to <b>+0.70×</b> — the tier that tops
+                your stack to a clean 3×. Real liquidity, real swap fees.
+              </p>
+              <div class="field">
+                <div class="top-l"><span>$CLEAN</span><span id="bl-lp-clean-bal">—</span></div>
+                <div class="input">
+                  <input id="bl-lp-clean" type="number" inputmode="decimal" min="0" placeholder="CLEAN amount" disabled />
+                  <button type="button" class="max" id="bl-lp-clean-max" style="margin-left: 8px" disabled>Max</button>
+                </div>
               </div>
-            </div>
-            <div class="field">
-              <div class="top-l"><span>SOL · required</span><span id="bl-lp-sol-bal">—</span></div>
-              <div class="input">
-                <input id="bl-lp-sol" type="number" inputmode="decimal" min="0" placeholder="SOL amount" />
-                <button type="button" class="max" id="bl-lp-sol-max" style="margin-left: 8px">Max</button>
+              <div class="field">
+                <div class="top-l"><span>SOL · required</span><span id="bl-lp-sol-bal">—</span></div>
+                <div class="input">
+                  <input id="bl-lp-sol" type="number" inputmode="decimal" min="0" placeholder="SOL amount" disabled />
+                  <button type="button" class="max" id="bl-lp-sol-max" style="margin-left: 8px" disabled>Max</button>
+                </div>
               </div>
+              <button class="btn btn-solid" disabled>💧 Add to MM pool</button>
+              <p class="bl-soon">$CLEAN + SOL only · boosters are additive — this tops your stack toward 3×.</p>
             </div>
-            <button class="btn btn-solid" onclick="App.addLiquidity()">💧 Add to MM pool</button>
-            <p class="bl-soon">$CLEAN + SOL only · boosters are additive — this tops your stack toward 3×.</p>
+            <div class="mm-soon-badge" aria-hidden="true"><span>Coming soon</span></div>
           </div>
           <div class="card panel">
             <h3>Credit a burn</h3>
