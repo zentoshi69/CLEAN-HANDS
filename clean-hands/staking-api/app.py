@@ -328,7 +328,7 @@ class LoginBody(BaseModel):
     signature: str
     nonce: str
     initData: str | None = None
-    ref: str | None = None  # referrer wallet (from a referral link)
+    ref: str | None = None  # referrer wallet or short code (from a referral link)
 
 
 class Tok(BaseModel):
@@ -876,15 +876,14 @@ def api_leaderboard(body: Tok):
 
 
 @app.post("/api/referrals")
-def api_referrals(body: Tok):
+def api_referrals(body: Tok, request: Request):
     wallet = _require(body.token)["w"]
     with db.db() as conn:
         code = db.ref_code(conn, wallet)
-        bot = os.environ.get("MINIAPP_BOT_USERNAME", "").lstrip("@")
-        short = os.environ.get("MINIAPP_SHORT_NAME", "app")
+        share = f"{_origin(request)}/g/{code}" if code else None
         return {
             "ref_code": code or wallet,
-            "link": f"https://t.me/{bot}/{short}?startapp={code or wallet}" if bot else None,
+            "link": share,
             "active_referrals": db.active_referrals(conn, wallet),
             "reward": "each active referral adds to your APR (see /api/profile apr.referral_boost)",
         }
@@ -1190,6 +1189,7 @@ def api_economics():
             "payout_setup_days": _payout_setup_days(),
             "botUsername": os.environ.get("MINIAPP_BOT_USERNAME", "").lstrip("@"),
             "appShortName": os.environ.get("MINIAPP_SHORT_NAME", "app"),
+            "miniappUrl": os.environ.get("MINIAPP_URL", "").rstrip("/"),
             # Browser-safe RPC for the in-app swap widget. NEVER expose the paid
             # SOLANA_RPC_URL here; operators set a separate public-ish endpoint.
             "swapRpc": os.environ.get("MINIAPP_SWAP_RPC", ""),
@@ -1940,8 +1940,8 @@ def glove_link(code: str, request: Request):
     bot = os.environ.get("MINIAPP_BOT_USERNAME", "").lstrip("@")
     short = os.environ.get("MINIAPP_SHORT_NAME", "app")
     tme = f"https://t.me/{bot}/{short}?startapp={code}" if bot else origin
-    title = f"Join $CLEAN with glove code {code}"
-    desc = "Soft staking — tokens never leave your wallet. Burn to boost, invite to multiply. 🧤"
+    title = "CLEAN HANDS DIRTY MONEY"
+    desc = "Play, stake & boost yield with my referral. Clean hands, dirty money. 🧤"
     html = (
         "<!doctype html><html><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -1969,7 +1969,7 @@ def glove_link(code: str, request: Request):
         "border-radius:14px;padding:15px;box-shadow:0 12px 24px -12px rgba(46,116,192,.8)}"
         "</style></head><body><div class='c'>"
         "<img src='/glove.png?v=2' alt='$CLEAN'>"
-        "<h1>You're invited to $CLEAN</h1>"
+        "<h1>CLEAN HANDS DIRTY MONEY</h1>"
         f"<div class='code'>{code}</div>"
         f"<p>{desc}<br>Connect, stake, and you BOTH get the referral boost.</p>"
         f"<a class='btn' href='{tme}'>🧤 Open in Telegram</a>"

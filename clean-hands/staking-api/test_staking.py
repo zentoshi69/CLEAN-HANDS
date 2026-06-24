@@ -574,6 +574,8 @@ def test_ref_codes():
     tok = ra.json()["token"]
     j = c.post("/api/referrals", json={"token": tok}).json()
     assert j["ref_code"] == code
+    assert j["link"].endswith(f"/g/{code}")
+    assert "startapp=" not in j["link"]
     # self-referral with your own code is ignored
     s = SigningKey.generate()
     rs = login(s)

@@ -160,11 +160,30 @@
     } catch (e) {}
     return DEFAULT_RPC;
   }
-  function inviteLink() {
-    const pk = CleanWallet.currentPubkey() || (PROFILE && PROFILE.wallet) || '';
+  const INVITE_TITLE = 'CLEAN HANDS DIRTY MONEY';
+  const INVITE_TEXT = 'CLEAN HANDS DIRTY MONEY — play, stake & boost yield with my referral 🧤';
+  function refCode() {
+    const code = String((PROFILE && PROFILE.ref_code) || '').trim().toUpperCase();
+    return /^[A-Z0-9]{4,12}$/.test(code) ? code : '';
+  }
+  function telegramStartLink(payload) {
     const bot = (CONFIG && CONFIG.botUsername) || 'YOUR_BOT';
     const short = (CONFIG && CONFIG.appShortName) || 'app';
-    return `https://t.me/${bot}/${short}?startapp=${pk}`;
+    const suffix = payload ? `?startapp=${encodeURIComponent(payload)}` : '';
+    return `https://t.me/${bot}/${short}${suffix}`;
+  }
+  function inviteLink() {
+    const code = refCode();
+    if (code) {
+      const origin = (CONFIG && CONFIG.miniappUrl) || location.origin;
+      return `${String(origin).replace(/\/$/, '')}/g/${encodeURIComponent(code)}`;
+    }
+    const fallback = CleanWallet.currentPubkey() || (PROFILE && PROFILE.wallet) || '';
+    return telegramStartLink(fallback);
+  }
+  function inviteLabel() {
+    const code = refCode();
+    return code ? `CLEAN referral · ${code}` : inviteLink().replace(/^https?:\/\//, '');
   }
 
   // ---- screens ---------------------------------------------------------- //
@@ -426,9 +445,9 @@
     const chip = $('wallet-chip');
     if (chip) chip.classList.toggle('connected', !!pk);
     if (MINT) $('ca-text').textContent = MINT;
-    $('ref-text').textContent = inviteLink().replace(/^https?:\/\//, '');
+    $('ref-text').textContent = inviteLabel();
     // invite cards injected into every tab (class-based, no duplicate IDs)
-    const _invl = inviteLink().replace(/^https?:\/\//, '');
+    const _invl = inviteLabel();
     document.querySelectorAll('.inv-link').forEach((e) => (e.textContent = _invl));
     document.querySelectorAll('.inv-count').forEach((e) => (e.textContent = fmt(p.active_referrals)));
     updatePortfolio();
@@ -676,18 +695,18 @@
   }
   function invite() {
     const url = inviteLink();
-    const text = 'Wash your bags with $CLEAN — clean hands, dirty money 🧤';
     if (tg && tg.openTelegramLink)
       tg.openTelegramLink(
-        `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
+        `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(INVITE_TEXT)}`,
       );
+    else if (navigator.share) navigator.share({ title: INVITE_TITLE, text: INVITE_TEXT, url }).catch(() => {});
     else copyLink();
   }
   function copyLink() {
     const url = inviteLink();
-    navigator.clipboard && navigator.clipboard.writeText(url);
+    navigator.clipboard && navigator.clipboard.writeText(`${INVITE_TEXT}\n${url}`);
     haptic();
-    toast('Invite link copied ✦');
+    toast('Clean invite copied ✦');
   }
   function copyCA() {
     if (!MINT) return toast('Token still loading…');

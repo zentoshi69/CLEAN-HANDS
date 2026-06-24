@@ -79,7 +79,7 @@ Test it: `python test_staking.py` (economics + signature + full API flow, no net
 2. User signs `message` with their Solana wallet (Phantom/Backpack/etc.).
 3. `POST /api/login { wallet, signature, nonce, initData?, ref? }`
    - `initData` (Mini App only) binds `telegram_id ↔ wallet`.
-   - `ref` (optional) = referrer's wallet from a referral link.
+   - `ref` (optional) = referrer's wallet or short referral code.
    - → `{ token, profile }`. Use `token` for all other calls.
 
 ## API
@@ -234,7 +234,7 @@ deeplink protocol, then the nonce→sign→login flow, and renders stake / boost
 leaderboard / invite against the API.
 
 To wire it to the bot: point the community bot's `MINIAPP_URL` at **this server's
-HTTPS URL** (and `MINIAPP_BOT_USERNAME` / `MINIAPP_SHORT_NAME` for referral links),
+HTTPS URL** (and `MINIAPP_BOT_USERNAME` / `MINIAPP_SHORT_NAME` for Telegram deep-links),
 then `/newapp` in BotFather with the same URL. `/app` in the group now opens the
 real staking app. The deeplink round-trip needs **on-device testing** (it can't be
 exercised headlessly — no wallet app in CI).
