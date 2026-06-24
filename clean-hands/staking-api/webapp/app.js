@@ -181,7 +181,7 @@
     renderWallets();
   }
   function show(v) {
-    ['stake', 'trade', 'bridge', 'boost', 'game', 'meme', 'board', 'invite', 'folio'].forEach((n) => {
+    ['stake', 'trade', 'boost', 'game', 'meme', 'board', 'invite', 'folio'].forEach((n) => {
       const el = $('view-' + n);
       if (el) el.hidden = n !== v;
     });
@@ -203,8 +203,6 @@
         sc.scrollTop = 0;
       }
     }
-    if (v === 'bridge') loadBridge(); // dedicated No Stains Bridge tab
-    else stopBridgePoll(); // don't keep polling order status off-tab
     if (v === 'game') loadGame();
     haptic();
     if (v === 'board') loadBoard();

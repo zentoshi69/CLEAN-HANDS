@@ -1,9 +1,11 @@
-# No Stains Bridge — white-label EasyBit (in-app swap)
+# No Stains Bridge — archived backend notes
 
-The bridge tab lets users swap/bridge any coin across chains **inside the app
-and on the website**, instead of bouncing them to an external exchange page.
+Status: **hidden from the app and website UI**. The old backend notes below are
+kept only so the server-side `/api/bridge/*` implementation can be audited or
+removed deliberately later. Do not present this as a live user-facing feature
+unless the app tab, site links, and launch copy are intentionally restored.
 
-It's a true white-label: the EasyBit API key lives **only on the server**. The
+The original design was a true white-label: the EasyBit API key lives **only on the server**. The
 browser/Mini App talks exclusively to our own `/api/bridge/*` endpoints, which
 proxy to EasyBit. The user never sees EasyBit, and the key never reaches the
 client.
