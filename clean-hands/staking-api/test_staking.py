@@ -38,6 +38,17 @@ def approx(a, b, eps=1e-9):
     return abs(a - b) < eps
 
 
+def init_data(uid, username=None):
+    import json as _json, time as _time, hmac as _hmac, hashlib as _hashlib, urllib.parse as _url
+
+    user = _json.dumps({"id": uid, "username": username or ("u" + str(uid))})
+    pairs = {"user": user, "auth_date": str(int(_time.time()))}
+    dcs = "\n".join(f"{k}={pairs[k]}" for k in sorted(pairs))
+    secret = _hmac.new(b"WebAppData", os.environ["TG_COMMUNITY_TOKEN"].encode(), _hashlib.sha256).digest()
+    pairs["hash"] = _hmac.new(secret, dcs.encode(), _hashlib.sha256).hexdigest()
+    return _url.urlencode(pairs)
+
+
 def test_economics():
     # amount tier: highest matching wins
     assert econ.amount_boost(50_000) == 0.0
@@ -81,6 +92,8 @@ def test_economics():
     assert approx(econ.escape_boost(33), 1.00)
     assert approx(econ.escape_boost(999), 1.00)  # hard cap
     assert approx(econ.escape_score_from_state({"S": {"prestige": 12}}), 10.0)
+    assert econ.escape_prestige_from_state({"S": {"prestige": 12}}) == 12
+    assert approx(econ.escape_score_from_prestige(43), 33.25)
     esc = econ.effective_apr(0, 0, 0, 0, escape_score=33)
     assert approx(esc.escape_boost, 1.0)
     assert approx(esc.effective_apr, 0.40 * 2.0)
@@ -337,8 +350,8 @@ def test_claims_manual():
     print("manual claims state machine ✓")
 
 
-def test_escape_booster_accrues_into_claim():
-    """A Telegram-bound Escape x33 save must increase the same APR used by claim."""
+def test_fake_escape_save_does_not_boost_claim():
+    """A forged x33 cloud save must not influence staking APR or claim rewards."""
     import json as _json, time as _t
     import db as _db, app, auth as _auth, solana, market
     from fastapi.testclient import TestClient
@@ -364,7 +377,8 @@ def test_escape_booster_accrues_into_claim():
     token = _auth.create_session(wallet, tg_id)
     now = int(_t.time())
     staked = _db.to_base(1_000_000)
-    # prestige 43 => Escape multiplier 1 + 0.75*43 = x33.25, capped to +100%.
+    # prestige 43 => Escape multiplier 1 + 0.75*43 = x33.25. This is a raw,
+    # client-controlled save and must be economically ignored until verified.
     game_state = _json.dumps({"S": {"prestige": 43}, "meta": {"lastSeen": now}})
     with _db.db() as conn:
         _db.upsert_staker(conn, wallet, tg_id=tg_id, username="escaper")
@@ -374,11 +388,91 @@ def test_escape_booster_accrues_into_claim():
             "WHERE wallet=?",
             (staked, staked, now - 91 * 86400, now - 86400, wallet, now, wallet),
         )
-        _db.game_save(conn, f"tg:{tg_id}", "escaper", game_state, score=123)
+        conn.commit()
+
+    save = c.post(
+        "/api/game/save",
+        json={"initData": init_data(tg_id, "escaper"), "state": game_state, "score": 123},
+    ).json()
+    assert save["escape_score"] > 33 and save["verified_escape_score"] == 0
+    assert save["escape_boost"] == 0.0 and save["escape_status"] in ("review", "blocked", "verifying")
+
+    with _db.db() as conn:
         row = _db.get_staker(conn, wallet)
         _eff, _secs, _refs, apr = app._apr_for(conn, wallet, row)
 
-    assert approx(apr.escape_score, 33.25)
+    assert apr.escape_score == 0.0
+    assert apr.escape_boost == 0.0
+    # Amount tier (+25%) + 90d loyalty (+15%), NO Escape cap.
+    assert approx(apr.effective_apr, 0.40 * (1 + 0.25 + 0.15))
+
+    r = c.post("/api/claim", json={"token": token})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert 1400 < body["claimed"] < 1700, body
+    assert body["profile"]["apr"]["escape_boost"] == 0.0
+    assert body["profile"]["apr"]["escape_status"] in ("review", "verifying")
+    print("fake escape save does not boost claim ✓")
+
+
+def test_verified_escape_booster_accrues_into_claim():
+    """Only the server-side verified Escape ledger can increase claim rewards."""
+    import time as _t
+    import db as _db, app, auth as _auth, solana, market
+    from fastapi.testclient import TestClient
+
+    async def fake_balance(wallet, mint=None):
+        return 1_000_000.0
+
+    async def fake_sol_balance(wallet):
+        return 0.0
+
+    async def fake_prices():
+        return {"sol_usd": 0.0, "clean_usd": 0.0}
+
+    solana.token_balance = fake_balance
+    solana.sol_balance = fake_sol_balance
+    market.refresh_prices = fake_prices
+    market.last_prices = lambda: {"sol_usd": 0.0, "clean_usd": 0.0}
+
+    c = TestClient(app.app)
+    sk = SigningKey.generate()
+    wallet = base58.b58encode(bytes(sk.verify_key)).decode()
+    tg_id = 42424243
+    token = _auth.create_session(wallet, tg_id)
+    now = int(_t.time())
+    staked = _db.to_base(1_000_000)
+    with _db.db() as conn:
+        _db.upsert_staker(conn, wallet, tg_id=tg_id, username="verified_escaper")
+        conn.execute(
+            "UPDATE stakers SET recorded_staked=?, cached_balance=?, accrued=0, "
+            "stake_start_ts=?, last_accrual_ts=?, payout_wallet=?, payout_confirmed_ts=? "
+            "WHERE wallet=?",
+            (staked, staked, now - 91 * 86400, now - 86400, wallet, now, wallet),
+        )
+        _db.game_verify_save(
+            conn,
+            player=f"tg:{tg_id}",
+            verified_escape_score=33.0,
+            verified_prestige=43,
+            raw_escape_score=33.25,
+            raw_prestige=43,
+            first_seen_ts=now - 2 * 86400,
+            last_save_ts=now,
+            active_seconds=2 * 86400,
+            save_count=1000,
+            risk_score=0,
+            status="verified",
+            hold_until_ts=0,
+            session_id="humanish",
+            last_seq=1000,
+            reason="test_verified",
+            updated_ts=now,
+        )
+        row = _db.get_staker(conn, wallet)
+        _eff, _secs, _refs, apr = app._apr_for(conn, wallet, row)
+
+    assert approx(apr.escape_score, 33.0)
     assert approx(apr.escape_boost, 1.0)
     # Amount tier (+25%) + 90d loyalty (+15%) + Escape cap (+100%).
     assert approx(apr.effective_apr, 0.40 * (1 + 0.25 + 0.15 + 1.0))
@@ -390,7 +484,8 @@ def test_escape_booster_accrues_into_claim():
     # Escape cap it would be ~1,534, so this proves claim uses the booster.
     assert body["claimed"] > 2500, body
     assert body["profile"]["apr"]["escape_boost"] == 1.0
-    print("escape booster accrues into claim ✓")
+    assert body["profile"]["apr"]["escape_status"] == "verified"
+    print("verified escape booster accrues into claim ✓")
 
 
 def test_pg_translation():
@@ -1166,10 +1261,11 @@ def test_game_cloud_save_and_leaderboard():
     assert r["score"] == 5000 and r["state"] == blob2
 
     # Escape multiplier is separate from leaderboard score and cannot be lowered
-    # by a stale save, because it now controls real staking rewards.
+    # by a stale save. Raw Escape is NOT trusted for real staking rewards.
     blob3 = _json.dumps({"S": {"prestige": 12}, "meta": {"lastSeen": 1000}})
     r = c.post("/api/game/save", json={"initData": idA, "state": blob3, "score": 20}).json()
-    assert r["escape_score"] == 10.0 and r["escape_boost"] == 0.33
+    assert r["escape_score"] == 10.0 and r["verified_escape_score"] == 0.0
+    assert r["escape_boost"] == 0.0 and r["escape_status"] in ("review", "blocked", "verifying")
     c.post("/api/game/save", json={"initData": idA, "state": blob2, "score": 30})
     kept = _json.loads(c.post("/api/game/load", json={"initData": idA}).json()["state"])
     assert kept["S"]["prestige"] == 12
@@ -1206,7 +1302,8 @@ if __name__ == "__main__":
     test_integer_migration()
     test_pg_translation()
     test_claims_manual()
-    test_escape_booster_accrues_into_claim()
+    test_fake_escape_save_does_not_boost_claim()
+    test_verified_escape_booster_accrues_into_claim()
     test_robustness()
     test_reconcile()
     test_ref_codes()

@@ -35,7 +35,7 @@ def _harden_db_perms() -> None:
 # --------------------------------------------------------------------------- #
 DECIMALS = int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
 BASE = 10**DECIMALS
-SCHEMA_VERSION = 10  # bumped by migrations (v10: immutable claim snapshots + ops flags)
+SCHEMA_VERSION = 11  # bumped by migrations (v11: verified Escape anti-cheat ledger)
 
 
 def to_base(ui_amount: float) -> int:
@@ -180,6 +180,30 @@ CREATE TABLE IF NOT EXISTS game_state (
     player TEXT PRIMARY KEY, name TEXT, state TEXT NOT NULL,
     score BIGINT NOT NULL DEFAULT 0, updated_ts BIGINT NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_game_score ON game_state(score DESC);
+CREATE TABLE IF NOT EXISTS game_verification (
+    player TEXT PRIMARY KEY,
+    verified_escape_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+    verified_prestige BIGINT NOT NULL DEFAULT 0,
+    raw_escape_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+    raw_prestige BIGINT NOT NULL DEFAULT 0,
+    first_seen_ts BIGINT NOT NULL DEFAULT 0,
+    last_save_ts BIGINT NOT NULL DEFAULT 0,
+    active_seconds BIGINT NOT NULL DEFAULT 0,
+    save_count BIGINT NOT NULL DEFAULT 0,
+    risk_score BIGINT NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'unverified',
+    hold_until_ts BIGINT NOT NULL DEFAULT 0,
+    session_id TEXT,
+    last_seq BIGINT NOT NULL DEFAULT 0,
+    reason TEXT,
+    updated_ts BIGINT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_game_verify_status ON game_verification(status, risk_score);
+CREATE TABLE IF NOT EXISTS game_verify_events (
+    id BIGSERIAL PRIMARY KEY, ts BIGINT NOT NULL, player TEXT NOT NULL,
+    kind TEXT NOT NULL, raw_escape_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+    verified_escape_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+    risk_score BIGINT NOT NULL DEFAULT 0, detail TEXT);
+CREATE INDEX IF NOT EXISTS idx_game_verify_events_player ON game_verify_events(player, ts);
 CREATE TABLE IF NOT EXISTS bridge_orders (
     order_id TEXT PRIMARY KEY, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
     send_coin TEXT NOT NULL, send_network TEXT, recv_coin TEXT NOT NULL, recv_network TEXT,
@@ -435,6 +459,38 @@ def _migrate(conn) -> None:
                 score      INTEGER NOT NULL DEFAULT 0,
                 updated_ts INTEGER NOT NULL);
             CREATE INDEX IF NOT EXISTS idx_game_score ON game_state(score DESC);
+            -- Verified Escape rewards: raw game saves are untrusted cloud-state.
+            -- Staking APR reads this server-side ledger only.
+            CREATE TABLE IF NOT EXISTS game_verification (
+                player                TEXT PRIMARY KEY,
+                verified_escape_score REAL NOT NULL DEFAULT 0,
+                verified_prestige     INTEGER NOT NULL DEFAULT 0,
+                raw_escape_score      REAL NOT NULL DEFAULT 0,
+                raw_prestige          INTEGER NOT NULL DEFAULT 0,
+                first_seen_ts         INTEGER NOT NULL DEFAULT 0,
+                last_save_ts          INTEGER NOT NULL DEFAULT 0,
+                active_seconds        INTEGER NOT NULL DEFAULT 0,
+                save_count            INTEGER NOT NULL DEFAULT 0,
+                risk_score            INTEGER NOT NULL DEFAULT 0,
+                status                TEXT NOT NULL DEFAULT 'unverified',
+                hold_until_ts         INTEGER NOT NULL DEFAULT 0,
+                session_id            TEXT,
+                last_seq              INTEGER NOT NULL DEFAULT 0,
+                reason                TEXT,
+                updated_ts            INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_game_verify_status ON game_verification(status, risk_score);
+            CREATE TABLE IF NOT EXISTS game_verify_events (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts                    INTEGER NOT NULL,
+                player                TEXT NOT NULL,
+                kind                  TEXT NOT NULL,
+                raw_escape_score      REAL NOT NULL DEFAULT 0,
+                verified_escape_score REAL NOT NULL DEFAULT 0,
+                risk_score            INTEGER NOT NULL DEFAULT 0,
+                detail                TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_game_verify_events_player ON game_verify_events(player, ts);
             """
         )
         conn.execute("PRAGMA user_version = 9")
@@ -466,6 +522,46 @@ def _migrate(conn) -> None:
             "key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)"
         )
         conn.execute("PRAGMA user_version = 10")
+        conn.commit()
+        ver = 10
+    if ver < 11:
+        # v11: raw game saves are no longer trusted for money. Verified Escape
+        # progress lives in a separate server-side ledger with risk state.
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS game_verification (
+                player                TEXT PRIMARY KEY,
+                verified_escape_score REAL NOT NULL DEFAULT 0,
+                verified_prestige     INTEGER NOT NULL DEFAULT 0,
+                raw_escape_score      REAL NOT NULL DEFAULT 0,
+                raw_prestige          INTEGER NOT NULL DEFAULT 0,
+                first_seen_ts         INTEGER NOT NULL DEFAULT 0,
+                last_save_ts          INTEGER NOT NULL DEFAULT 0,
+                active_seconds        INTEGER NOT NULL DEFAULT 0,
+                save_count            INTEGER NOT NULL DEFAULT 0,
+                risk_score            INTEGER NOT NULL DEFAULT 0,
+                status                TEXT NOT NULL DEFAULT 'unverified',
+                hold_until_ts         INTEGER NOT NULL DEFAULT 0,
+                session_id            TEXT,
+                last_seq              INTEGER NOT NULL DEFAULT 0,
+                reason                TEXT,
+                updated_ts            INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_game_verify_status ON game_verification(status, risk_score);
+            CREATE TABLE IF NOT EXISTS game_verify_events (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts                    INTEGER NOT NULL,
+                player                TEXT NOT NULL,
+                kind                  TEXT NOT NULL,
+                raw_escape_score      REAL NOT NULL DEFAULT 0,
+                verified_escape_score REAL NOT NULL DEFAULT 0,
+                risk_score            INTEGER NOT NULL DEFAULT 0,
+                detail                TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_game_verify_events_player ON game_verify_events(player, ts);
+            """
+        )
+        conn.execute("PRAGMA user_version = 11")
         conn.commit()
 
 
@@ -522,6 +618,96 @@ def game_top(conn, limit: int = 20):
         "SELECT name, score FROM game_state ORDER BY score DESC, updated_ts ASC LIMIT ?",
         (int(limit),),
     ).fetchall()
+
+
+def game_verify_load(conn, player: str):
+    return conn.execute(
+        "SELECT * FROM game_verification WHERE player=?",
+        (player,),
+    ).fetchone()
+
+
+def game_verify_save(
+    conn,
+    *,
+    player: str,
+    verified_escape_score: float,
+    verified_prestige: int,
+    raw_escape_score: float,
+    raw_prestige: int,
+    first_seen_ts: int,
+    last_save_ts: int,
+    active_seconds: int,
+    save_count: int,
+    risk_score: int,
+    status: str,
+    hold_until_ts: int,
+    session_id: str | None,
+    last_seq: int,
+    reason: str,
+    updated_ts: int,
+) -> None:
+    conn.execute(
+        "INSERT INTO game_verification "
+        "(player, verified_escape_score, verified_prestige, raw_escape_score, raw_prestige, "
+        "first_seen_ts, last_save_ts, active_seconds, save_count, risk_score, status, "
+        "hold_until_ts, session_id, last_seq, reason, updated_ts) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(player) DO UPDATE SET "
+        "verified_escape_score=excluded.verified_escape_score, "
+        "verified_prestige=excluded.verified_prestige, "
+        "raw_escape_score=excluded.raw_escape_score, raw_prestige=excluded.raw_prestige, "
+        "first_seen_ts=excluded.first_seen_ts, last_save_ts=excluded.last_save_ts, "
+        "active_seconds=excluded.active_seconds, save_count=excluded.save_count, "
+        "risk_score=excluded.risk_score, status=excluded.status, "
+        "hold_until_ts=excluded.hold_until_ts, session_id=excluded.session_id, "
+        "last_seq=excluded.last_seq, reason=excluded.reason, updated_ts=excluded.updated_ts",
+        (
+            player,
+            float(verified_escape_score or 0),
+            int(verified_prestige or 0),
+            float(raw_escape_score or 0),
+            int(raw_prestige or 0),
+            int(first_seen_ts or 0),
+            int(last_save_ts or 0),
+            int(active_seconds or 0),
+            int(save_count or 0),
+            int(risk_score or 0),
+            str(status or "unverified")[:32],
+            int(hold_until_ts or 0),
+            (str(session_id)[:64] if session_id else None),
+            int(last_seq or 0),
+            str(reason or "")[:240],
+            int(updated_ts or time.time()),
+        ),
+    )
+    conn.commit()
+
+
+def game_verify_event(
+    conn,
+    player: str,
+    kind: str,
+    raw_escape_score: float,
+    verified_escape_score: float,
+    risk_score: int,
+    detail: str = "",
+) -> None:
+    conn.execute(
+        "INSERT INTO game_verify_events "
+        "(ts, player, kind, raw_escape_score, verified_escape_score, risk_score, detail) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (
+            int(time.time()),
+            player,
+            str(kind or "")[:32],
+            float(raw_escape_score or 0),
+            float(verified_escape_score or 0),
+            int(risk_score or 0),
+            str(detail or "")[:240],
+        ),
+    )
+    conn.commit()
 
 
 def upsert_staker(conn, wallet: str, tg_id=None, username=None, referred_by=None):

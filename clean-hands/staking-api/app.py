@@ -197,16 +197,56 @@ def _wallet_usd(wallet: str, row) -> tuple[float, float]:
 
 
 def _escape_score_for(conn, row) -> float:
-    """Telegram-bound game progress -> staking Escape score.
+    """Telegram-bound verified game progress -> staking Escape score.
 
-    Wallet-only sessions get no game reward boost. For Telegram users, we read
-    their saved game state and derive the same Escape multiplier the game shows.
+    Raw cloud saves are untrusted and can be faked with scripts. Money reads
+    only the server-side verification ledger.
     """
+    if db.flag_enabled(conn, "halt_escape_boost"):
+        return 0.0
     tg_id = row["tg_id"] if row and row["tg_id"] is not None else None
     if tg_id is None:
         return 0.0
-    game = db.game_load(conn, f"tg:{int(tg_id)}")
-    return econ.escape_score_from_state(game["state"]) if game else 0.0
+    verified = db.game_verify_load(conn, f"tg:{int(tg_id)}")
+    if not verified or verified["status"] in ("blocked", "review"):
+        return 0.0
+    return float(verified["verified_escape_score"] or 0.0)
+
+
+def _escape_public_status(conn, row) -> dict:
+    tg_id = row["tg_id"] if row and row["tg_id"] is not None else None
+    if tg_id is None:
+        return {
+            "escape_status": "telegram_required",
+            "escape_raw_score": 0.0,
+            "escape_verified_score": 0.0,
+        }
+    if db.flag_enabled(conn, "halt_escape_boost"):
+        return {
+            "escape_status": "paused",
+            "escape_raw_score": 0.0,
+            "escape_verified_score": 0.0,
+        }
+    verified = db.game_verify_load(conn, f"tg:{int(tg_id)}")
+    if not verified:
+        return {
+            "escape_status": "play_to_unlock",
+            "escape_raw_score": 0.0,
+            "escape_verified_score": 0.0,
+        }
+    raw = float(verified["raw_escape_score"] or 0.0)
+    score = float(verified["verified_escape_score"] or 0.0)
+    status = verified["status"] or "unverified"
+    public = "verified" if score >= 5 else "play_to_unlock"
+    if status in ("review", "blocked"):
+        public = "review"
+    elif econ.escape_boost(raw) > econ.escape_boost(score) and raw >= 5:
+        public = "verifying"
+    return {
+        "escape_status": public,
+        "escape_raw_score": raw,
+        "escape_verified_score": score,
+    }
 
 
 async def _refresh_balance(conn, row, force: bool = False, fail_closed: bool = False) -> int:
@@ -281,6 +321,8 @@ def _accrue(conn, wallet: str) -> None:
 def _profile(conn, wallet: str) -> dict:
     row = db.get_staker(conn, wallet)
     eff_base, secs, refs, apr = _apr_for(conn, wallet, row)
+    apr_dict = apr.to_dict()
+    apr_dict.update(_escape_public_status(conn, row))
     vest_secs = int(time.time()) - row["stake_start_ts"] if row["stake_start_ts"] else 0
     eff_expr = db.effective_staked_expr()
     # eff_expr is an internal SQL constant, not user input.
@@ -331,7 +373,7 @@ def _profile(conn, wallet: str) -> dict:
         ),
         "claim_fee_usd": _claim_fee_usd(),
         "balance_verified_at": row["balance_ts"],
-        "apr": apr.to_dict(),
+        "apr": apr_dict,
     }
 
 
@@ -913,12 +955,29 @@ def api_referrals(body: Tok, request: Request):
 # --------------------------------------------------------------------------- #
 GAME_STATE_MAX = int(os.environ.get("GAME_STATE_MAX", "8192"))  # max save-blob bytes
 
+# Server-side Escape verification. These values are deliberately operator-tuned
+# via env so the live anti-farm thresholds do not have to match the public repo.
+# Active time is credited only through server-observed heartbeat saves; a single
+# forged x33 blob earns no staking boost.
+GAME_ESCAPE_MIN_SECONDS = {
+    5.0: int(os.environ.get("GAME_ESCAPE_MIN_SECONDS_X5", "1800")),    # 30m active
+    10.0: int(os.environ.get("GAME_ESCAPE_MIN_SECONDS_X10", "7200")),  # 2h active
+    20.0: int(os.environ.get("GAME_ESCAPE_MIN_SECONDS_X20", "28800")), # 8h active
+    33.0: int(os.environ.get("GAME_ESCAPE_MIN_SECONDS_X33", "86400")), # 24h active
+}
+GAME_ESCAPE_HEARTBEAT_MIN = int(os.environ.get("GAME_ESCAPE_HEARTBEAT_MIN", "3"))
+GAME_ESCAPE_HEARTBEAT_MAX = int(os.environ.get("GAME_ESCAPE_HEARTBEAT_MAX", "120"))
+GAME_ESCAPE_AUTO_RISK_MAX = int(os.environ.get("GAME_ESCAPE_AUTO_RISK_MAX", "35"))
+GAME_ESCAPE_REVIEW_RISK = int(os.environ.get("GAME_ESCAPE_REVIEW_RISK", "60"))
+GAME_ESCAPE_BLOCK_RISK = int(os.environ.get("GAME_ESCAPE_BLOCK_RISK", "110"))
+
 
 class GameSaveBody(BaseModel):
     initData: str
     state: str = ""
     score: int = 0
     name: str | None = None
+    proof: dict | None = None
 
 
 class GameLoadBody(BaseModel):
@@ -958,6 +1017,181 @@ def _game_state_with_escape_floor(state: str, floor_score: float) -> str | None:
     return json.dumps(data, separators=(",", ":"))
 
 
+def _n(proof: dict | None, key: str, default: float = 0.0) -> float:
+    if not isinstance(proof, dict):
+        return default
+    try:
+        return float(proof.get(key, default) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _s(proof: dict | None, key: str, default: str = "") -> str:
+    if not isinstance(proof, dict):
+        return default
+    return str(proof.get(key, default) or default)
+
+
+def _escape_tier_for(score: float) -> float:
+    score = float(score or 0.0)
+    for threshold, _boost in econ.ESCAPE_TIERS:
+        if score >= threshold:
+            return float(threshold)
+    return 0.0
+
+
+def _escape_min_seconds_for(score: float) -> int:
+    tier = _escape_tier_for(score)
+    return GAME_ESCAPE_MIN_SECONDS.get(tier, 0)
+
+
+def _max_escape_score_allowed(raw_score: float, active_seconds: int, hold_until_ts: int, now: int) -> float:
+    if hold_until_ts and now < hold_until_ts:
+        return 0.0
+    for threshold, _boost in econ.ESCAPE_TIERS:
+        if raw_score >= threshold and active_seconds >= GAME_ESCAPE_MIN_SECONDS.get(float(threshold), 0):
+            return float(threshold)
+    return 0.0
+
+
+def _verify_escape_progress(
+    conn,
+    player: str,
+    raw_escape_score: float,
+    raw_prestige: int,
+    proof: dict | None,
+    now: int | None = None,
+) -> dict:
+    """Update the hidden server-side Escape trust ledger.
+
+    This is intentionally conservative. It never trusts a final client save for
+    money; it only promotes to a reward tier after server-observed active time
+    and low-risk telemetry. Suspicious progress is kept for cloud restore but
+    marked review/blocked and ignored by staking APR.
+    """
+    now = int(now or time.time())
+    raw_escape_score = max(0.0, min(float(raw_escape_score or 0.0), 10_000.0))
+    raw_prestige = max(0, int(raw_prestige or 0))
+    row = db.game_verify_load(conn, player)
+
+    first_seen = int(row["first_seen_ts"]) if row else now
+    last_save = int(row["last_save_ts"]) if row else now
+    active = int(row["active_seconds"]) if row else 0
+    save_count = int(row["save_count"]) if row else 0
+    risk = int(row["risk_score"]) if row else 0
+    verified_score = float(row["verified_escape_score"]) if row else 0.0
+    verified_prestige = int(row["verified_prestige"]) if row else 0
+    prior_raw = float(row["raw_escape_score"]) if row else 0.0
+    hold_until = int(row["hold_until_ts"]) if row else 0
+    prior_sid = row["session_id"] if row else ""
+    prior_seq = int(row["last_seq"]) if row else 0
+
+    dt = max(0, now - last_save)
+    clean_heartbeat = GAME_ESCAPE_HEARTBEAT_MIN <= dt <= GAME_ESCAPE_HEARTBEAT_MAX
+    if row and clean_heartbeat:
+        active += dt
+
+    reasons: list[str] = []
+    delta_risk = 0
+    seq = int(_n(proof, "seq", 0))
+    sid = _s(proof, "sid", "")[:64]
+    inputs = int(_n(proof, "inputs", 0))
+    taps = int(_n(proof, "taps", 0))
+    client_active = max(0.0, _n(proof, "activeMs", 0) / 1000.0)
+
+    raw_jump = raw_escape_score - prior_raw
+    if raw_jump > 0:
+        if not row:
+            delta_risk += 20
+            reasons.append("new_escape_claim")
+        if raw_jump >= 4:
+            delta_risk += 20
+            reasons.append("large_escape_jump")
+        if raw_jump >= 10:
+            delta_risk += 35
+            reasons.append("huge_escape_jump")
+        tier = _escape_tier_for(raw_escape_score)
+        if tier and active < max(60, int(_escape_min_seconds_for(tier) * 0.15)):
+            delta_risk += 45
+            reasons.append("too_fast_for_tier")
+        if inputs + taps <= 0:
+            delta_risk += 10
+            reasons.append("no_input_signal")
+
+    if row and dt < 2:
+        delta_risk += 8
+        reasons.append("save_flood")
+    if row and dt > 0 and dt > GAME_ESCAPE_HEARTBEAT_MAX * 6 and raw_jump > 0:
+        delta_risk += 12
+        reasons.append("long_gap_jump")
+    if not isinstance(proof, dict):
+        delta_risk += 5
+        reasons.append("missing_proof")
+    else:
+        elapsed = max(0, now - first_seen)
+        if client_active > elapsed + 180:
+            delta_risk += 20
+            reasons.append("client_time_ahead")
+        if prior_sid and sid == prior_sid and seq and seq <= prior_seq:
+            delta_risk += 8
+            reasons.append("seq_replay")
+        if _s(proof, "vis", "visible") == "hidden" and raw_jump > 0:
+            delta_risk += 8
+            reasons.append("hidden_progress")
+
+    # Slow decay for clean heartbeats keeps normal players from being trapped by
+    # tiny telemetry oddities, while major fake jumps remain sticky.
+    if clean_heartbeat and delta_risk == 0 and risk > 0:
+        risk = max(0, risk - 1)
+    risk = min(1000, risk + delta_risk)
+
+    allowed_score = _max_escape_score_allowed(raw_escape_score, active, hold_until, now)
+    if risk < GAME_ESCAPE_AUTO_RISK_MAX and allowed_score > verified_score:
+        verified_score = allowed_score
+        verified_prestige = econ.escape_prestige_for_score(verified_score)
+        reasons.append("tier_promoted")
+
+    if risk >= GAME_ESCAPE_BLOCK_RISK:
+        status = "blocked"
+    elif risk >= GAME_ESCAPE_REVIEW_RISK:
+        status = "review"
+    elif raw_escape_score > verified_score + 1e-9:
+        status = "verifying"
+    elif verified_score >= 5:
+        status = "verified"
+    else:
+        status = "unverified"
+
+    reason = ",".join(reasons[-6:])
+    db.game_verify_save(
+        conn,
+        player=player,
+        verified_escape_score=verified_score,
+        verified_prestige=verified_prestige,
+        raw_escape_score=max(raw_escape_score, prior_raw),
+        raw_prestige=max(raw_prestige, int(row["raw_prestige"]) if row else 0),
+        first_seen_ts=first_seen,
+        last_save_ts=now,
+        active_seconds=active,
+        save_count=save_count + 1,
+        risk_score=risk,
+        status=status,
+        hold_until_ts=hold_until,
+        session_id=sid or prior_sid,
+        last_seq=max(seq, prior_seq),
+        reason=reason,
+        updated_ts=now,
+    )
+    if "tier_promoted" in reasons or status in ("review", "blocked"):
+        db.game_verify_event(conn, player, status, raw_escape_score, verified_score, risk, reason)
+    return {
+        "raw_escape_score": raw_escape_score,
+        "verified_escape_score": verified_score,
+        "verified_escape_boost": econ.escape_boost(verified_score),
+        "status": status,
+    }
+
+
 @app.post("/api/game/save")
 def api_game_save(body: GameSaveBody):
     player, tg_name = _game_player(body.initData)
@@ -967,6 +1201,7 @@ def api_game_save(body: GameSaveBody):
     score = max(0, min(int(body.score or 0), 10**15))
     name = str(body.name or tg_name)[:32]
     escape_score = econ.escape_score_from_state(state)
+    raw_prestige = econ.escape_prestige_from_state(state)
     with db.db() as conn:
         existing = db.game_load(conn, player)
         if existing:
@@ -974,8 +1209,17 @@ def api_game_save(body: GameSaveBody):
             if prior_escape > escape_score:
                 state = _game_state_with_escape_floor(state, prior_escape) or existing["state"]
                 escape_score = econ.escape_score_from_state(state)
+                raw_prestige = econ.escape_prestige_from_state(state)
         db.game_save(conn, player, name, state, score)
-    return {"ok": True, "escape_score": escape_score, "escape_boost": econ.escape_boost(escape_score)}
+        verify = _verify_escape_progress(conn, player, escape_score, raw_prestige, body.proof)
+    return {
+        "ok": True,
+        "escape_score": escape_score,
+        "escape_boost": econ.escape_boost(verify["verified_escape_score"]),
+        "verified_escape_score": verify["verified_escape_score"],
+        "verified_escape_boost": verify["verified_escape_boost"],
+        "escape_status": verify["status"],
+    }
 
 
 @app.post("/api/game/load")
@@ -1112,7 +1356,16 @@ async def api_unlink(body: UnlinkBody, request: Request):
 #  ADMIN — manual payout workflow (treasury/cron). Gate with STAKE_ADMIN_TOKEN. #
 # --------------------------------------------------------------------------- #
 ADMIN_TOKEN = os.environ.get("STAKE_ADMIN_TOKEN", "")
-OPS_FLAGS = {"halt_all", "halt_staking", "halt_claims", "halt_burns", "halt_payout_setup", "halt_mm", "halt_bridge"}
+OPS_FLAGS = {
+    "halt_all",
+    "halt_staking",
+    "halt_claims",
+    "halt_burns",
+    "halt_payout_setup",
+    "halt_mm",
+    "halt_bridge",
+    "halt_escape_boost",
+}
 
 
 class AdminTok(BaseModel):
@@ -1129,6 +1382,13 @@ class AdminFlag(BaseModel):
     admin_token: str
     key: str
     value: bool
+
+
+class AdminGameVerify(BaseModel):
+    admin_token: str
+    tg_id: int | None = None
+    player: str | None = None
+    verified_escape_score: float
 
 
 def _require_admin(tok: str) -> None:
@@ -1217,6 +1477,71 @@ def api_admin_set_flag(body: AdminFlag):
     return {"ok": True, "key": key, "value": body.value}
 
 
+@app.post("/api/admin/game_reviews")
+def api_admin_game_reviews(body: AdminTok):
+    """Review queue for suspicious Escape reward saves. Admin-only; never exposed
+    to the client because exact reasons are detector intelligence."""
+    _require_admin(body.admin_token)
+    with db.db() as conn:
+        rows = conn.execute(
+            "SELECT player, raw_escape_score, verified_escape_score, active_seconds, "
+            "risk_score, status, reason, updated_ts FROM game_verification "
+            "WHERE status IN ('review','blocked','verifying') "
+            "ORDER BY risk_score DESC, updated_ts DESC LIMIT 100"
+        ).fetchall()
+        return {
+            "reviews": [
+                {
+                    "player": r["player"],
+                    "raw_escape_score": r["raw_escape_score"],
+                    "verified_escape_score": r["verified_escape_score"],
+                    "active_seconds": r["active_seconds"],
+                    "risk_score": r["risk_score"],
+                    "status": r["status"],
+                    "reason": r["reason"],
+                    "updated_ts": r["updated_ts"],
+                }
+                for r in rows
+            ]
+        }
+
+
+@app.post("/api/admin/game_verify")
+def api_admin_game_verify(body: AdminGameVerify):
+    """Manual escape-verification override for support/audit review."""
+    _require_admin(body.admin_token)
+    player = (body.player or "").strip()
+    if not player and body.tg_id is not None:
+        player = f"tg:{int(body.tg_id)}"
+    if not player.startswith("tg:"):
+        raise HTTPException(400, "player or tg_id required")
+    verified_score = max(0.0, min(float(body.verified_escape_score or 0.0), econ.ESCAPE_TIERS[0][0]))
+    now = int(time.time())
+    with db.db() as conn:
+        row = db.game_verify_load(conn, player)
+        db.game_verify_save(
+            conn,
+            player=player,
+            verified_escape_score=verified_score,
+            verified_prestige=econ.escape_prestige_for_score(verified_score),
+            raw_escape_score=max(verified_score, float(row["raw_escape_score"] or 0.0) if row else 0.0),
+            raw_prestige=max(econ.escape_prestige_for_score(verified_score), int(row["raw_prestige"] or 0) if row else 0),
+            first_seen_ts=int(row["first_seen_ts"] or now) if row else now,
+            last_save_ts=int(row["last_save_ts"] or now) if row else now,
+            active_seconds=int(row["active_seconds"] or 0) if row else 0,
+            save_count=int(row["save_count"] or 0) if row else 0,
+            risk_score=0,
+            status="verified" if verified_score >= 5 else "unverified",
+            hold_until_ts=0,
+            session_id=row["session_id"] if row else None,
+            last_seq=int(row["last_seq"] or 0) if row else 0,
+            reason="admin_override",
+            updated_ts=now,
+        )
+        db.game_verify_event(conn, player, "admin_override", verified_score, verified_score, 0, "admin_override")
+    return {"ok": True, "player": player, "verified_escape_score": verified_score}
+
+
 @app.get("/api/economics")
 def api_economics():
     """Public, non-secret: lets the site/app render the rules consistently."""
@@ -1231,6 +1556,7 @@ def api_economics():
             "escape_tiers": econ.ESCAPE_TIERS,
             "escape_cap": econ.ESCAPE_TIERS[0][0],
             "escape_cap_boost": econ.ESCAPE_TIERS[0][1],
+            "escape_verification": True,
             "burn_unit": econ.BURN_UNIT,
             "burn_apr_per_unit": econ.BURN_APR_PER_UNIT,
             "burn_cap_apr": econ.BURN_CAP_APR,

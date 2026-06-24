@@ -1912,6 +1912,15 @@ function boot(){
      initData) this stays dormant and the game is localStorage-only — exactly
      as before. */
   var TG_INIT='', _cloudPulled=false, _cloudSaveT=0;
+  var ANTI={sid:(Math.random().toString(36).slice(2)+Date.now().toString(36)).slice(0,24),
+    seq:0, startedAt:Date.now(), activeMs:0, hiddenMs:0, inputs:0, taps:0, lastTick:Date.now()};
+  setInterval(function(){
+    var now=Date.now(), dt=Math.max(0, Math.min(2000, now-ANTI.lastTick)); ANTI.lastTick=now;
+    if(document.hidden) ANTI.hiddenMs+=dt; else ANTI.activeMs+=dt;
+  },1000);
+  ['pointerdown','touchstart','keydown'].forEach(function(ev){
+    window.addEventListener(ev,function(){ ANTI.inputs++; if(ev!=='keydown') ANTI.taps++; },{passive:true});
+  });
   window.addEventListener('message', function(e){
     if(e.origin!==window.location.origin) return;          // same-origin host only
     var d=e.data||{};
@@ -1944,13 +1953,18 @@ function boot(){
       if(parent && parent!==window) parent.postMessage({type:'clean:escape-saved', escapeScore:stakingEscapeScore()}, window.location.origin);
     }catch(e){}
   }
+  function antiProof(){
+    return {sid:ANTI.sid,seq:++ANTI.seq,startedAt:ANTI.startedAt,clientNow:Date.now(),
+      activeMs:Math.floor(ANTI.activeMs),hiddenMs:Math.floor(ANTI.hiddenMs),
+      inputs:ANTI.inputs,taps:ANTI.taps,vis:document.hidden?'hidden':'visible'};
+  }
   function cloudSave(force){
     if(!TG_INIT) return;
     var now=Date.now();
     if(!force && !document.hidden && now-_cloudSaveT<7000) return;  // throttle; always flush on hide
     _cloudSaveT=now;
     try{
-      var body=JSON.stringify({ initData:TG_INIT, state:JSON.stringify({S:S,meta:META}), score:Math.floor(S.lifetime||S.total||0) });
+      var body=JSON.stringify({ initData:TG_INIT, state:JSON.stringify({S:S,meta:META}), score:Math.floor(S.lifetime||S.total||0), proof:antiProof() });
       fetch('/api/game/save',{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true})
         .then(function(r){ if(r.ok) notifyHostEscapeSaved(); })
         .catch(function(){});

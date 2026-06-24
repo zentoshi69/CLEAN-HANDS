@@ -75,7 +75,13 @@
   }
   function escapeBoostLabel(a) {
     const score = Number((a && a.escape_score) || 0);
+    const raw = Number((a && a.escape_raw_score) || 0);
     const boost = Number((a && a.escape_boost) || 0);
+    const status = (a && a.escape_status) || '';
+    if (status === 'paused') return 'paused by ops';
+    if (status === 'review') return raw ? 'under review' : '—';
+    if (status === 'verifying') return escapeScoreLabel(raw) + ' verifying';
+    if (status === 'telegram_required') return 'open in Telegram';
     if (!score) return 'play to unlock';
     return escapeScoreLabel(score) + ' → ' + pct(boost);
   }

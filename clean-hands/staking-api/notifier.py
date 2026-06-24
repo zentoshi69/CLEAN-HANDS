@@ -43,11 +43,15 @@ log = logging.getLogger("notifier")
 #  PURE LOGIC (unit-tested via --selftest)                                     #
 # --------------------------------------------------------------------------- #
 def escape_score_for(conn, row) -> float:
+    if db.flag_enabled(conn, "halt_escape_boost"):
+        return 0.0
     tg_id = row["tg_id"] if row and row["tg_id"] is not None else None
     if tg_id is None:
         return 0.0
-    game = db.game_load(conn, f"tg:{int(tg_id)}")
-    return econ.escape_score_from_state(game["state"]) if game else 0.0
+    verified = db.game_verify_load(conn, f"tg:{int(tg_id)}")
+    if not verified or verified["status"] in ("blocked", "review"):
+        return 0.0
+    return float(verified["verified_escape_score"] or 0.0)
 
 
 def pending_base(row, refs: int, now: int, escape_score: float = 0.0) -> int:

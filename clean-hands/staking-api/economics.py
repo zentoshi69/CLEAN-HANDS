@@ -193,6 +193,37 @@ def escape_score_from_state(state: str | dict | None) -> float:
     return 1.0 + 0.75 * prestige if ("prestige" in s or prestige > 0) else 0.0
 
 
+def escape_prestige_from_state(state: str | dict | None) -> int:
+    """Current game prestige/relocation count from a save blob. Returns 0 when
+    absent or malformed. This is untrusted input; callers must verify it before
+    using it for rewards."""
+    if not state:
+        return 0
+    try:
+        data = json.loads(state) if isinstance(state, str) else state
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return 0
+    if not isinstance(data, dict):
+        return 0
+    s = data.get("S") if isinstance(data.get("S"), dict) else data
+    try:
+        return max(0, int(float(s.get("prestige") or 0)))
+    except (TypeError, ValueError, AttributeError):
+        return 0
+
+
+def escape_score_from_prestige(prestige: int | float) -> float:
+    p = max(0.0, float(prestige or 0))
+    return 1.0 + 0.75 * p if p > 0 else 0.0
+
+
+def escape_prestige_for_score(score: float) -> int:
+    score = max(0.0, float(score or 0.0))
+    if score <= 1.0:
+        return 0
+    return int((score - 1.0) / 0.75)
+
+
 def escape_boost(escape_score: float) -> float:
     score = max(0.0, float(escape_score or 0.0))
     for threshold, boost in ESCAPE_TIERS:  # tiers are ordered high -> low
