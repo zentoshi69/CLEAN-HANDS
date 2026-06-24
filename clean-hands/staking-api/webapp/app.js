@@ -77,13 +77,35 @@
     const score = Number((a && a.escape_score) || 0);
     const raw = Number((a && a.escape_raw_score) || 0);
     const boost = Number((a && a.escape_boost) || 0);
+    const rawBoost = Number((a && a.escape_boost_unscaled) || boost);
+    const socialCount = Number((a && a.social_verified_count) || 0);
+    const socialNeed = Number((a && a.social_required_count) || 3);
+    const scale = a && a.escape_boost_scale != null ? Number(a.escape_boost_scale) : 1;
     const status = (a && a.escape_status) || '';
     if (status === 'paused') return 'paused by ops';
     if (status === 'review') return raw ? 'under review' : '—';
     if (status === 'verifying') return escapeScoreLabel(raw) + ' verifying';
     if (status === 'telegram_required') return 'open in Telegram';
     if (!score) return 'play to unlock';
+    if (rawBoost && scale <= 0) return escapeScoreLabel(score) + ' locked · socials 0/' + socialNeed;
+    if (rawBoost && scale < 1)
+      return escapeScoreLabel(score) + ' → ' + pct(boost) + ' · socials ' + socialCount + '/' + socialNeed;
     return escapeScoreLabel(score) + ' → ' + pct(boost);
+  }
+  function socialActivationLabel(p) {
+    const s = (p && p.socials) || {};
+    const need = Number(s.required || (p && p.apr && p.apr.social_required_count) || 3);
+    const count = Number(s.verified_count || (p && p.apr && p.apr.social_verified_count) || 0);
+    const active = need ? Math.round((count / need) * 100) : 0;
+    return count + '/' + need + ' · ' + active + '% active';
+  }
+  function socialPlatformLabel(p, key) {
+    const platforms = ((p && p.socials && p.socials.platforms) || {});
+    const s = platforms[key] || {};
+    if (s.verified) return 'verified';
+    if (s.status === 'pending') return 'pending review';
+    if (s.status === 'rejected') return 'rejected';
+    return key === 'tg' ? 'open in Telegram' : 'missing';
   }
   function esc(s) {
     return String(s).replace(
@@ -439,6 +461,7 @@
     $('b-amount').textContent = pct(a.amount_boost);
     $('b-loyalty').textContent = pct(a.loyalty_boost);
     $('b-ref').textContent = pct(a.referral_boost);
+    if ($('b-social')) $('b-social').textContent = socialActivationLabel(p);
     $('b-escape').textContent = pct(a.escape_boost);
     $('b-burn').textContent = pct(a.burn_bonus_apr);
     $('inv-bonus').textContent = pct(a.referral_boost);
@@ -447,12 +470,14 @@
       ['b-amount', a.amount_boost],
       ['b-loyalty', a.loyalty_boost],
       ['b-ref', a.referral_boost],
+      ['b-social', (p.socials && p.socials.verified_count) || 0],
       ['b-escape', a.escape_boost],
       ['b-burn', a.burn_bonus_apr],
     ].forEach(([id, v]) => {
       const el = $(id);
       if (el) el.classList.toggle('zero', !Number(v));
     });
+    paintSocials(p);
     // burn gauge
     $('boost-now').textContent = pct(a.burn_bonus_apr);
     const cap = Number((CONFIG && CONFIG.burn_cap_apr) || 2.0) || 2.0;
@@ -471,6 +496,40 @@
     document.querySelectorAll('.inv-count').forEach((e) => (e.textContent = fmt(p.active_referrals)));
     updatePortfolio();
     startTicker();
+  }
+
+  function paintSocials(p) {
+    const s = (p && p.socials) || {};
+    const platforms = s.platforms || {};
+    const set = (id, text, on) => {
+      const el = $(id);
+      if (!el) return;
+      el.textContent = text;
+      el.classList.toggle('zero', !on);
+    };
+    set('soc-total', socialActivationLabel(p), Number(s.verified_count || 0) > 0);
+    set('soc-tg', socialPlatformLabel(p, 'tg'), platforms.tg && platforms.tg.verified);
+    set('soc-x', socialPlatformLabel(p, 'x'), platforms.x && platforms.x.verified);
+    set('soc-discord', socialPlatformLabel(p, 'discord'), platforms.discord && platforms.discord.verified);
+  }
+
+  async function socialClaim(platform) {
+    if (!TOKEN) return toast('Connect your wallet first');
+    try {
+      const input = $('social-' + platform + '-handle');
+      const handle = input ? input.value.trim() : '';
+      if (platform !== 'tg' && !handle) return toast('Add your ' + platform + ' handle first');
+      const r = await api('/api/social/claim', authedBody({ platform, handle }));
+      if (r.profile) paint(r.profile);
+      haptic('medium');
+      toast(
+        platform === 'tg'
+          ? 'Telegram verified ✦'
+          : platform.toUpperCase() + ' submitted for review ✦',
+      );
+    } catch (e) {
+      toast('Social verify failed: ' + String(e.message || e));
+    }
   }
 
   function paintClaimState(p) {
@@ -1316,6 +1375,7 @@
     set('bl-loyalty', pct(a.loyalty_boost));
     set('bl-ref', pct(a.referral_boost));
     set('bl-lp', a.liquidity_boost ? pct(a.liquidity_boost) : 'soon');
+    set('bl-social', socialActivationLabel(PROFILE));
     set('bl-escape', escapeBoostLabel(a));
     set('bl-vip', a.vip_boost ? '3× locked ✦' : '—');
     set('bl-burn', pct(a.burn_bonus_apr));
@@ -1325,6 +1385,7 @@
       ['bl-loyalty', a.loyalty_boost],
       ['bl-ref', a.referral_boost],
       ['bl-lp', a.liquidity_boost],
+      ['bl-social', (PROFILE && PROFILE.socials && PROFILE.socials.verified_count) || 0],
       ['bl-escape', a.escape_boost],
       ['bl-vip', a.vip_boost],
       ['bl-burn', a.burn_bonus_apr],
@@ -2286,6 +2347,7 @@
     stake,
     unstake,
     claim,
+    socialClaim,
     confirmPayout,
     submitBurn,
     invite,

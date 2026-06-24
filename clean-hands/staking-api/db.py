@@ -35,7 +35,7 @@ def _harden_db_perms() -> None:
 # --------------------------------------------------------------------------- #
 DECIMALS = int(os.environ.get("DEFAULT_TOKEN_DECIMALS", "6"))
 BASE = 10**DECIMALS
-SCHEMA_VERSION = 11  # bumped by migrations (v11: verified Escape anti-cheat ledger)
+SCHEMA_VERSION = 12  # bumped by migrations (v12: social gate for Escape rewards)
 
 
 def to_base(ui_amount: float) -> int:
@@ -204,6 +204,26 @@ CREATE TABLE IF NOT EXISTS game_verify_events (
     verified_escape_score DOUBLE PRECISION NOT NULL DEFAULT 0,
     risk_score BIGINT NOT NULL DEFAULT 0, detail TEXT);
 CREATE INDEX IF NOT EXISTS idx_game_verify_events_player ON game_verify_events(player, ts);
+CREATE TABLE IF NOT EXISTS social_verifications (
+    wallet TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    handle TEXT,
+    verified BIGINT NOT NULL DEFAULT 0,
+    method TEXT,
+    proof TEXT,
+    status TEXT NOT NULL DEFAULT 'missing',
+    verified_at BIGINT NOT NULL DEFAULT 0,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (wallet, platform));
+CREATE INDEX IF NOT EXISTS idx_social_status ON social_verifications(platform, status);
+CREATE TABLE IF NOT EXISTS social_verify_events (
+    id BIGSERIAL PRIMARY KEY,
+    ts BIGINT NOT NULL,
+    wallet TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    status TEXT NOT NULL,
+    detail TEXT);
+CREATE INDEX IF NOT EXISTS idx_social_events_wallet ON social_verify_events(wallet, ts);
 CREATE TABLE IF NOT EXISTS bridge_orders (
     order_id TEXT PRIMARY KEY, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
     send_coin TEXT NOT NULL, send_network TEXT, recv_coin TEXT NOT NULL, recv_network TEXT,
@@ -563,6 +583,39 @@ def _migrate(conn) -> None:
         )
         conn.execute("PRAGMA user_version = 11")
         conn.commit()
+        ver = 11
+    if ver < 12:
+        # v12: verified socials gate Escape reward activation. Raw client UI
+        # clicks never unlock money; X/Discord can sit pending until operator
+        # review, while Telegram is verified from signed initData.
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS social_verifications (
+                wallet      TEXT NOT NULL,
+                platform    TEXT NOT NULL, -- tg|x|discord
+                handle      TEXT,
+                verified    INTEGER NOT NULL DEFAULT 0,
+                method      TEXT,
+                proof       TEXT,
+                status      TEXT NOT NULL DEFAULT 'missing',
+                verified_at INTEGER NOT NULL DEFAULT 0,
+                updated_at  INTEGER NOT NULL,
+                PRIMARY KEY (wallet, platform)
+            );
+            CREATE INDEX IF NOT EXISTS idx_social_status ON social_verifications(platform, status);
+            CREATE TABLE IF NOT EXISTS social_verify_events (
+                id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts       INTEGER NOT NULL,
+                wallet   TEXT NOT NULL,
+                platform TEXT NOT NULL,
+                status   TEXT NOT NULL,
+                detail   TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_social_events_wallet ON social_verify_events(wallet, ts);
+            """
+        )
+        conn.execute("PRAGMA user_version = 12")
+        conn.commit()
 
 
 def _column_names(conn, table: str) -> set[str]:
@@ -708,6 +761,115 @@ def game_verify_event(
         ),
     )
     conn.commit()
+
+
+SOCIAL_PLATFORMS = ("tg", "x", "discord")
+
+
+def _social_platform(platform: str) -> str:
+    p = str(platform or "").strip().lower()
+    aliases = {
+        "telegram": "tg",
+        "twitter": "x",
+        "𝕏": "x",
+        "disc": "discord",
+    }
+    p = aliases.get(p, p)
+    if p not in SOCIAL_PLATFORMS:
+        raise ValueError("unknown social platform")
+    return p
+
+
+def social_set(
+    conn,
+    *,
+    wallet: str,
+    platform: str,
+    verified: bool,
+    status: str | None = None,
+    handle: str | None = None,
+    method: str = "",
+    proof: str = "",
+) -> None:
+    """Upsert a social verification row.
+
+    The staking payout path reads only this server-side ledger. Client-submitted
+    X/Discord handles land as pending until an admin verifies them.
+    """
+    p = _social_platform(platform)
+    now = int(time.time())
+    is_verified = 1 if verified else 0
+    st = str(status or ("verified" if verified else "pending")).strip().lower()[:32]
+    verified_at = now if verified else 0
+    conn.execute(
+        "INSERT INTO social_verifications "
+        "(wallet, platform, handle, verified, method, proof, status, verified_at, updated_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(wallet, platform) DO UPDATE SET "
+        "handle=excluded.handle, verified=excluded.verified, method=excluded.method, "
+        "proof=excluded.proof, status=excluded.status, verified_at=excluded.verified_at, "
+        "updated_at=excluded.updated_at",
+        (
+            wallet,
+            p,
+            (str(handle or "")[:96] if handle is not None else None),
+            is_verified,
+            str(method or "")[:48],
+            str(proof or "")[:240],
+            st,
+            verified_at,
+            now,
+        ),
+    )
+    conn.execute(
+        "INSERT INTO social_verify_events (ts, wallet, platform, status, detail) VALUES (?,?,?,?,?)",
+        (now, wallet, p, st, str(method or "")[:120]),
+    )
+    conn.commit()
+
+
+def social_status(conn, wallet: str) -> dict[str, dict]:
+    rows = conn.execute(
+        "SELECT platform, handle, verified, method, status, verified_at, updated_at "
+        "FROM social_verifications WHERE wallet=?",
+        (wallet,),
+    ).fetchall()
+    out = {
+        p: {
+            "platform": p,
+            "verified": False,
+            "status": "missing",
+            "handle": "",
+            "verified_at": 0,
+            "updated_at": 0,
+        }
+        for p in SOCIAL_PLATFORMS
+    }
+    for r in rows:
+        try:
+            p = _social_platform(r["platform"])
+        except ValueError:
+            continue
+        out[p] = {
+            "platform": p,
+            "verified": bool(r["verified"]),
+            "status": r["status"] or ("verified" if r["verified"] else "pending"),
+            "handle": r["handle"] or "",
+            "verified_at": int(r["verified_at"] or 0),
+            "updated_at": int(r["updated_at"] or 0),
+        }
+    return out
+
+
+def social_summary(conn, wallet: str) -> dict:
+    platforms = social_status(conn, wallet)
+    count = sum(1 for p in SOCIAL_PLATFORMS if platforms[p]["verified"])
+    return {
+        "required": len(SOCIAL_PLATFORMS),
+        "verified_count": count,
+        "multiplier": count / len(SOCIAL_PLATFORMS),
+        "platforms": platforms,
+    }
 
 
 def upsert_staker(conn, wallet: str, tg_id=None, username=None, referred_by=None):
@@ -904,6 +1066,7 @@ _OPS_FLAGS = {
     "halt_payout_setup",
     "halt_mm",
     "halt_bridge",
+    "halt_escape_boost",
 }
 
 

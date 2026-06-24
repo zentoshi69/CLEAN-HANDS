@@ -250,6 +250,11 @@ class Apr:
     effective_apr: float
     wallet_boost: float = 0.0
     vip_boost: float = 0.0
+    # Escape reward is the only booster with a social activation gate. The
+    # score remains the verified game score; the paid boost is scaled by the
+    # server-side social verification ratio (0/3, 1/3, 2/3, 3/3).
+    escape_boost_unscaled: float = 0.0
+    escape_boost_scale: float = 1.0
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -268,13 +273,16 @@ def effective_apr(
     clean_usd: float = 0.0,
     vip: bool = False,
     escape_score: float = 0.0,
+    escape_boost_scale: float = 1.0,
 ) -> Apr:
     ab = amount_boost(staked_tokens)
     lb = loyalty_boost(seconds_staked)
     rb = referral_boost(active_referrals)
     qb = liquidity_boost(liquidity_usd)
     es = max(0.0, float(escape_score or 0.0))
-    eb = escape_boost(es)
+    eb_raw = escape_boost(es)
+    eb_scale = max(0.0, min(1.0, float(escape_boost_scale or 0.0)))
+    eb = eb_raw * eb_scale
     bb = burn_bonus_apr(total_burned_tokens)
     wb = wallet_balance_boost(sol_usd, clean_usd)
     mult = 1 + ab + lb + rb + qb + wb + eb
@@ -293,6 +301,8 @@ def effective_apr(
         effective_apr=eff,
         wallet_boost=wb,
         vip_boost=vipb,
+        escape_boost_unscaled=eb_raw,
+        escape_boost_scale=eb_scale,
     )
 
 

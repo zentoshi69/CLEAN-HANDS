@@ -54,7 +54,11 @@ def escape_score_for(conn, row) -> float:
     return float(verified["verified_escape_score"] or 0.0)
 
 
-def pending_base(row, refs: int, now: int, escape_score: float = 0.0) -> int:
+def social_scale_for(conn, row) -> float:
+    return float(db.social_summary(conn, row["wallet"])["multiplier"])
+
+
+def pending_base(row, refs: int, now: int, escape_score: float = 0.0, escape_boost_scale: float = 1.0) -> int:
     """Read-only projection of a staker's claimable rewards at `now` (base units),
     mirroring the API's accrual without writing."""
     eff = econ.effective_staked(row["recorded_staked"], row["cached_balance"])
@@ -65,6 +69,7 @@ def pending_base(row, refs: int, now: int, escape_score: float = 0.0) -> int:
         refs,
         db.to_ui(row["total_burned"]),
         escape_score=escape_score,
+        escape_boost_scale=escape_boost_scale,
     ).effective_apr
     dt = now - row["last_accrual_ts"]
     return int(row["accrued"]) + int(econ.accrue(eff, apr, dt))
@@ -106,7 +111,7 @@ async def sweep_once() -> int:
         rows = db.stakers_with_tg(conn)
         for r in rows:
             refs = db.active_referrals(conn, r["wallet"])
-            pending = pending_base(r, refs, now, escape_score_for(conn, r))
+            pending = pending_base(r, refs, now, escape_score_for(conn, r), social_scale_for(conn, r))
             last = db.notif_last(conn, r["wallet"], "claim_ready")
             if not claim_ready_by_rules(r, now):
                 continue

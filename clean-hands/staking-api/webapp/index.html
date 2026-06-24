@@ -254,6 +254,12 @@
         background: var(--ink-2);
         border-color: var(--ink-2);
       }
+      .field .pctbtn,
+      .panel > .pctbtn {
+        width: 100%;
+        padding: 10px 12px;
+        margin-top: 8px;
+      }
       .wmenu {
         position: absolute;
         right: 0;
@@ -1778,6 +1784,9 @@
               <span class="name">Referrals</span><span class="v zero" id="b-ref">—</span>
             </div>
             <div class="row">
+              <span class="name">🌐 Social gate</span><span class="v zero" id="b-social">0/3</span>
+            </div>
+            <div class="row">
               <span class="name">🏃 Escape</span><span class="v zero" id="b-escape">—</span>
             </div>
             <div class="row">
@@ -1943,7 +1952,7 @@
             <h3>✦ Your booster stack</h3>
             <p class="desc">
               Tiers <b>add up</b>. Escape adds live staking power at <b>×5 / ×10 / ×20 / ×33</b>;
-              burn adds bonus APR on top, and tokens never leave your wallet.
+              X + TG + Discord activate that Escape reward <b>1/3 each</b>.
             </p>
             <div class="row">
               <span class="name">🪣 Holdings</span><span class="v zero" id="bl-amount">—</span>
@@ -1961,6 +1970,9 @@
               <span class="name">💧 Liquidity (MM)</span><span class="v zero" id="bl-lp">—</span>
             </div>
             <div class="row">
+              <span class="name">🌐 Social activation</span><span class="v zero" id="bl-social">0/3</span>
+            </div>
+            <div class="row">
               <span class="name">🏃 Escape game</span><span class="v zero" id="bl-escape">—</span>
             </div>
             <div class="row">
@@ -1969,6 +1981,36 @@
             <div class="row">
               <span class="name">🔥 Burn bonus</span><span class="v zero" id="bl-burn">—</span>
             </div>
+          </div>
+          <div class="card panel">
+            <h3>🌐 Social activation</h3>
+            <p class="desc">
+              Wallet + verified socials activate the Escape reward boost. Telegram verifies inside
+              the Mini App; X and Discord enter review so scripts can’t self-unlock payouts.
+            </p>
+            <div class="row">
+              <span class="name">Total active</span><span class="v zero" id="soc-total">0/3</span>
+            </div>
+            <div class="row">
+              <span class="name">Telegram</span><span class="v zero" id="soc-tg">open in Telegram</span>
+            </div>
+            <div class="row">
+              <span class="name">X</span><span class="v zero" id="soc-x">missing</span>
+            </div>
+            <div class="row">
+              <span class="name">Discord</span><span class="v zero" id="soc-discord">missing</span>
+            </div>
+            <div class="field">
+              <div class="top-l"><span>X handle</span><span>review required</span></div>
+              <div class="input"><input id="social-x-handle" placeholder="@cleanhands" /></div>
+              <button class="pctbtn" onclick="App.socialClaim('x')">Request X verify</button>
+            </div>
+            <div class="field">
+              <div class="top-l"><span>Discord username</span><span>review required</span></div>
+              <div class="input"><input id="social-discord-handle" placeholder="cleanhands#0001" /></div>
+              <button class="pctbtn" onclick="App.socialClaim('discord')">Request Discord verify</button>
+            </div>
+            <button class="pctbtn" onclick="App.socialClaim('tg')">Verify Telegram</button>
           </div>
           <div class="card panel">
             <h3>🔥 Burn to boost</h3>

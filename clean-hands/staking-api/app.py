@@ -249,6 +249,15 @@ def _escape_public_status(conn, row) -> dict:
     }
 
 
+def _social_public(conn, wallet: str) -> dict:
+    """Public social activation status for the Escape reward gate.
+
+    This is intentionally low-detail: the client can see missing/pending/
+    verified, but not internal review logic.
+    """
+    return db.social_summary(conn, wallet)
+
+
 async def _refresh_balance(conn, row, force: bool = False, fail_closed: bool = False) -> int:
     """Returns the wallet's $CLEAN balance in integer base units (cached)."""
     now = int(time.time())
@@ -279,11 +288,13 @@ def _apr_for(conn, wallet: str, row):
     refs = db.active_referrals(conn, wallet)
     sol_usd, clean_usd = _wallet_usd(wallet, row)
     escape_score = _escape_score_for(conn, row)
+    social_gate = _social_public(conn, wallet)
     apr = econ.effective_apr(
         db.to_ui(eff_base), secs, refs, db.to_ui(row["total_burned"]),
         (row["mm_liquidity_cents"] or 0) / 100.0, sol_usd, clean_usd,
         vip=bool(row["mm_vip"]),
         escape_score=escape_score,
+        escape_boost_scale=float(social_gate["multiplier"]),
     )
     return eff_base, secs, refs, apr
 
@@ -321,8 +332,11 @@ def _accrue(conn, wallet: str) -> None:
 def _profile(conn, wallet: str) -> dict:
     row = db.get_staker(conn, wallet)
     eff_base, secs, refs, apr = _apr_for(conn, wallet, row)
+    socials = _social_public(conn, wallet)
     apr_dict = apr.to_dict()
     apr_dict.update(_escape_public_status(conn, row))
+    apr_dict["social_verified_count"] = socials["verified_count"]
+    apr_dict["social_required_count"] = socials["required"]
     vest_secs = int(time.time()) - row["stake_start_ts"] if row["stake_start_ts"] else 0
     eff_expr = db.effective_staked_expr()
     # eff_expr is an internal SQL constant, not user input.
@@ -373,6 +387,7 @@ def _profile(conn, wallet: str) -> dict:
         ),
         "claim_fee_usd": _claim_fee_usd(),
         "balance_verified_at": row["balance_ts"],
+        "socials": socials,
         "apr": apr_dict,
     }
 
@@ -427,6 +442,12 @@ class TgStart(BaseModel):
 class TgPoll(BaseModel):
     initData: str
     sid: str | None = None
+
+
+class SocialClaimBody(Tok):
+    platform: str
+    handle: str | None = None
+    proof: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -504,7 +525,20 @@ async def _complete_login(wallet: str, tg_id, ref, username):
         db.upsert_staker(conn, wallet, tg_id=tg_id, username=username, referred_by=r)
         row = db.get_staker(conn, wallet)
         await _refresh_balance(conn, row)
+        # Settle rewards under the OLD social gate before Telegram verification
+        # changes future Escape activation. Socials must never retro-boost a
+        # previous accrual window.
         _accrue(conn, wallet)
+        if tg_id is not None:
+            db.social_set(
+                conn,
+                wallet=wallet,
+                platform="tg",
+                verified=True,
+                status="verified",
+                handle=username,
+                method="telegram_initData",
+            )
         token = auth.create_session(wallet, tg_id)
         return token, _profile(conn, wallet)
 
@@ -905,6 +939,63 @@ async def api_profile(body: Tok):
         if fresh:
             out["refreshed_token"] = fresh
         return out
+
+
+def _clean_social_text(v: str | None, limit: int = 96) -> str:
+    return re.sub(r"[\r\n\t]+", " ", str(v or "").strip())[:limit]
+
+
+@app.post("/api/social/claim")
+def api_social_claim(body: SocialClaimBody, request: Request):
+    """User-facing social verification request.
+
+    Telegram can be verified automatically because we have signed Telegram
+    initData on the session. X/Discord are intentionally only queued as pending;
+    paying a boost for self-reported handles would be a farmable money bug.
+    """
+    payload = _require(body.token)
+    wallet = payload["w"]
+    ratelimit.hit(request, "write", extra_key=wallet)
+    try:
+        platform = db._social_platform(body.platform)
+    except ValueError:
+        raise HTTPException(400, "unknown social platform")
+    with db.db() as conn:
+        row = db.get_staker(conn, wallet)
+        if not row:
+            raise HTTPException(404, "unknown wallet")
+        _accrue(conn, wallet)
+        if platform == "tg":
+            tg_id = row["tg_id"] if row["tg_id"] is not None else payload.get("t")
+            if tg_id is None:
+                raise HTTPException(400, "open the Mini App in Telegram to verify TG")
+            db.social_set(
+                conn,
+                wallet=wallet,
+                platform="tg",
+                verified=True,
+                status="verified",
+                handle=row["username"],
+                method="telegram_initData",
+            )
+            return {"ok": True, "platform": "tg", "status": "verified", "profile": _profile(conn, wallet)}
+        existing = db.social_status(conn, wallet).get(platform, {})
+        if existing.get("verified"):
+            return {"ok": True, "platform": platform, "status": "verified", "profile": _profile(conn, wallet)}
+        handle = _clean_social_text(body.handle)
+        if not handle:
+            raise HTTPException(400, f"{platform} handle required")
+        db.social_set(
+            conn,
+            wallet=wallet,
+            platform=platform,
+            verified=False,
+            status="pending",
+            handle=handle,
+            method="user_submitted",
+            proof=_clean_social_text(body.proof, 200),
+        )
+        return {"ok": True, "platform": platform, "status": "pending", "profile": _profile(conn, wallet)}
 
 
 @app.post("/api/leaderboard")
@@ -1391,6 +1482,15 @@ class AdminGameVerify(BaseModel):
     verified_escape_score: float
 
 
+class AdminSocialVerify(BaseModel):
+    admin_token: str
+    wallet: str
+    platform: str
+    verified: bool = True
+    handle: str | None = None
+    proof: str | None = None
+
+
 def _require_admin(tok: str) -> None:
     if not ADMIN_TOKEN or not hmac.compare_digest(tok or "", ADMIN_TOKEN):
         raise HTTPException(403, "admin only")
@@ -1542,6 +1642,64 @@ def api_admin_game_verify(body: AdminGameVerify):
     return {"ok": True, "player": player, "verified_escape_score": verified_score}
 
 
+@app.post("/api/admin/social_reviews")
+def api_admin_social_reviews(body: AdminTok):
+    _require_admin(body.admin_token)
+    with db.db() as conn:
+        rows = conn.execute(
+            "SELECT wallet, platform, handle, verified, status, updated_at "
+            "FROM social_verifications WHERE status IN ('pending','rejected') "
+            "ORDER BY updated_at DESC LIMIT 100"
+        ).fetchall()
+        return {
+            "reviews": [
+                {
+                    "wallet": r["wallet"],
+                    "platform": r["platform"],
+                    "handle": r["handle"],
+                    "verified": bool(r["verified"]),
+                    "status": r["status"],
+                    "updated_at": r["updated_at"],
+                }
+                for r in rows
+            ]
+        }
+
+
+@app.post("/api/admin/social_verify")
+def api_admin_social_verify(body: AdminSocialVerify):
+    _require_admin(body.admin_token)
+    if not auth.is_valid_wallet(body.wallet):
+        raise HTTPException(400, "invalid wallet")
+    try:
+        platform = db._social_platform(body.platform)
+    except ValueError:
+        raise HTTPException(400, "unknown social platform")
+    with db.db() as conn:
+        if not db.get_staker(conn, body.wallet):
+            raise HTTPException(404, "unknown wallet")
+        _accrue(conn, body.wallet)
+        existing = db.social_status(conn, body.wallet).get(platform, {})
+        handle = _clean_social_text(body.handle) if body.handle is not None else existing.get("handle", "")
+        db.social_set(
+            conn,
+            wallet=body.wallet,
+            platform=platform,
+            verified=bool(body.verified),
+            status="verified" if body.verified else "rejected",
+            handle=handle,
+            method="admin_review",
+            proof=_clean_social_text(body.proof, 200),
+        )
+        return {
+            "ok": True,
+            "wallet": body.wallet,
+            "platform": platform,
+            "verified": bool(body.verified),
+            "socials": _social_public(conn, body.wallet),
+        }
+
+
 @app.get("/api/economics")
 def api_economics():
     """Public, non-secret: lets the site/app render the rules consistently."""
@@ -1557,6 +1715,9 @@ def api_economics():
             "escape_cap": econ.ESCAPE_TIERS[0][0],
             "escape_cap_boost": econ.ESCAPE_TIERS[0][1],
             "escape_verification": True,
+            "escape_social_gate": True,
+            "social_required": list(db.SOCIAL_PLATFORMS),
+            "social_weight_each": 1 / len(db.SOCIAL_PLATFORMS),
             "burn_unit": econ.BURN_UNIT,
             "burn_apr_per_unit": econ.BURN_APR_PER_UNIT,
             "burn_cap_apr": econ.BURN_CAP_APR,

@@ -97,6 +97,10 @@ def test_economics():
     esc = econ.effective_apr(0, 0, 0, 0, escape_score=33)
     assert approx(esc.escape_boost, 1.0)
     assert approx(esc.effective_apr, 0.40 * 2.0)
+    gated = econ.effective_apr(0, 0, 0, 0, escape_score=33, escape_boost_scale=1 / 3)
+    assert approx(gated.escape_boost_unscaled, 1.0)
+    assert approx(gated.escape_boost, 1 / 3)
+    assert approx(gated.effective_apr, 0.40 * (1 + 1 / 3))
     print("economics ✓")
 
 
@@ -473,9 +477,65 @@ def test_verified_escape_booster_accrues_into_claim():
         _eff, _secs, _refs, apr = app._apr_for(conn, wallet, row)
 
     assert approx(apr.escape_score, 33.0)
+    assert approx(apr.escape_boost_unscaled, 1.0)
+    assert approx(apr.escape_boost, 0.0)
+    # No verified socials yet: Escape score is real, but the reward gate is 0/3.
+    assert approx(apr.effective_apr, 0.40 * (1 + 0.25 + 0.15))
+
+    pending = c.post(
+        "/api/social/claim",
+        json={"token": token, "platform": "x", "handle": "@verified_escaper"},
+    )
+    assert pending.status_code == 200, pending.text
+    assert pending.json()["profile"]["socials"]["platforms"]["x"]["status"] == "pending"
+    with _db.db() as conn:
+        row = _db.get_staker(conn, wallet)
+        _eff, _secs, _refs, apr = app._apr_for(conn, wallet, row)
+    assert approx(apr.escape_boost, 0.0)  # pending/self-reported X does not pay
+
+    tg = c.post("/api/social/claim", json={"token": token, "platform": "tg"})
+    assert tg.status_code == 200, tg.text
+    with _db.db() as conn:
+        row = _db.get_staker(conn, wallet)
+        _eff, _secs, _refs, apr = app._apr_for(conn, wallet, row)
+    assert approx(apr.escape_boost, 1 / 3)
+    assert approx(apr.effective_apr, 0.40 * (1 + 0.25 + 0.15 + 1 / 3))
+
+    x = c.post(
+        "/api/admin/social_verify",
+        json={"admin_token": "admin-test-secret", "wallet": wallet, "platform": "x", "verified": True},
+    )
+    assert x.status_code == 200, x.text
+    with _db.db() as conn:
+        row = _db.get_staker(conn, wallet)
+        _eff, _secs, _refs, apr = app._apr_for(conn, wallet, row)
+    assert approx(apr.escape_boost, 2 / 3)
+    assert approx(apr.effective_apr, 0.40 * (1 + 0.25 + 0.15 + 2 / 3))
+
+    d = c.post(
+        "/api/admin/social_verify",
+        json={
+            "admin_token": "admin-test-secret",
+            "wallet": wallet,
+            "platform": "discord",
+            "verified": True,
+            "handle": "verified_escaper",
+        },
+    )
+    assert d.status_code == 200, d.text
+    with _db.db() as conn:
+        row = _db.get_staker(conn, wallet)
+        _eff, _secs, _refs, apr = app._apr_for(conn, wallet, row)
     assert approx(apr.escape_boost, 1.0)
-    # Amount tier (+25%) + 90d loyalty (+15%) + Escape cap (+100%).
+    # Amount tier (+25%) + 90d loyalty (+15%) + Escape cap (+100%) after 3/3 socials.
     assert approx(apr.effective_apr, 0.40 * (1 + 0.25 + 0.15 + 1.0))
+
+    with _db.db() as conn:
+        conn.execute(
+            "UPDATE stakers SET accrued=0, last_accrual_ts=? WHERE wallet=?",
+            (int(_t.time()) - 86400, wallet),
+        )
+        conn.commit()
 
     r = c.post("/api/claim", json={"token": token})
     assert r.status_code == 200, r.text
@@ -484,6 +544,7 @@ def test_verified_escape_booster_accrues_into_claim():
     # Escape cap it would be ~1,534, so this proves claim uses the booster.
     assert body["claimed"] > 2500, body
     assert body["profile"]["apr"]["escape_boost"] == 1.0
+    assert body["profile"]["apr"]["social_verified_count"] == 3
     assert body["profile"]["apr"]["escape_status"] == "verified"
     print("verified escape booster accrues into claim ✓")
 
