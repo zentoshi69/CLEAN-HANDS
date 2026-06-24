@@ -2376,8 +2376,9 @@ function boot(){
   }
   function connectWallet(){
     sfx('tap'); track('wallet_connect_click',{mobile:_isMobile});
-    var prov=window.solana||(window.phantom&&window.phantom.solana);
-    if(prov&&prov.isPhantom){
+    var prov=(window.phantom&&window.phantom.solana) ||
+      ((window.solana&&window.solana.isPhantom)?window.solana:null);
+    if(prov&&typeof prov.connect==='function'){
       prov.connect().then(function(resp){
         _wallet=resp.publicKey.toString();
         var w=$('#clnWalletAddr'); if(w) w.textContent='Connected: '+_wallet.slice(0,4)+'…'+_wallet.slice(-4);
@@ -2391,8 +2392,16 @@ function boot(){
       location.href='https://phantom.app/ul/browse/'+encodeURIComponent(dapp)+'?ref='+encodeURIComponent(location.origin);
       return;
     }
-    window.open('https://phantom.app/download','_blank','noopener');
-    toast('Install the Phantom extension to connect','',''); 
+    track('wallet_preview_no_provider',{});
+    var url=location.href.split('#')[0];
+    var msg='This preview browser can’t access wallet extensions. Open this page in Chrome/Brave with Phantom enabled, or open it inside Phantom on mobile.';
+    var out=$('#clnWalletAddr'); if(out) out.textContent=msg;
+    var btn=$('#clnPhantom');
+    if(btn){
+      btn.textContent='Copy app link';
+      btn.onclick=function(){ sfx('tap'); copyLink(url); toast('Open that link in your Phantom-enabled browser','',''); };
+    }
+    toast('Preview cannot see Phantom extension','','');
   }
 
   /* ---- New game / reset (branded confirm in the native sheet) ---- */
