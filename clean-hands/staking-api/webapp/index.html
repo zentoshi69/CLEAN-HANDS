@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
-    <title>$CLEAN — Soft Staking</title>
+    <title>PLAY &amp; STAKE $CLEAN — Mini App</title>
     <link rel="icon" href="/glove.png?v=2" />
     <link rel="apple-touch-icon" href="/glove.png?v=2" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -110,6 +110,8 @@
         display: flex;
         align-items: center;
         gap: 10px;
+        min-width: 0;
+        flex: 1 1 auto;
       }
       .brand img {
         width: 38px;
@@ -117,6 +119,10 @@
         border-radius: 50%;
         border: 1.5px solid var(--line);
         background: #fff;
+        flex: none;
+      }
+      .brand > div {
+        min-width: 0;
       }
       .brand b {
         font-family: 'Fraunces', serif;
@@ -125,6 +131,9 @@
         letter-spacing: 0.02em;
         display: block;
         line-height: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
       .brand small {
         font-size: 0.72rem;
@@ -186,6 +195,8 @@
         display: flex;
         align-items: center;
         gap: 8px;
+        flex: none;
+        margin-left: 10px;
       }
       /* round icon button in the header — opens the all-wallets portfolio */
       .iconbtn {
@@ -1570,7 +1581,7 @@
     <!-- CONNECT OVERLAY -->
     <div class="overlay" id="connect">
       <img src="/glove.png?v=2" alt="CLEAN" />
-      <h2>$CLEAN Staking</h2>
+      <h2>PLAY &amp; STAKE $CLEAN</h2>
       <p class="muted" id="connect-note">Connect your Solana wallet to stake, boost, and earn.</p>
       <div class="wl" id="wallet-list"></div>
       <div id="connect-spin" class="hide"><div class="spin"></div></div>
@@ -1598,8 +1609,8 @@
         <div class="brand">
           <img src="/glove.png?v=2" alt="CLEAN" />
           <div>
-            <b>$CLEAN</b>
-            <small>soft staking</small>
+            <b>PLAY &amp; STAKE $CLEAN</b>
+            <small>mini app</small>
           </div>
         </div>
         <div class="top-actions">
