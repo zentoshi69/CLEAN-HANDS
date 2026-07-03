@@ -20,6 +20,12 @@ making anyone a guest.
 
 ## Target architecture
 
+0. **`edge-reattach` self-heal** (`edge-reattach.sh` + 30s timer) — the standing
+   safety net that means you never touch this by hand again. Every 30s it ensures
+   whoever owns :443 is attached to `cleanhands-prod-net`; if a neighbor deploy
+   detached it, it reconnects within 30s, automatically. Additive only — never
+   restarts/reloads the edge, never touches another project. **This is the layer
+   that makes "never down again" true even before the full migration below.**
 1. **The edge is its own stack** (`docker-compose.edge.yml`, deploy in
    `/root/edge/`). No product's `up`/`down` touches it.
 2. **One shared external network `edge-net`.** The edge is on it permanently;
@@ -31,6 +37,9 @@ making anyone a guest.
    touch another's. **This is "cleanhands out of fine-traders' Caddy."**
 4. **`edge-guard`** (`edge-guard.sh` + timer) polls every domain every 60s and
    pages you the instant one drops — and says whether it's the edge or the app.
+
+Layer 0 stops the bleeding permanently with zero risk; layers 1–3 remove the
+root cause so layer 0 never even has to fire.
 
 ```
 Internet :443
@@ -48,28 +57,30 @@ Internet :443
 
 | File | Goes to (box) | Purpose |
 |------|---------------|---------|
-| `docker-compose.edge.yml` | `/root/edge/` | tenant-neutral edge stack |
+| `install.sh` | run on box | one-command: heal + install both defenses |
+| `edge-reattach.sh` | `/usr/local/bin/` | **self-heal** — keep edge on cleanhands' net |
+| `edge-reattach.{service,timer}` | `/etc/systemd/system/` | run self-heal every 30s |
+| `edge-guard.sh` | `/usr/local/bin/` | read-only domain monitor / pager |
+| `edge-guard.domains` | `/etc/edge-guard/domains` | every domain to watch |
+| `edge-guard.{service,timer}` | `/etc/systemd/system/` | run monitor every 60s |
+| `docker-compose.edge.yml` | `/root/edge/` | tenant-neutral edge stack (end-state) |
 | `Caddyfile` | `/root/edge/Caddyfile` | globals + `import sites/*.caddy` only |
 | `sites/cleanhands.caddy` | `/etc/caddy/sites/` (mounted) | cleanhands' OWN routes |
 | `edge-net.snippet.yml` | merge into cleanhands compose | app self-attaches to `edge-net` |
-| `edge-guard.sh` | `/usr/local/bin/` | read-only domain monitor |
-| `edge-guard.domains` | `/etc/edge-guard/domains` | every domain to watch |
-| `edge-guard.{service,timer}` | `/etc/systemd/system/` | run it every 60s |
 
-## Install the monitor first (zero-risk, do it today)
+## Install everything in one command (zero-risk, do it today)
 
-Catching the next drop in 60s is worth more than anything else and touches
-nothing:
+`install.sh` heals the current 502, installs the self-heal watchdog + the
+monitor, enables both timers, and records them in `/root/INFRA.md`. It is
+additive and idempotent — safe to re-run.
 
 ```bash
-install -m744 edge-guard.sh /usr/local/bin/edge-guard.sh
-install -Dm644 edge-guard.domains /etc/edge-guard/domains
-printf 'TG_BOT_TOKEN=...\nTG_CHAT_ID=...\n' > /etc/edge-guard/env && chmod 600 /etc/edge-guard/env
-install -m644 edge-guard.service /etc/systemd/system/edge-guard.service
-install -m644 edge-guard.timer   /etc/systemd/system/edge-guard.timer
-systemctl daemon-reload && systemctl enable --now edge-guard.timer
-systemctl start edge-guard.service && journalctl -u edge-guard.service -n20 --no-pager
+cd <this repo>/clean-hands/deploy/edge && sudo bash install.sh
 ```
+
+After this, cleanhands self-heals within 30s of any neighbor deploy and pages
+you if anything ever gets past that. Add `TG_BOT_TOKEN`/`TG_CHAT_ID` (or
+`ALERT_WEBHOOK`) to `/etc/edge-guard/env` to turn on phone alerts.
 
 ## Migration — do it under `.claude/skills/vps-deploy-safety/SKILL.md`
 

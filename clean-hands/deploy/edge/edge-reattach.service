@@ -1,0 +1,13 @@
+# /etc/systemd/system/edge-reattach.service
+# Ensures the live edge is always attached to cleanhands-prod-net. Additive only:
+# never restarts/reloads the edge, never edits config, never touches another
+# project's network. Paired with edge-reattach.timer.
+[Unit]
+Description=edge-reattach — keep the shared edge attached to cleanhands' network
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/edge-guard/env
+ExecStart=/usr/local/bin/edge-reattach.sh

@@ -160,3 +160,44 @@ see". You are not done until the sweep matches the registry.
 - Production cleanhands = docker: `cleanhands-api` (+ postgres + redis + site
   containers) behind the box's single edge. The API publishes a loopback port
   for host debugging only; the edge reaches it by container name.
+
+## Shared-edge tenancy — the recurring cleanhands 502 (READ BEFORE ANY EDGE WORK)
+
+The single most common outage on this box: **cleanhands.fun 502s whenever
+someone works on a neighbor (fine-traders / co-muse).** It is NOT a cleanhands
+bug and NOT the game code — it is cross-tenant edge coupling. Root cause,
+confirmed 2026-07-03:
+
+- The ONE edge that owns 80/443 lived *inside fine-traders' compose*
+  (`/root/FINEtrader-app/deploy`). A `docker compose up` on fine-traders
+  **recreates the edge**, which rejoins only its own network and **loses
+  `cleanhands-prod-net`**. The edge can then no longer resolve `cleanhands-api`
+  (`dial tcp: lookup cleanhands-api ... server misbehaving`) → every cleanhands
+  domain 502s while the app containers stay perfectly healthy.
+
+The tenancy contract (enforced by `clean-hands/deploy/edge/`):
+
+1. **The edge is tenant-neutral.** It must NOT live in any product's compose.
+   Never bring the edge up/down as a side effect of a product deploy.
+2. **Every app owns its own imported Caddy file** (`/etc/caddy/sites/<app>.caddy`
+   via `import sites/*.caddy`). Never inline one product's routes into another
+   product's Caddyfile — that is how blocks get clobbered.
+3. **Every app self-attaches to the shared edge network** from its OWN compose
+   (`external: true`). Never rely on a manual `docker network connect` — it
+   evaporates on the next recreate.
+4. **Recreating or relocating the edge is a full-domain-sweep event.** After it,
+   curl EVERY domain in the DOMAINS table, not just the one you touched.
+
+Standing defenses on the box — **DO NOT DISABLE, do not flag as rogue crons:**
+
+- `edge-reattach.timer` (30s): additively re-attaches whoever owns :443 to
+  `cleanhands-prod-net`. Never restarts/reloads the edge, never edits config —
+  it is the safety net that auto-heals the 502 above within 30s.
+- `edge-guard.timer` (60s): read-only; pages on any domain drop and says whether
+  the app or the edge failed.
+  Both are installed from `clean-hands/deploy/edge/install.sh` and registered
+  under "STANDING DEFENSES" in `/root/INFRA.md`.
+
+If cleanhands (or any tenant) is 502 while its container is healthy, the fix is
+almost always `docker network connect <its-net> <edge>` + curl-sweep — the app
+is fine, the edge lost the route. Then let the standing timers keep it attached.

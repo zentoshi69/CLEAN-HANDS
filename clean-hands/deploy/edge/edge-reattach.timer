@@ -1,0 +1,13 @@
+# /etc/systemd/system/edge-reattach.timer
+# Every 30s: max ~30s of exposure if a neighbor `compose up` recreates the edge.
+# Enable with:  systemctl enable --now edge-reattach.timer
+[Unit]
+Description=run edge-reattach every 30s
+
+[Timer]
+OnBootSec=20
+OnUnitActiveSec=30
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
