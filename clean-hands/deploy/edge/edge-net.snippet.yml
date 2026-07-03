@@ -1,0 +1,30 @@
+# DROP-IN for the cleanhands docker-compose (and the pattern EVERY app copies).
+# This is what makes each project self-attach to the shared edge and stop
+# depending on any other project's lifecycle.
+#
+# Merge these keys into cleanhands' compose:
+#   - add `edge-net` to the api service AND the static-site service `networks:`
+#   - add an ALIAS on the site so the edge reaches it by a stable name
+#   - declare `edge-net` as external at the bottom
+#
+# After this, `docker compose up` on cleanhands re-attaches cleanhands to the
+# edge every time, and a neighbor's `up` can never detach it.
+
+services:
+  api:                        # the cleanhands-api service
+    networks:
+      - cleanhands-prod-net   # keep its existing internal net (db/redis)
+      - edge-net              # + the shared edge net
+
+  site:                       # the static-site service (cleanhands-site-prod-*)
+    networks:
+      cleanhands-prod-net: {}
+      edge-net:
+        aliases:
+          - cleanhands-site   # stable name the edge routes to (see sites/cleanhands.caddy)
+
+networks:
+  cleanhands-prod-net:
+    external: true
+  edge-net:
+    external: true            # created once on the box: `docker network create edge-net`

@@ -1,0 +1,13 @@
+# /etc/systemd/system/edge-guard.service
+# One poll of every domain in the watch list. Paired with edge-guard.timer.
+# Read-only: never mutates the edge or any container.
+[Unit]
+Description=edge-guard — alert if any box domain drops
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+# Put TG_BOT_TOKEN / TG_CHAT_ID (or ALERT_WEBHOOK) here, chmod 600:
+EnvironmentFile=-/etc/edge-guard/env
+ExecStart=/usr/local/bin/edge-guard.sh /etc/edge-guard/domains

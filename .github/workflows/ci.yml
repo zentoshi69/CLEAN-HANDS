@@ -67,6 +67,24 @@ jobs:
           BASE=http://127.0.0.1:8096 node webapp/test_tg_e2e.mjs
           kill $SERVER
 
+      - name: Game audio e2e (music starts, per-level tracks, self-heal — real Chromium)
+        working-directory: clean-hands/staking-api
+        run: |
+          # The 2026-07 "music never plays" bug (cross-script ReferenceError on the
+          # first gesture) was invisible to every static check — only a real
+          # browser catches that class. See webapp/test_audio_e2e.mjs.
+          npm install --no-save --prefix webapp playwright
+          (cd webapp && npx playwright install --with-deps chromium)
+          STAKE_ENV=dev STAKE_PORT=8097 STAKE_DB=/tmp/ci-audio.db \
+            DEFAULT_TOKEN_MINT=CLEANmint1111111111111111111111111111111111 \
+            STAKE_SERVER_SECRET=ci-only-secret \
+            python app.py & SERVER=$!
+          for i in $(seq 1 40); do
+            curl -sf http://127.0.0.1:8097/healthz >/dev/null && break; sleep 0.5
+          done
+          (cd webapp && BASE=http://127.0.0.1:8097 node test_audio_e2e.mjs)
+          kill $SERVER
+
       - name: Shell scripts parse
         run: |
           find clean-hands -name '*.sh' -print0 | xargs -0 -n1 bash -n

@@ -1,0 +1,13 @@
+# /root/edge/Caddyfile — the edge's TOP file. It sets globals and imports one
+# file per project. It intentionally contains NO project routes itself: every
+# product owns ./sites/<product>.caddy, so two projects can never share (and
+# clobber) a block. Adding a product = drop a new file in ./sites and reload.
+#
+# Reload after any change (never restart — a restart drops every domain):
+#   docker exec edge-caddy caddy reload --config /etc/caddy/Caddyfile
+{
+	# email admin@cleanhands.fun   # ACME contact — set once, uncomment.
+	# admin off                    # optional: disable the :2019 admin API.
+}
+
+import /etc/caddy/sites/*.caddy
