@@ -69,7 +69,7 @@ page.on('request', (r) => { if (r.url().includes('/audio/')) audioReqs.push(r.ur
 await page.goto(BASE + '/play', { waitUntil: 'load' });
 await page.waitForSelector('#splashBtn', { timeout: 20000 });
 await page.click('#splashBtn'); // real user gesture → audio unlock + startMusic
-await page.waitForTimeout(4000); // warm-up + cache-buster-retry window
+await page.waitForTimeout(9000); // warm-up + first backoff retry (fires ~4s after the load error)
 
 // which network-served track is audibly playing right now
 const nowPlaying = () => page.evaluate(() =>
