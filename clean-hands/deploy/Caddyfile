@@ -1,3 +1,8 @@
+# ⚠️ LEGACY (2026-07-03): do NOT `apt install caddy` on a box that already has
+# an edge proxy — two proxies fighting over 80/443 caused a production outage.
+# Check `ss -ltnp | grep -E ':80 |:443 '` and /root/INFRA.md first; integrate
+# into the EXISTING edge instead. See .claude/skills/vps-deploy-safety/SKILL.md.
+#
 # CLEAN — Caddy reverse proxy with automatic HTTPS.
 # Replace app.cleanhands.fun with your real subdomain, then:
 #   sudo apt install caddy
