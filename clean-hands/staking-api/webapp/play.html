@@ -2029,16 +2029,30 @@ function boot(){
   function _playA(a){ if(!a) return; try{ var p=a.play(); if(p&&p.catch) p.catch(function(){}); }catch(e){} }
   function musicOff(){ return META.mute || META.musicMuted; }   // the 🔊 icon controls musicMuted
   // Lazily build (and cache) the looping Audio for a track URL. On a load error the
-  // entry is nulled and the fallback (inline mellow loop) takes over immediately.
+  // fallback (inline mellow loop) takes over immediately, but the entry is FORGOTTEN
+  // rather than tombstoned: a transient 404/edge blip must not silence an open session
+  // for good (2026-07-03 incident). The failed file is retried in the background with
+  // growing delay (4s..60s, 8 tries); when it recovers and it is the current level's
+  // track, it swaps back in with no user action - no refresh, no reopen.
+  var _trackFail={};
   function getTrack(url){
     if(!url) return musicMellow;
     if(url in _trackCache) return _trackCache[url] || musicMellow;
     var a=null;
     try{ a=new Audio(url); a.loop=true; a.preload='auto'; a.volume=0;
       a.addEventListener('error', function(){
-        _trackCache[url]=null;
+        delete _trackCache[url];
+        var n=(_trackFail[url]=(_trackFail[url]||0)+1);
         if(_curAudio===a){ _curAudio=musicMellow; if(_musicOn && !musicOff()) applyMusicMix(); }
+        if(n<=8){ setTimeout(function(){
+          var na=getTrack(url);
+          if(na && na!==musicMellow && _musicOn && !musicOff()){
+            var L=LEVELS[S.level-1];
+            if(L && L.track===url){ _curAudio=na; _allTracksPause(na); applyMusicMix(); }
+          }
+        }, Math.min(60000, 4000*n)); }
       }, {once:true});
+      a.addEventListener('canplaythrough', function(){ _trackFail[url]=0; }, {once:true});
     }catch(e){ a=null; }
     _trackCache[url]=a;
     return a || musicMellow;
