@@ -888,7 +888,10 @@ const fmtHero=n=>{ n=Math.floor(safe(n)); return n<1e11 ? '$'+n.toLocaleString('
    the next level's `at`. `act` (1/2/3) groups the 11 levels into the 3
    Escape/prestige chapters (invisible to the player — see CITIES); `city` is the
    real place shown in the top bar; `sceneUrl` is the backdrop and `track` the
-   looping soundtrack — both swap on every level-up (the track crossfades ~0.7s). */
+   looping soundtrack — both swap on every level-up (the track crossfades ~0.7s).
+   TRACK INVARIANT: levels 1-10 each play their OWN track (all 10 files in
+   /audio used exactly once); level 11 (the finale) deliberately reuses level
+   1's track — the wash comes full circle back to the Amsterdam theme. */
 const LEVELS=[
   {act:1, city:'Amsterdam',      house:'City Villa',           at:0,          sceneUrl:'/scenes/amsterdam.png',                   track:'/audio/Loops.mp3'},
   {act:1, city:'Athens',         house:'City Rooftop Terrace', at:100000,     sceneUrl:'/scenes/Athens%20acropolis.png',          track:'/audio/Out%20Here.mp3'},
@@ -900,7 +903,7 @@ const LEVELS=[
   {act:2, city:'Santorini',      house:'Villa Summer',         at:150000000,  sceneUrl:'/scenes/santorini.png',                   track:'/audio/Funk%20Loop%2030.mp3'},
   {act:3, city:'Dubai',          house:'Hotel Suite',          at:250000000,  sceneUrl:'/scenes/dubai.png',                       track:'/audio/dubai%20vibes.mp3'},
   {act:3, city:'Bangkok',        house:'Hotel Suite',          at:500000000,  sceneUrl:'/scenes/BANGKOK.png',                     track:'/audio/bangkok%20crime.mp3'},
-  {act:3, city:'Los Angeles',    house:'Bay Area',             at:1000000000, sceneUrl:'/scenes/los%20angeles.png',               track:'/audio/Funky%20Vibes.mp3'},
+  {act:3, city:'Los Angeles',    house:'Bay Area',             at:1000000000, sceneUrl:'/scenes/los%20angeles.png',               track:'/audio/Loops.mp3'},
 ];
 const MAXLEVEL=LEVELS.length;             // 11
 // Escape/prestige chapters derived from the level table's `act` groups
@@ -1296,7 +1299,12 @@ function checkLevel(){
       $('#scene').animate([{filter:'brightness(1.6) saturate(1.4)'},{filter:'none'}],{duration:900});
     }
     applyLevelScene();
-    switchSceneTrack();          // alternate the soundtrack with the new scene
+    // The soundtrack lives in the cln-layer script. Call it through its
+    // PUBLISHED window.__cleanLayer surface, guarded (same pattern as the
+    // save() call in doEscape) — the old bare `switchSceneTrack()` reached
+    // into another <script>'s closure and threw `is not defined`, killing
+    // the rest of every level-up tick.
+    try{ window.__cleanLayer && window.__cleanLayer.switchSceneTrack && window.__cleanLayer.switchSceneTrack(); }catch(e){}
   }
 }
 
@@ -1331,7 +1339,7 @@ function resetRun(){
     bribesBought:{cop:0,judge:0,senator:0},
     repClaimed:[false,false,false,false,false,false,false,false]});
   busted=false; lastTotal=0; isGameOver=false;
-  resetSceneTrack();   // back to level 1's opening track
+  try{ window.__cleanLayer && window.__cleanLayer.resetSceneTrack && window.__cleanLayer.resetSceneTrack(); }catch(e){}   // back to level 1's opening track
   recompute();
 }
 $('#bustBtn').onclick=()=>{
@@ -1552,7 +1560,7 @@ function doEscape(){
   busted=false; lastTotal=0;
   recompute();
   applyLevelScene();
-  resetSceneTrack();   // back to the opening track
+  try{ window.__cleanLayer && window.__cleanLayer.resetSceneTrack && window.__cleanLayer.resetSceneTrack(); }catch(e){}   // back to the opening track
   $('#scene').animate([{filter:'brightness(2.2) saturate(1.5)'},{filter:'none'}],{duration:1100});
   toast('Relocated to '+PRESTIGE_CITIES[Math.min(S.prestige-1,PRESTIGE_CITIES.length-1)]+' — ×'+escMult().toFixed(2)+' income forever','✈︎','good');
   closePanel(); refresh();
@@ -1662,9 +1670,14 @@ preloadFrames(()=>setVFrame(0));
 setVFrame(0);
 refresh();
 
-/* dev helpers — handy when iterating in Claude Code / devtools */
-window.__game = { S, setFrame, setVFrame, VFRAMES, doRiffle, refresh,
-  get frame(){return frame;}, FRAME_URLS };
+/* Public engine surface — the cln-layer script below talks to the engine ONLY
+   through this object (plus the live S). LEVELS and recompute are part of that
+   contract: the audio layer reads LEVELS for the per-level soundtrack, and the
+   cloud-restore path calls recompute. They used to be closure-private, so every
+   music entry point threw `LEVELS is not defined` on the FIRST gesture and the
+   game never played a note — the "music is broken / users hard-refresh" bug. */
+window.__game = { S, setFrame, setVFrame, VFRAMES, doRiffle, refresh, recompute,
+  LEVELS, get frame(){return frame;}, FRAME_URLS };
 
 // ===== $CLEAN branded intro (motion graphics; infra: tap START → game) =====
 (function(){
@@ -1755,6 +1768,7 @@ function boot(){
   var G = window.__game;
   if(!G || !G.S){ return setTimeout(boot, 60); }   // wait for engine
   var S = G.S;
+  var LEVELS = G.LEVELS || [];   // engine's level table (city, sceneUrl, track) — via the public surface, NOT the engine closure
   var $  = function(s){ return document.querySelector(s); };
   var app = $('#app');
   var reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
@@ -1933,7 +1947,7 @@ function boot(){
           if(Array.isArray(remote.S.repClaimed)) S.repClaimed=remote.S.repClaimed.slice();
           if(remote.meta) Object.assign(META, remote.meta);
           normalizePrestige();
-          recompute(); refresh(); toast('Cloud save restored','☁️','good');
+          G.recompute(); G.refresh(); toast('Cloud save restored','☁️','good');
         }
       }).catch(function(){});
   }
@@ -2028,18 +2042,33 @@ function boot(){
   }
   function _playA(a){ if(!a) return; try{ var p=a.play(); if(p&&p.catch) p.catch(function(){}); }catch(e){} }
   function musicOff(){ return META.mute || META.musicMuted; }   // the 🔊 icon controls musicMuted
-  // Lazily build (and cache) the looping Audio for a track URL. On a load error the
-  // entry is nulled and the fallback (inline mellow loop) takes over immediately.
+  // Lazily build (and cache) the looping Audio for a track URL. A load error no
+  // longer silences that city for the whole session (the old behavior — which
+  // made players hard-refresh to get the music back): each failure RETRIES with
+  // a cache-busting query so a stale/corrupt HTTP-cache entry or a flaky mobile
+  // fetch self-heals in place. Only after _TRK_RETRY straight failures does the
+  // entry fall back to the inline mellow loop (and even that heals next session).
+  var _TRK_RETRY=2;
+  function _mkTrack(url, attempt){
+    var a=null;
+    try{
+      var src = attempt ? url + (url.indexOf('?')<0 ? '?' : '&') + 'cb=' + attempt + '.' + Date.now() : url;
+      a=new Audio(src); a.loop=true; a.preload='auto'; a.volume=0;
+      a.addEventListener('error', function(){
+        var next = attempt < _TRK_RETRY ? _mkTrack(url, attempt+1) : null;
+        _trackCache[url]=next;
+        if(_curAudio===a){
+          _curAudio = next || musicMellow;
+          if(_musicOn && !musicOff()) applyMusicMix();
+        }
+      }, {once:true});
+    }catch(e){ a=null; }
+    return a;
+  }
   function getTrack(url){
     if(!url) return musicMellow;
     if(url in _trackCache) return _trackCache[url] || musicMellow;
-    var a=null;
-    try{ a=new Audio(url); a.loop=true; a.preload='auto'; a.volume=0;
-      a.addEventListener('error', function(){
-        _trackCache[url]=null;
-        if(_curAudio===a){ _curAudio=musicMellow; if(_musicOn && !musicOff()) applyMusicMix(); }
-      }, {once:true});
-    }catch(e){ a=null; }
+    var a=_mkTrack(url, 0);
     _trackCache[url]=a;
     return a || musicMellow;
   }
@@ -2053,11 +2082,15 @@ function boot(){
     if(!_musicOn){
       // Inside the first user gesture: CREATE and WARM-UP every level track so iOS
       // WebView allows play() later (outside a gesture). Pattern mirrors warmSfx().
+      // SKIP the current level's track — applyMusicMix() below starts it for real
+      // in this same gesture, and the warm-up's async pause() used to land AFTER
+      // that and silence the music the player just started.
+      var cur=levelTrack(S.level);
       LEVELS.forEach(function(l){
         var a=getTrack(l.track);
-        if(a && a!==musicMellow){
+        if(a && a!==musicMellow && a!==cur){
           try{ a.muted=true; var p=a.play();
-            if(p&&p.then) p.then(function(){ try{ a.pause(); a.currentTime=0; a.muted=false; }catch(e){} })
+            if(p&&p.then) p.then(function(){ try{ if(a!==_curAudio){ a.pause(); a.currentTime=0; } a.muted=false; }catch(e){} })
                            .catch(function(){ try{ a.muted=false; }catch(e){} });
           }catch(e){}
         }
@@ -2106,7 +2139,7 @@ function boot(){
     META.musicMuted = !META.musicMuted;
     var b=$('#clnSnd'); if(b){ b.textContent = META.musicMuted ? '🔇' : '🔊'; }
     if(META.musicMuted){ if(_xfTimer){ clearInterval(_xfTimer); _xfTimer=null; } _allTracksPause(); }
-    else { var c=audioReady(); if(c && c.state==='suspended'){ try{ c.resume(); }catch(e){} } startMusic(); }
+    else { audioReady(); startMusic(); }   // audioReady() resumes a suspended context itself
     try{ saveAll(); }catch(e){}
   }
   // Per-scene soundtrack: tap/swipe no longer drives a mellow→funk blend, so this
@@ -2115,7 +2148,10 @@ function boot(){
   // ---- synth fallback (so it's never silent without the assets folder) ----
   var actx=null, _lastCoin=0;
   function audioReady(){
-    if(actx) return actx;
+    // Re-entry ALWAYS tries to resume: app-switch/lock-screen leaves the context
+    // 'suspended' (iOS: 'interrupted'), and a context that isn't running means
+    // every synth SFX is silent even though calls "succeed".
+    if(actx){ if(actx.state!=='running'){ try{ actx.resume(); }catch(e){} } return actx; }
     try{ var AC=window.AudioContext||window.webkitAudioContext; if(AC){ actx=new AC();
       try{ var o=actx.createOscillator(), g=actx.createGain(); g.gain.value=0.00008;
         o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime+0.03); }catch(e){}
@@ -2123,6 +2159,19 @@ function boot(){
     } }catch(e){}
     return actx;
   }
+  // ---- foreground recovery: never make the player refresh to get sound back ----
+  // App-switch / lock-screen / bfcache restore makes the OS pause every <audio>
+  // and suspend (iOS: 'interrupt') the AudioContext. Nothing un-paused them, so
+  // the music stayed silent until the next hands-tap — and players "fixed" it by
+  // hard-refreshing. Resume both the moment the game is visible again; browsers
+  // allow resuming media that was playing before backgrounding, and if one denies
+  // it (_playA swallows the rejection) the next tap retries via startMusic().
+  function resumeAudio(){
+    if(actx && actx.state!=='running'){ try{ actx.resume(); }catch(e){} }
+    if(_musicOn && !musicOff()) applyMusicMix();
+  }
+  document.addEventListener('visibilitychange', function(){ if(!document.hidden) resumeAudio(); });
+  window.addEventListener('pageshow', resumeAudio);
   function tone(a,b,d,t,gn){ if(META.mute) return; var c=audioReady(); if(!c) return;
     try{ var t0=c.currentTime, o=c.createOscillator(), g=c.createGain();
       o.type=t||'sine'; o.frequency.setValueAtTime(a,t0);
@@ -2172,7 +2221,7 @@ function boot(){
   function setMute(m){
     META.mute=m; var b=$('#clnSnd'); if(b) b.textContent = m ? '🔇' : '🔊';
     if(m){ if(_xfTimer){ clearInterval(_xfTimer); _xfTimer=null; } _allTracksPause(); }
-    else { var c=audioReady(); if(c && c.state==='suspended'){ try{ c.resume(); }catch(e){} }
+    else { audioReady();   // audioReady() resumes a suspended context itself
            if(_musicOn) applyMusicMix(); else startMusic(); }
     saveAll();
   }
@@ -2529,8 +2578,11 @@ function boot(){
   try{ if(!localStorage.getItem('clean_privacy')){ localStorage.setItem('clean_privacy','1');
     setTimeout(function(){ toast('We track anonymous gameplay stats — no wallet, no personal data.','🧼',''); }, 1800); } }catch(e){}
 
-  // dev surface
-  window.__cleanLayer={ S:S, META:META, save:saveAll, grantRef:grantRef, pollPrice:pollPrice, sfx:sfx };
+  // engine↔layer surface (NOT just a dev helper): the engine's checkLevel /
+  // resetRun / doEscape drive the per-level soundtrack through these — always
+  // via guarded window.__cleanLayer calls, never bare cross-script identifiers.
+  window.__cleanLayer={ S:S, META:META, save:saveAll, grantRef:grantRef, pollPrice:pollPrice, sfx:sfx,
+    switchSceneTrack:switchSceneTrack, resetSceneTrack:resetSceneTrack };
 }
 
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot);

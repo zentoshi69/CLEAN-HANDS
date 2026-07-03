@@ -1815,10 +1815,32 @@ _WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webapp")
 # Without Cache-Control, webviews use HEURISTIC caching (reuse without
 # revalidating, for ~10% of the file's age) — Telegram's webview kept serving
 # STALE app.js/wallet.js across deploys, so client fixes never reached phones.
-# no-cache forces an ETag revalidation on every load: 304 when unchanged,
-# fresh bytes the moment a deploy lands.
+# no-cache forces a revalidation on every load: fresh bytes the moment a
+# deploy lands.
 _NO_CACHE = {"Cache-Control": "no-cache, max-age=0, must-revalidate"}
 _DAY_CACHE = {"Cache-Control": "public, max-age=86400"}
+
+
+def _fresh_file(request: Request, path: str, media_type: str | None = None) -> Response:
+    """no-cache static serving that revalidates CHEAPLY.
+
+    Starlette's bare FileResponse computes an ETag but never ANSWERS
+    If-None-Match (the 304 logic lives only in StaticFiles), so `no-cache`
+    alone means every load re-downloads the full body — 2.6 MB for play.html,
+    multi-MB per music track. Answer the conditional here: 304 with no body
+    while the client's copy is current, fresh bytes the moment a deploy
+    changes the file. Range requests (iOS Safari media) still hit the
+    FileResponse path untouched.
+    """
+    resp = FileResponse(path, media_type=media_type, headers=_NO_CACHE, stat_result=os.stat(path))
+    etag = resp.headers["etag"]
+    inm = request.headers.get("if-none-match", "")
+    if etag in [t.strip().removeprefix("W/") for t in inm.split(",")]:
+        return Response(
+            status_code=304,
+            headers={"Cache-Control": _NO_CACHE["Cache-Control"], "ETag": etag},
+        )
+    return resp
 
 
 @app.get("/")
@@ -1834,11 +1856,13 @@ def app_js():
 
 
 @app.get("/play")
-def play():
-    # $CLEAN tap game — a single self-contained HTML file (all CSS/JS/audio/art
-    # inlined as data: URIs), so no extra asset routes are needed. Served here so
-    # it ships with the same deploy as the Mini App; reachable at /play.
-    return FileResponse(os.path.join(_WEB, "play.html"), headers=_NO_CACHE)
+def play(request: Request):
+    # $CLEAN tap game — a single self-contained HTML file (SFX/art inlined as
+    # data: URIs; per-level music streams from /audio). Served here so it ships
+    # with the same deploy as the Mini App; reachable at /play. _fresh_file →
+    # players get the current build on a NORMAL load (304 when unchanged), so a
+    # game fix never requires a hard refresh to arrive.
+    return _fresh_file(request, os.path.join(_WEB, "play.html"))
 
 
 @app.get("/whitepaper")
@@ -1915,14 +1939,22 @@ def scene_img(filename: str):
 
 
 @app.get("/audio/{filename}")
-def audio_file(filename: str):
-    """Serve game music/SFX from webapp/audio/ (e.g. the per-scene track)."""
+def audio_file(filename: str, request: Request):
+    """Serve game music from webapp/audio/ (the per-level track).
+
+    _fresh_file, NOT _DAY_CACHE: a day-long cache meant any stale/corrupt
+    cached mp3 (or a track swapped in a deploy) kept failing for up to 24h and
+    players "fixed" it with a hard refresh. ETag revalidation makes a normal
+    load self-heal: 304 while the file is unchanged, fresh bytes otherwise.
+    The game also retries failed tracks with a ?cb= cache-buster (ignored
+    here), so even a poisoned intermediary cache can't wedge the music.
+    """
     if ".." in filename:
         raise HTTPException(400, "invalid filename")
     path = os.path.join(_WEB, "audio", filename)
     if not os.path.isfile(path):
         raise HTTPException(404)
-    return FileResponse(path, media_type="audio/mpeg", headers=_DAY_CACHE)
+    return _fresh_file(request, path, media_type="audio/mpeg")
 
 
 # --------------------------------------------------------------------------- #

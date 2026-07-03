@@ -38,6 +38,10 @@ venv/
 dist/
 build/
 
+# --- node (the audio e2e installs playwright locally; never commit it) ---
+node_modules/
+package-lock.json
+
 # --- editor / OS ---
 .DS_Store
 Thumbs.db
