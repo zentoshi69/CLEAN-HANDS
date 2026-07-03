@@ -9,6 +9,18 @@
 #   sudo DOMAIN=app.cleanhands.fun bash deploy/deploy.sh
 #
 set -euo pipefail
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ⚠️  LEGACY BRING-UP GUARD (added 2026-07-03 after a production outage)
+# This script predates the dockerized production stack. Production cleanhands
+# now runs as docker containers (cleanhands-api + postgres + redis + site)
+# behind the box's SINGLE shared edge proxy. Running this on a production VPS:
+#   • installs a SECOND proxy (host Caddy) that fights the real edge for 80/443
+#   • resurrects the retired systemd/SQLite staking stack with STALE money data
+# Read .claude/skills/vps-deploy-safety/SKILL.md and /root/INFRA.md first.
+[ "${FORCE_LEGACY:-0}" = "1" ] || { echo "REFUSING legacy deploy (see header). Set FORCE_LEGACY=1 only on a FRESH box." >&2; exit 1; }
+# ─────────────────────────────────────────────────────────────────────────────
+
 cd "$(dirname "$0")/.."                 # -> bots/
 BOTS_DIR="$(pwd)"
 DOMAIN="${DOMAIN:-app.cleanhands.fun}"

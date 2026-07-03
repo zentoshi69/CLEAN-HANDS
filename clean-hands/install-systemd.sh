@@ -10,6 +10,17 @@
 #   sudo bash install-systemd.sh
 #
 set -euo pipefail
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ⚠️  LEGACY SERVICES GUARD (added 2026-07-03 after a production outage)
+# `degen-staking` here is the RETIRED systemd/SQLite staking stack. Production
+# staking runs as the docker container `cleanhands-api` (postgres-backed).
+# Enabling degen-staking on the production box resurrects a stale-money corpse
+# that will bind ports and confuse every future diagnosis.
+# Read .claude/skills/vps-deploy-safety/SKILL.md and /root/INFRA.md first.
+[ "${FORCE_LEGACY:-0}" = "1" ] || { echo "REFUSING legacy systemd install (see header). Set FORCE_LEGACY=1 only on a FRESH box." >&2; exit 1; }
+# ─────────────────────────────────────────────────────────────────────────────
+
 cd "$(dirname "$0")"
 DIR="$(pwd)"
 # The user who should own the services (the invoking user, even under sudo).

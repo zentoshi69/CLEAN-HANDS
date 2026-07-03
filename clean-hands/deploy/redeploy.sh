@@ -10,6 +10,17 @@
 #
 # Idempotent. Never touches .env or the staker database.
 set -euo pipefail
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ⚠️  LEGACY REDEPLOY GUARD (added 2026-07-03 after a production outage)
+# This script targets the RETIRED architecture (nginx vhost + systemd
+# degen-staking + SQLite). Production is now dockerized behind a single shared
+# edge — running this can re-enable a stale staking stack and rewire nginx
+# into a port fight with the real edge proxy.
+# Read .claude/skills/vps-deploy-safety/SKILL.md and /root/INFRA.md first.
+[ "${FORCE_LEGACY:-0}" = "1" ] || { echo "REFUSING legacy redeploy (see header). Set FORCE_LEGACY=1 only if the legacy stack is deliberately canonical." >&2; exit 1; }
+# ─────────────────────────────────────────────────────────────────────────────
+
 APP=/home/clean/CLEAN-HANDS/clean-hands
 
 echo "== website (cleanhands.fun landing) =="
