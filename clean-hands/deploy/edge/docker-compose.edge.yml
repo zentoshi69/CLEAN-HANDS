@@ -1,0 +1,51 @@
+# The box's ONE edge — owns 80/443. TENANT-NEUTRAL: it belongs to no single
+# app, so no app's `docker compose up/down` can ever recreate it or drop another
+# app's routes. Deploy it in its OWN directory (recommended: /root/edge/), never
+# inside a product's compose.
+#
+# The disease this cures (2026-07-03, cleanhands 502 for hours):
+#   The edge lived inside /root/FINEtrader-app/deploy. Bringing fine-traders up
+#   recreated the edge; it rejoined only fine-traders' network and lost
+#   cleanhands-prod-net, so it could no longer resolve cleanhands-api -> 502.
+#
+# The cure, three rules:
+#   1. The edge is its own stack (this file). Nobody's `up` touches it.
+#   2. ONE shared external network `edge-net`. The edge is on it permanently.
+#      EVERY app joins `edge-net` (external: true) from its OWN compose and
+#      attaches its web container — so a recreate re-attaches automatically and
+#      the edge can always resolve it. No more manual `docker network connect`
+#      that evaporates on the next recreate.
+#   3. Each app owns ./sites/<app>.caddy (imported below). Editing one app's
+#      file can never clobber another's block.
+#
+# Migrate to this under deploy/edge/README.md (snapshot certs volume + Caddyfile,
+# split blocks into ./sites, create edge-net, attach every app, curl-sweep ALL
+# domains, flip). Do it under .claude/skills/vps-deploy-safety/SKILL.md.
+
+services:
+  caddy:
+    image: caddy:2
+    container_name: edge-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./sites:/etc/caddy/sites:ro
+      # PRESERVE the existing certs: point this at the SAME data volume the
+      # current edge uses, or `docker run --rm -v old:/from -v new:/to alpine cp -a`
+      # it first, so the cutover does NOT re-hit Let's Encrypt rate limits.
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge-net
+
+networks:
+  edge-net:
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:

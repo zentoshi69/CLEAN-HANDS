@@ -1,0 +1,54 @@
+# cleanhands — OWNED BY THE CLEANHANDS PROJECT.
+# Install at /etc/caddy/sites/cleanhands.caddy on the box; the edge pulls it in
+# via `import /etc/caddy/sites/*.caddy`. No other project may edit this file, and
+# editing another project's file can never touch these routes. THIS is what
+# "cleanhands out of fine-traders' Caddy" means concretely.
+#
+# Upstreams are reached by docker name on the shared edge network (edge-net).
+# cleanhands-api and the static site attach THEMSELVES to edge-net from the
+# cleanhands compose (see edge-net.snippet.yml), so the edge can always resolve
+# them — even after a neighbor recreates the edge.
+#
+# NOTE: `cleanhands-site` is a STABLE network ALIAS for the static-site container
+# (whose real name carries a deploy hash, e.g. cleanhands-site-prod-3e94c39).
+# Pinning the alias means a cleanhands redeploy never breaks this file.
+#
+# ⚠️ box-is-truth: before installing, diff this against the CURRENT cleanhands
+# block in the live edge config and reconcile — the live matcher is the source
+# of truth for exactly which paths route to the API.
+
+app.cleanhands.fun {
+	encode zstd gzip
+	reverse_proxy cleanhands-api:8090
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+}
+
+cleanhands.fun, www.cleanhands.fun {
+	encode zstd gzip
+
+	# Dynamic app + game + API paths -> the staking API. Everything else -> the
+	# static marketing site. Keep this matcher in sync with the live one
+	# (INFRA.md note 2026-07-03 extended it with /play /return /audio/* /scenes/*
+	# for the BGM fix).
+	@clean_api path /api/* /play /play/* /wallet-return /return /return/* \
+		/audio/* /scenes/* /whitepaper /whitepaper.js /app.js /wallet.js \
+		/nacl.min.js /glove.png /banner.png /g/*
+	handle @clean_api {
+		reverse_proxy cleanhands-api:8090
+	}
+	handle {
+		reverse_proxy cleanhands-site:80
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+}

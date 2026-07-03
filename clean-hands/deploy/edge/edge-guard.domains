@@ -1,0 +1,18 @@
+# edge-guard watch list — EVERY public domain on srv1505584, so a drop on ANY
+# of them pages you in ~60s instead of "down for hours, nobody noticed".
+# Format:  <domain>  <expected_codes>  [upstream_container_for_diagnosis]
+# (from /root/INFRA.md — keep in sync when domains/containers change.)
+
+cleanhands.fun          200,301   cleanhands-site-prod-3e94c39
+www.cleanhands.fun      200,301   cleanhands-site-prod-3e94c39
+app.cleanhands.fun      200       cleanhands-api
+
+finetrades.io           200,301   deploy-server-1
+www.finetrades.io       200,301   deploy-server-1
+co-muse.xyz             200       co-muse
+
+# Legacy sites (Caddy TLS -> internal nginx:8443). Uncomment once confirmed live.
+# zenodesk.pro          200,301
+# hotjuju.fun           200,301
+# profil-lexique.fr     200,301
+# sendhigher.online     200,301
