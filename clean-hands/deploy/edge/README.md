@@ -133,3 +133,12 @@ previous edge back; `edge-net` attachments are additive and harmless to leave.
 
 **Finish:** update `/root/INFRA.md` — new edge owner, `edge-net`, per-site files,
 and move the old inline-in-fine-traders edge to RETIRED.
+
+## After the migration — install the guardrail (mandatory)
+
+The cutover fixes the double-edge class once; **`guardrail/` makes it
+permanent**: `check-compose.sh` (blocks any compose that binds 80/443 or
+publishes a non-loopback host port), a daily `state.md` inventory snapshot,
+the `ALLOCATIONS.md` ledger, and the consolidation/migration/failures
+runbooks. See `guardrail/README.md`; the full gated procedure is
+`guardrail/runbooks/consolidation.md`.

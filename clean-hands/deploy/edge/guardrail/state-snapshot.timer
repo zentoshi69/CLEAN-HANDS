@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily box inventory snapshot into /root/infra/state.md
+
+[Timer]
+OnCalendar=daily
+OnBootSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

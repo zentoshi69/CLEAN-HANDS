@@ -1,0 +1,6 @@
+[Unit]
+Description=Regenerate /root/infra/state.md box inventory snapshot (read-only)
+
+[Service]
+Type=oneshot
+ExecStart=/root/infra/state-snapshot.sh
