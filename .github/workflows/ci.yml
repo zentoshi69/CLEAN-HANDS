@@ -47,6 +47,16 @@ jobs:
             exit 1
           fi
 
+      - name: Per-level music invariant (10 tracks for 11 levels; L11 == L1)
+        working-directory: clean-hands/staking-api/webapp
+        run: |
+          # Hard lock on the music rule: 11 levels, 1-10 distinct tracks, level 11
+          # reuses level 1's, every file present, and window.__game exports LEVELS
+          # (the wiring whose absence shipped silent music). Pure static — never
+          # flakes. If anyone edits the LEVELS table or __game surface in a way
+          # that breaks the rule, this goes red before it can ship.
+          node test_track_invariant.mjs
+
       - name: Wallet flow regression tests
         working-directory: clean-hands/staking-api/webapp
         run: node test_wallet_flow.mjs
