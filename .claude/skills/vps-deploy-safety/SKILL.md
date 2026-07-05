@@ -201,3 +201,18 @@ Standing defenses on the box — **DO NOT DISABLE, do not flag as rogue crons:**
 If cleanhands (or any tenant) is 502 while its container is healthy, the fix is
 almost always `docker network connect <its-net> <edge>` + curl-sweep — the app
 is fine, the edge lost the route. Then let the standing timers keep it attached.
+
+## Runbooks + structural guardrail
+
+`clean-hands/deploy/edge/guardrail/` (installed on the box under
+`/root/infra/`) carries the permanent enforcement of this skill:
+
+- `check-compose.sh` — run before ANY `docker compose up` / edge reload;
+  non-zero exit if a compose outside the ingress dir binds 80/443 or
+  publishes a non-loopback host port, or the ingress config has a duplicate
+  hostname.
+- `state-snapshot.sh` → `/root/infra/state.md` — the pre-flight inventory,
+  regenerated daily; read it first, then confirm live (box is truth).
+- `runbooks/consolidation.md` — gated M0→M5 procedure for consolidating to
+  one edge; `runbooks/migration.md` — replacing a stack without corpses;
+  `runbooks/failures.md` — symptom-first catalog of this failure class.
